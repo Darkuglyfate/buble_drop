@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { captureAnalyticsEvent } from "../analytics";
+import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
 
 type PartnerTokenView = {
   id: string;
@@ -14,70 +19,20 @@ type PartnerTokenView = {
   seasonTitle: string;
 };
 
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function getWalletAddressFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const value = new URLSearchParams(window.location.search).get("walletAddress");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function withProfileQuery(
-  path: string,
-  profileId: string | null,
-  walletAddress?: string | null,
-): string {
-  if (!profileId && !walletAddress) {
-    return path;
-  }
-
-  const searchParams = new URLSearchParams();
-  if (profileId) {
-    searchParams.set("profileId", profileId);
-  }
-  if (walletAddress) {
-    searchParams.set("walletAddress", walletAddress);
-  }
-
-  return `${path}?${searchParams.toString()}`;
-}
-
 export function PartnerTokenTransparencyScreen() {
+  const runtimeContext = useBubbleDropRuntime();
   const [tokens, setTokens] = useState<PartnerTokenView[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
   const endpoint = backendUrl ? `${backendUrl}/partner-token/transparency` : null;
 
   useEffect(() => {
-    setProfileId(getProfileIdFromUrl());
-    setWalletAddress(getWalletAddressFromUrl());
-  }, []);
-
-  useEffect(() => {
-    const resolvedProfileId = getProfileIdFromUrl();
+    const resolvedProfileId = runtimeContext.profileId;
 
     const loadTokens = async () => {
       if (!endpoint) {
-        setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load partner token transparency data.");
+        setErrorMessage("Partner token data is unavailable right now.");
         return;
       }
 
@@ -112,7 +67,7 @@ export function PartnerTokenTransparencyScreen() {
     };
 
     void loadTokens();
-  }, [endpoint]);
+  }, [endpoint, runtimeContext.profileId]);
 
   const tokenCount = useMemo(() => tokens.length, [tokens]);
 
@@ -130,19 +85,22 @@ export function PartnerTokenTransparencyScreen() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">
-                Transparency-first
+                Partner spotlight
               </p>
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Partner token transparency</h1>
             </div>
             <Link
-              href={withProfileQuery("/", profileId, walletAddress)}
+              href={withBubbleDropContext("/", {
+                profileId: runtimeContext.profileId,
+                walletAddress: runtimeContext.walletAddress,
+              })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
             </Link>
           </div>
           <p className="mt-3 text-sm text-[#5d76a5]">
-            Read-only partner token information for current season context. No trading terminal behavior.
+            Explore the featured partner tokens for this season, with quick access to official links and market context.
           </p>
         </section>
 
@@ -157,10 +115,14 @@ export function PartnerTokenTransparencyScreen() {
         <section className="bubble-card p-4">
           <h2 className="text-sm font-semibold text-[#30466f]">Token list</h2>
 
-          {isLoading ? <p className="mt-3 text-sm text-[#6074a0]">Loading partner token data...</p> : null}
+          {isLoading ? (
+            <p className="mt-3 text-sm text-[#6074a0]">Loading featured partner tokens...</p>
+          ) : null}
 
           {!isLoading && tokens.length === 0 && !errorMessage ? (
-            <p className="mt-3 text-sm text-[#6074a0]">No partner tokens returned by backend.</p>
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              No featured partner tokens are live right now.
+            </div>
           ) : null}
 
           {!isLoading
@@ -193,7 +155,7 @@ export function PartnerTokenTransparencyScreen() {
                             captureAnalyticsEvent(
                               "bubbledrop_partner_market_link_opened",
                               {
-                                profile_id: profileId,
+                                profile_id: runtimeContext.profileId,
                                 token_id: token.id,
                                 token_name: token.name,
                               },
@@ -205,7 +167,7 @@ export function PartnerTokenTransparencyScreen() {
                         </a>
                       ) : (
                         <div className="rounded-lg bg-[#f6f8ff] p-2 text-[#6c7fa6]">
-                          Chart / DexScreener link is not available.
+                          Market links have not been shared for this token yet.
                         </div>
                       )}
                     </div>
@@ -217,7 +179,12 @@ export function PartnerTokenTransparencyScreen() {
 
         {errorMessage ? (
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
+            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+              {errorMessage ===
+              "Unable to load partner token transparency data from backend."
+                ? "Partner token details are unavailable right now."
+                : "We couldn't refresh the partner token view."}
+            </p>
           </section>
         ) : null}
       </main>

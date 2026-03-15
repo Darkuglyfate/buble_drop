@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { captureAnalyticsEvent } from "../analytics";
+import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
 
 type PartnerTokenDetailView = {
   id: string;
@@ -23,40 +28,15 @@ type PartnerTokenDetailView = {
   pinCount: number;
 };
 
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function withProfileQuery(path: string, profileId: string | null): string {
-  if (!profileId) {
-    return path;
-  }
-  return `${path}?profileId=${encodeURIComponent(profileId)}`;
-}
-
 export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const runtimeContext = useBubbleDropRuntime();
   const [token, setToken] = useState<PartnerTokenDetailView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
 
   const loadToken = async () => {
-    if (!backendUrl) {
-      setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load token details.");
-      return;
-    }
-
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -75,7 +55,7 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
       const payload = (await response.json()) as PartnerTokenDetailView;
       setToken(payload);
       captureAnalyticsEvent("bubbledrop_token_detail_viewed", {
-        profile_id: getProfileIdFromUrl(),
+        profile_id: runtimeContext.profileId,
         token_id: payload.id,
         token_symbol: payload.symbol,
         season_key: payload.season.key,
@@ -89,10 +69,9 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
   };
 
   useEffect(() => {
-    setProfileId(getProfileIdFromUrl());
     void loadToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenId]);
+  }, [tokenId, runtimeContext.profileId]);
 
   const marketUrl = token?.chartUrl || token?.dexscreenerUrl || null;
 
@@ -109,17 +88,22 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
         <section className="bubble-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP read surface</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Partner token</p>
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Token detail</h1>
             </div>
             <Link
-              href={withProfileQuery("/season", profileId)}
+              href={withBubbleDropContext("/season", {
+                profileId: runtimeContext.profileId,
+                walletAddress: runtimeContext.walletAddress,
+              })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
             </Link>
           </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">Read-only token detail from backend truth.</p>
+          <p className="mt-3 text-sm text-[#5d76a5]">
+            View the token profile, season context, and official links for this featured drop.
+          </p>
         </section>
 
         <section className="bubble-card p-4">
@@ -131,9 +115,12 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
               disabled={isLoading}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
-              {isLoading ? "Refreshing..." : "Refresh"}
+              {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
+          {isLoading ? (
+            <p className="mt-3 text-sm text-[#6074a0]">Loading token details...</p>
+          ) : null}
 
           {token ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
@@ -158,7 +145,7 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
                   rel="noopener noreferrer"
                   onClick={() =>
                     captureAnalyticsEvent("bubbledrop_token_market_link_opened", {
-                      profile_id: profileId,
+                      profile_id: runtimeContext.profileId,
                       token_id: token.id,
                       token_symbol: token.symbol,
                     })
@@ -167,16 +154,28 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
                 >
                   Open chart / DexScreener
                 </a>
-              ) : null}
+              ) : (
+                <div className="mt-2 rounded-lg bg-[#f6f8ff] p-2 text-center text-xs text-[#6c7fa6]">
+                  Market links have not been added for this token yet.
+                </div>
+              )}
             </div>
           ) : (
-            <p className="mt-3 text-sm text-[#6074a0]">No token detail returned.</p>
+            !isLoading ? (
+              <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+                Token details are not available yet.
+              </div>
+            ) : null
           )}
         </section>
 
         {errorMessage ? (
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
+            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+              {errorMessage === "Unable to load token details from backend."
+                ? "This token page is unavailable right now."
+                : "We couldn't refresh this token page."}
+            </p>
           </section>
         ) : null}
       </main>

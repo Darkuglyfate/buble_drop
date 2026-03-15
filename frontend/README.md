@@ -10,6 +10,7 @@ This default split avoids the local port conflict between Next.js and NestJS and
 Create `frontend/.env.local` with:
 
 ```bash
+BACKEND_URL=http://localhost:3000
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
 NEXT_PUBLIC_APP_URL=https://bubledrop.vercel.app
 NEXT_PUBLIC_POSTHOG_KEY=
@@ -54,10 +55,13 @@ FRONTEND_ORIGIN=http://localhost:3001
 
 If you change either port, update both:
 
+- `BACKEND_URL` in the frontend env
 - `NEXT_PUBLIC_BACKEND_URL` in the frontend env
 - `FRONTEND_ORIGIN` in the backend env
 
 `NEXT_PUBLIC_APP_URL` should point at the production frontend domain once BubbleDrop is deployed. The frontend uses it for canonical and social metadata, and it is also the expected primary URL value for Base.dev registration.
+
+For production, the current repo expects the frontend server-side proxy to know the backend origin. Set `BACKEND_URL` to the deployed backend URL. Keep `NEXT_PUBLIC_BACKEND_URL` aligned as the compatibility fallback for the current app.
 
 ## Production Build Check
 
@@ -109,3 +113,7 @@ Use it to prepare:
 - expected production URL
 - current asset inventory and missing listing assets
 - manual Base.dev steps that still happen outside the repo
+
+## Production env contract
+
+The explicit production checklist now lives in `frontend/PRODUCTION_ENV_CHECKLIST.md`.

@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 
 type ReferralItem = {
@@ -21,24 +26,12 @@ type ReferralProgressView = {
   referrals: ReferralItem[];
 };
 
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
+function shortenWalletAddress(walletAddress: string): string {
+  return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
 }
 
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function withProfileQuery(path: string, profileId: string | null): string {
-  if (!profileId) {
-    return path;
-  }
-  return `${path}?profileId=${encodeURIComponent(profileId)}`;
+function formatReferralStatus(status: ReferralItem["status"]): string {
+  return status === "successful" ? "Completed" : "Pending";
 }
 
 async function fetchOnboardingStateForProfile(
@@ -56,7 +49,7 @@ async function fetchOnboardingStateForProfile(
 }
 
 export function ReferralProgressScreen() {
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const { profileId, walletAddress } = useBubbleDropRuntime();
   const [progress, setProgress] = useState<ReferralProgressView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -64,14 +57,9 @@ export function ReferralProgressScreen() {
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
 
   const loadProgress = async (resolvedProfileId: string) => {
-    if (!backendUrl) {
-      setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load referral progress.");
-      return;
-    }
-
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -101,18 +89,10 @@ export function ReferralProgressScreen() {
   };
 
   useEffect(() => {
-    const resolvedProfileId = getProfileIdFromUrl();
-    setProfileId(resolvedProfileId);
+    const resolvedProfileId = profileId;
     if (!resolvedProfileId) {
       setIsResolvingOnboardingState(false);
-      setErrorMessage("Open with ?profileId=<uuid> to view referral progress.");
-      return;
-    }
-
-    if (!backendUrl) {
-      setNeedsOnboarding(false);
-      setIsResolvingOnboardingState(false);
-      void loadProgress(resolvedProfileId);
+      setErrorMessage("Connect and sign in to view your referrals.");
       return;
     }
 
@@ -124,7 +104,7 @@ export function ReferralProgressScreen() {
       if (!onboardingState) {
         setNeedsOnboarding(false);
         setIsResolvingOnboardingState(false);
-        setErrorMessage("Unable to load onboarding state from backend.");
+        setErrorMessage("We couldn't load your referral access right now.");
         return;
       }
 
@@ -140,7 +120,7 @@ export function ReferralProgressScreen() {
       await loadProgress(resolvedProfileId);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  }, [backendUrl, profileId]);
 
   return (
     <div className="relative min-h-screen px-4 py-6 sm:px-6">
@@ -155,17 +135,19 @@ export function ReferralProgressScreen() {
         <section className="bubble-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP read surface</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Invite status</p>
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Referral progress</h1>
             </div>
             <Link
-              href={withProfileQuery("/", profileId)}
+              href={withBubbleDropContext("/", { profileId, walletAddress })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
             </Link>
           </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">Read-only referral status and completion progress.</p>
+          <p className="mt-3 text-sm text-[#5d76a5]">
+            Track your invites and see how many have moved from pending to completed.
+          </p>
         </section>
 
         {needsOnboarding ? (
@@ -177,11 +159,10 @@ export function ReferralProgressScreen() {
               Finish onboarding before referral access
             </h2>
             <p className="mt-3 text-sm text-[#5d76a5]">
-              Backend still marks this profile as first-entry. Return home to complete the onboarding learning cards and
-              identity setup before opening profile-owned referral progress.
+              Finish your first BubbleDrop setup on the home screen to unlock referrals.
             </p>
             <Link
-              href={withProfileQuery("/", profileId)}
+              href={withBubbleDropContext("/", { profileId, walletAddress })}
               className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
             >
               Go to onboarding
@@ -203,11 +184,11 @@ export function ReferralProgressScreen() {
               }}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
-              {isLoading ? "Refreshing..." : "Refresh"}
+              {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
           {isResolvingOnboardingState ? (
-            <p className="mt-3 text-sm text-[#6074a0]">Loading backend onboarding state...</p>
+            <p className="mt-3 text-sm text-[#6074a0]">Checking your referral access...</p>
           ) : null}
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
@@ -230,26 +211,49 @@ export function ReferralProgressScreen() {
           <h2 className="text-sm font-semibold text-[#30466f]">Referral list</h2>
           {needsOnboarding ? (
             <p className="mt-3 text-sm text-[#6074a0]">
-              Referral progress stays hidden until backend confirms onboarding completion.
+              Referral activity appears here after onboarding is complete.
             </p>
           ) : null}
           {progress?.referrals.length ? (
             progress.referrals.map((item) => (
               <article key={item.referralId} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs text-[#6074a0]">{item.invitedWalletAddress}</p>
-                  <p className="text-xs font-semibold uppercase text-[#3b568b]">{item.status}</p>
+                  <div>
+                    <p className="text-sm font-semibold text-[#2f4a7f]">
+                      {shortenWalletAddress(item.invitedWalletAddress)}
+                    </p>
+                    <p className="mt-1 text-xs text-[#6074a0]">
+                      {item.invitedProfileId ? "Profile connected" : "Waiting for profile setup"}
+                    </p>
+                  </div>
+                  <p
+                    className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                      item.status === "successful"
+                        ? "bg-[#e7fbf0] text-[#2f6f53]"
+                        : "bg-[#f2f5ff] text-[#61739b]"
+                    }`}
+                  >
+                    {formatReferralStatus(item.status)}
+                  </p>
                 </div>
               </article>
             ))
           ) : (
-            <p className="mt-3 text-sm text-[#6074a0]">No referrals yet.</p>
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              You have no referrals yet. Invites will appear here once people join through your link.
+            </div>
           )}
         </section>
 
         {errorMessage ? (
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
+            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+              {errorMessage === "Connect and sign in to view your referrals."
+                ? errorMessage
+                : errorMessage === "We couldn't load your referral access right now."
+                  ? errorMessage
+                  : "We couldn't open your referral progress right now."}
+            </p>
           </section>
         ) : null}
       </main>

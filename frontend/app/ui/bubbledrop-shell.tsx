@@ -27,6 +27,11 @@ import {
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
 import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
+import {
   type BackendProfileSummary,
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
@@ -148,11 +153,6 @@ const ONBOARDING_CARDS: OnboardingCard[] = [
   },
 ];
 
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
 function getSmokeWalletOverride():
   | {
       address: string;
@@ -180,35 +180,6 @@ function getSmokeWalletOverride():
   };
 }
 
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function withProfileQuery(
-  path: string,
-  profileId: string | null,
-  walletAddress?: string | null,
-): string {
-  if (!profileId && !walletAddress) {
-    return path;
-  }
-
-  const searchParams = new URLSearchParams();
-  if (profileId) {
-    searchParams.set("profileId", profileId);
-  }
-  if (walletAddress) {
-    searchParams.set("walletAddress", walletAddress);
-  }
-
-  return `${path}?${searchParams.toString()}`;
-}
-
 async function fetchStarterAvatars(backendUrl: string): Promise<StarterAvatar[]> {
   const response = await fetch(`${backendUrl}/profile/starter-avatars`, {
     method: "GET",
@@ -224,12 +195,15 @@ async function fetchStarterAvatars(backendUrl: string): Promise<StarterAvatar[]>
 }
 
 export function BubbleDropShell() {
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
+  const runtimeContext = useBubbleDropRuntime();
   const [smokeWalletOverride, setSmokeWalletOverride] = useState<{
     address: string;
     chainId: number;
   } | null>(null);
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<string | null>(
+    runtimeContext.profileId,
+  );
   const [bootstrappedWalletAddress, setBootstrappedWalletAddress] = useState("");
   const [nicknameInput, setNicknameInput] = useState("");
   const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
@@ -263,8 +237,10 @@ export function BubbleDropShell() {
   const isConnectedToBase =
     effectiveIsConnected && effectiveChainId === base.id;
   const baseWalletConnector =
-    connectors.find((connector) => connector.id === "baseAccount") ??
+    connectors.find((connector) => connector.id === "baseAccount") ?? null;
+  const coinbaseWalletConnector =
     connectors.find((connector) => connector.name === "Coinbase Wallet") ??
+    connectors.find((connector) => connector.id === "coinbaseWalletSDK") ??
     connectors[0] ??
     null;
   const onboardingVisible = useMemo(() => {
@@ -350,22 +326,22 @@ export function BubbleDropShell() {
   };
 
   const refreshProfileSummary = async (targetProfileId: string) => {
-    if (!backendUrl) {
-      setActionMessage("Set NEXT_PUBLIC_BACKEND_URL to load backend state.");
-      return null;
-    }
-
     const summary = await fetchBackendProfileSummary(backendUrl, targetProfileId);
     if (!summary) {
-      setActionMessage("Unable to refresh profile summary from backend.");
+      setActionMessage("Live BubbleDrop data is unavailable right now.");
       return null;
     }
 
     const needsOnboarding = summary.onboardingState.needsOnboarding;
     setProfileSummary(summary);
+    setProfileId(summary.profileIdentity.profileId);
     setIsFirstEntry(needsOnboarding);
     setBootstrappedWalletAddress(summary.profileIdentity.walletAddress);
     setNicknameInput(summary.profileIdentity.nickname ?? "");
+    runtimeContext.setAppContext({
+      profileId: summary.profileIdentity.profileId,
+      walletAddress: summary.profileIdentity.walletAddress,
+    });
     identifyAnalyticsUser(summary.profileIdentity.profileId, {
       wallet_address: summary.profileIdentity.walletAddress,
     });
@@ -377,17 +353,21 @@ export function BubbleDropShell() {
 
   useEffect(() => {
     captureAnalyticsEvent("bubbledrop_app_started", {
-      backend_configured: !!backendUrl,
-      has_profile_id_in_url: !!getProfileIdFromUrl(),
+      backend_proxy_enabled: true,
+      has_profile_context: !!runtimeContext.profileId,
     });
-  }, [backendUrl]);
+  }, [runtimeContext.profileId]);
+
+  useEffect(() => {
+    setProfileId(runtimeContext.profileId);
+  }, [runtimeContext.profileId]);
 
   useEffect(() => {
     const resolveFirstEntry = async () => {
-      const resolvedProfileId = getProfileIdFromUrl();
+      const resolvedProfileId = runtimeContext.profileId;
       setProfileId(resolvedProfileId);
 
-      if (!resolvedProfileId || !backendUrl) {
+      if (!resolvedProfileId) {
         setIsFirstEntry(false);
         setIsResolvingFirstEntry(false);
         return;
@@ -407,7 +387,7 @@ export function BubbleDropShell() {
 
     void resolveFirstEntry();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  }, [runtimeContext.profileId]);
 
   const bootstrapProfileForWallet = async (
     walletAddress: string,
@@ -416,23 +396,16 @@ export function BubbleDropShell() {
       source = "manual",
     }: { silent?: boolean; source?: "manual" | "auto" } = {},
   ) => {
-    if (!backendUrl) {
-      if (!silent) {
-        setActionMessage("Set NEXT_PUBLIC_BACKEND_URL before profile bootstrap.");
-      }
-      return;
-    }
-
     const normalizedWalletAddress = walletAddress.trim().toLowerCase();
     if (!normalizedWalletAddress) {
       if (!silent) {
-        setActionMessage("Connect Base wallet before profile bootstrap.");
+        setActionMessage("Connect your Base wallet to continue.");
       }
       return;
     }
     if (!authenticatedSessionToken) {
       if (!silent) {
-        setActionMessage("Sign in with Base before profile bootstrap.");
+        setActionMessage("Sign in with Base to unlock your BubbleDrop profile.");
       }
       return;
     }
@@ -458,6 +431,10 @@ export function BubbleDropShell() {
       const payload = (await response.json()) as ProfileBootstrapResponse;
       setProfileId(payload.profileId);
       setBootstrappedWalletAddress(payload.walletAddress);
+      runtimeContext.setAppContext({
+        profileId: payload.profileId,
+        walletAddress: payload.walletAddress,
+      });
       if (typeof window !== "undefined") {
         const url = new URL(window.location.href);
         url.searchParams.set("profileId", payload.profileId);
@@ -474,11 +451,11 @@ export function BubbleDropShell() {
         source,
       });
       if (!silent) {
-        setActionMessage("Profile bootstrap completed from connected Base wallet.");
+        setActionMessage("BubbleDrop profile is ready.");
       }
     } catch {
       if (!silent) {
-        setActionMessage("Backend connection failed during profile bootstrap.");
+        setActionMessage("We couldn't finish setting up your profile. Please try again.");
       }
     } finally {
       setIsSubmittingAction(false);
@@ -523,15 +500,15 @@ export function BubbleDropShell() {
 
   const onBootstrapProfile = async () => {
     if (!connectedWalletAddress) {
-      setActionMessage("Connect Base wallet before profile bootstrap.");
+      setActionMessage("Connect your Base wallet to continue.");
       return;
     }
     if (!isConnectedToBase) {
-      setActionMessage("Switch the connected wallet to Base before profile bootstrap.");
+      setActionMessage("Switch to Base and try again.");
       return;
     }
     if (!authenticatedSessionToken) {
-      setActionMessage("Sign in with Base before profile bootstrap.");
+      setActionMessage("Sign in with Base to unlock your BubbleDrop profile.");
       return;
     }
 
@@ -540,49 +517,63 @@ export function BubbleDropShell() {
 
   const onConnectWallet = async () => {
     if (!baseWalletConnector) {
-      setActionMessage("Base wallet connector is unavailable in this build.");
+      setActionMessage("In-app Base wallet is unavailable right now.");
       return;
     }
 
-    setActionMessage(null);
+    setActionMessage("Opening the in-app Base wallet...");
     try {
       await connectAsync({ connector: baseWalletConnector });
+      setActionMessage("Base wallet connected. Sign in to confirm ownership.");
     } catch {
-      setActionMessage("Base wallet connection was cancelled or failed.");
+      setActionMessage(
+        "We couldn't connect inside Base App. Stay in the app and try again.",
+      );
+    }
+  };
+
+  const onConnectCoinbaseWallet = async () => {
+    if (!coinbaseWalletConnector) {
+      return;
+    }
+
+    setActionMessage("Opening Coinbase Wallet...");
+    try {
+      await connectAsync({ connector: coinbaseWalletConnector });
+      setActionMessage("Wallet connected. Switch to Base if needed, then sign in.");
+    } catch {
+      setActionMessage("Coinbase Wallet connection did not complete.");
     }
   };
 
   const onSwitchToBase = async () => {
-    setActionMessage(null);
+    setActionMessage("Switching to Base...");
     try {
       await switchChainAsync({ chainId: base.id });
+      setActionMessage("Connected wallet is now on Base.");
     } catch {
-      setActionMessage("Unable to switch the connected wallet to Base.");
+      setActionMessage("We couldn't switch that wallet to Base.");
     }
   };
 
   const onClearBaseSignIn = () => {
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
-    setActionMessage("Frontend Base sign-in cleared for this browser session.");
+    setActionMessage("This browser session is signed out.");
   };
 
   const onSignInWithBase = async () => {
     if (!connectedWalletAddress) {
-      setActionMessage("Connect Base wallet before signing in.");
+      setActionMessage("Connect your Base wallet first.");
       return;
     }
     if (!isConnectedToBase || !effectiveChainId) {
-      setActionMessage("Switch the connected wallet to Base before signing in.");
-      return;
-    }
-    if (!backendUrl) {
-      setActionMessage("Set NEXT_PUBLIC_BACKEND_URL before signing in.");
+      setActionMessage("Switch to Base before signing in.");
       return;
     }
 
     setIsSigningInWithBase(true);
-    setActionMessage(null);
+    setActionMessage("Waiting for your Base signature...");
 
     try {
       const nonceResponse = await fetch(`${backendUrl}/auth/session/nonce`, {
@@ -594,7 +585,7 @@ export function BubbleDropShell() {
         }),
       });
       if (!nonceResponse.ok) {
-        setActionMessage("Backend refused Base sign-in nonce creation.");
+        setActionMessage("Sign in could not start right now.");
         return;
       }
 
@@ -621,7 +612,7 @@ export function BubbleDropShell() {
         }),
       });
       if (!verifyResponse.ok) {
-        setActionMessage("Backend did not accept the Base wallet signature.");
+        setActionMessage("That signature could not be verified. Please try again.");
         return;
       }
       const verifiedSession =
@@ -644,9 +635,9 @@ export function BubbleDropShell() {
         wallet_address: verifiedSession.walletAddress,
         chain_id: verifiedSession.chainId,
       });
-      setActionMessage("Base wallet signature verified and backend session issued.");
+      setActionMessage("Wallet confirmed. You're signed in.");
     } catch {
-      setActionMessage("Base wallet signing was cancelled or failed.");
+      setActionMessage("The signature request did not complete.");
     } finally {
       setIsSigningInWithBase(false);
     }
@@ -654,7 +645,7 @@ export function BubbleDropShell() {
 
   const onRefreshProfile = async () => {
     if (!profileId) {
-      setActionMessage("No profileId in URL. Bootstrap profile first.");
+      setActionMessage("Connect and sign in to load your BubbleDrop profile.");
       return;
     }
     setIsSubmittingAction(true);
@@ -668,12 +659,12 @@ export function BubbleDropShell() {
   };
 
   const onDailyCheckIn = async () => {
-    if (!backendUrl || !profileId) {
-      setActionMessage("Profile bootstrap is required before daily check-in.");
+    if (!profileId) {
+      setActionMessage("Finish wallet setup before daily check-in.");
       return;
     }
     if (effectiveIsConnected && !isConnectedToBase) {
-      setActionMessage("Switch the connected wallet to Base before daily check-in.");
+      setActionMessage("Switch to Base before daily check-in.");
       return;
     }
     if (!authenticatedSessionToken) {
@@ -691,7 +682,7 @@ export function BubbleDropShell() {
       });
 
       if (!response.ok) {
-        setActionMessage("Daily check-in failed or already completed today.");
+        setActionMessage("Today's check-in is already complete or unavailable.");
         return;
       }
 
@@ -704,19 +695,19 @@ export function BubbleDropShell() {
       });
       setActionMessage(`Daily check-in recorded for ${payload.checkInDate}.`);
     } catch {
-      setActionMessage("Backend connection failed during daily check-in.");
+      setActionMessage("We couldn't complete today's check-in.");
     } finally {
       setIsSubmittingAction(false);
     }
   };
 
   const onCompleteOnboarding = async () => {
-    if (!backendUrl || !profileId) {
-      setActionMessage("Profile bootstrap is required before onboarding completion.");
+    if (!profileId) {
+      setActionMessage("Finish wallet setup before onboarding.");
       return;
     }
     if (effectiveIsConnected && !isConnectedToBase) {
-      setActionMessage("Switch the connected wallet to Base before completing onboarding.");
+      setActionMessage("Switch to Base before finishing onboarding.");
       return;
     }
     if (!authenticatedSessionToken) {
@@ -749,7 +740,7 @@ export function BubbleDropShell() {
       });
 
       if (!response.ok) {
-        setActionMessage("Onboarding completion failed. Check nickname and avatar selection.");
+        setActionMessage("We couldn't finish onboarding. Check your nickname and avatar.");
         return;
       }
 
@@ -767,10 +758,10 @@ export function BubbleDropShell() {
           `Onboarding completed. ${payload.onboardingXpGranted} XP granted. Total XP: ${payload.totalXp}.`,
         );
       } else {
-        setActionMessage("Onboarding completed, but backend summary refresh failed.");
+        setActionMessage("Onboarding completed. Live profile details are still refreshing.");
       }
     } catch {
-      setActionMessage("Backend connection failed during onboarding completion.");
+      setActionMessage("We couldn't finish onboarding right now.");
     } finally {
       setIsSubmittingAction(false);
     }
@@ -970,12 +961,12 @@ export function BubbleDropShell() {
                       <p className="mt-1 text-sm font-semibold text-[#2d4578]">
                         {isSignedInWithBase
                           ? "Wallet ownership confirmed in this browser session."
-                          : "Optional frontend SIWE-style sign-in for Base App readiness."}
+                          : "Confirm your wallet in-app to unlock protected BubbleDrop actions."}
                       </p>
                       <p className="mt-1 text-xs text-[#5f739b]">
                         {isSignedInWithBase && signInSession
                           ? `Signed at ${new Date(signInSession.issuedAt).toLocaleString()}${signInSession.mode === "smoke" ? " (smoke override)." : "."}`
-                          : "Current backend bootstrap remains unchanged; this adds the minimum wallet-signing layer on top of the existing connection flow."}
+                          : "BubbleDrop keeps backend verification as the source of truth for your signed-in session."}
                       </p>
                     </div>
                   </div>
@@ -986,7 +977,21 @@ export function BubbleDropShell() {
                       disabled={isWalletConnectPending || isSubmittingAction}
                       className="gloss-pill rounded-xl bg-gradient-to-r from-[#c9f1ff] to-[#d6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                     >
-                      {isWalletConnectPending ? "Connecting Base wallet..." : "Connect Base wallet"}
+                      {isWalletConnectPending
+                        ? "Connecting inside Base App..."
+                        : "Connect in Base App"}
+                    </button>
+                  ) : null}
+                  {!effectiveIsConnected &&
+                  coinbaseWalletConnector &&
+                  coinbaseWalletConnector.id !== baseWalletConnector?.id ? (
+                    <button
+                      type="button"
+                      onClick={onConnectCoinbaseWallet}
+                      disabled={isWalletConnectPending || isSubmittingAction}
+                      className="rounded-xl bg-white/85 px-4 py-3 text-left text-sm font-semibold text-[#425b8a] disabled:opacity-60"
+                    >
+                      Use Coinbase Wallet instead
                     </button>
                   ) : null}
                   {effectiveIsConnected && !isConnectedToBase ? (
@@ -1007,8 +1012,8 @@ export function BubbleDropShell() {
                       className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                     >
                       {isSigningInWithBase
-                        ? "Awaiting Base signature..."
-                        : "Sign in with Base wallet"}
+                        ? "Waiting for signature..."
+                        : "Sign in with Base"}
                     </button>
                   ) : null}
                   {effectiveIsConnected && isConnectedToBase && isSignedInWithBase && !smokeWalletOverride ? (
@@ -1148,7 +1153,10 @@ export function BubbleDropShell() {
                 </div>
                 {isRareRewardAccessActive ? (
                   <Link
-                    href={withProfileQuery("/claim", profileId, activeWalletAddress)}
+                    href={withBubbleDropContext("/claim", {
+                      profileId,
+                      walletAddress: activeWalletAddress,
+                    })}
                     className="gloss-pill rounded-xl bg-gradient-to-r from-[#ffe7b4] to-[#ffd3ee] px-4 py-3 text-left text-sm font-semibold text-[#5e3f21]"
                   >
                     Open meme-token claims
@@ -1160,7 +1168,10 @@ export function BubbleDropShell() {
             <section className="bubble-card p-4">
               <h2 className="text-sm font-semibold text-[#30466f]">Active bubble session</h2>
               <Link
-                href={withProfileQuery("/session", profileId, activeWalletAddress)}
+                href={withBubbleDropContext("/session", {
+                  profileId,
+                  walletAddress: activeWalletAddress,
+                })}
                 className="gloss-pill mt-3 block w-full rounded-xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-3 text-left text-sm font-semibold text-[#403165]"
               >
                 Enter active bubble session
@@ -1170,31 +1181,46 @@ export function BubbleDropShell() {
               <h2 className="text-sm font-semibold text-[#30466f]">Read surfaces</h2>
               <div className="mt-3 flex flex-col gap-2">
                 <Link
-                  href={withProfileQuery("/leaderboard", profileId, activeWalletAddress)}
+                  href={withBubbleDropContext("/leaderboard", {
+                    profileId,
+                    walletAddress: activeWalletAddress,
+                  })}
                   className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
                 >
                   Open leaderboard
                 </Link>
                 <Link
-                  href={withProfileQuery("/inventory", profileId, activeWalletAddress)}
+                  href={withBubbleDropContext("/inventory", {
+                    profileId,
+                    walletAddress: activeWalletAddress,
+                  })}
                   className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
                 >
                   Open rewards inventory
                 </Link>
                 <Link
-                  href={withProfileQuery("/referrals", profileId, activeWalletAddress)}
+                  href={withBubbleDropContext("/referrals", {
+                    profileId,
+                    walletAddress: activeWalletAddress,
+                  })}
                   className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
                 >
                   Open referral progress
                 </Link>
                 <Link
-                  href={withProfileQuery("/season", profileId, activeWalletAddress)}
+                  href={withBubbleDropContext("/season", {
+                    profileId,
+                    walletAddress: activeWalletAddress,
+                  })}
                   className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
                 >
                   Open season hub
                 </Link>
                 <Link
-                  href={withProfileQuery("/partner-tokens", profileId, activeWalletAddress)}
+                  href={withBubbleDropContext("/partner-tokens", {
+                    profileId,
+                    walletAddress: activeWalletAddress,
+                  })}
                   onClick={() =>
                     captureAnalyticsEvent("bubbledrop_partner_transparency_opened", {
                       profile_id: profileId,

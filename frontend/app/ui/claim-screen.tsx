@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
+import {
   createAuthenticatedJsonHeaders,
   getSmokeSignInSessionFromCurrentUrl,
   loadBubbleDropFrontendSignInSession,
@@ -60,47 +65,6 @@ function addIntegerStrings(a: string, b: string): string {
   return out || "0";
 }
 
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function getWalletAddressFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("walletAddress");
-  return value && value.trim() ? value.trim().toLowerCase() : null;
-}
-
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function withProfileQuery(
-  path: string,
-  profileId: string | null,
-  walletAddress?: string | null,
-): string {
-  if (!profileId && !walletAddress) {
-    return path;
-  }
-
-  const searchParams = new URLSearchParams();
-  if (profileId) {
-    searchParams.set("profileId", profileId);
-  }
-  if (walletAddress) {
-    searchParams.set("walletAddress", walletAddress);
-  }
-
-  return `${path}?${searchParams.toString()}`;
-}
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
@@ -141,9 +105,8 @@ const QUALIFICATION_BADGE_COPY: Record<
 };
 
 export function ClaimScreen() {
+  const runtimeContext = useBubbleDropRuntime();
   const { address } = useAccount();
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [balances, setBalances] = useState<ClaimableBalance[]>([]);
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -157,8 +120,10 @@ export function ClaimScreen() {
   const [profileSummary, setProfileSummary] =
     useState<BackendProfileSummary | null>(null);
 
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
   const connectedWalletAddress = address?.trim().toLowerCase() ?? null;
+  const profileId = runtimeContext.profileId;
+  const walletAddress = connectedWalletAddress ?? runtimeContext.walletAddress;
   const authSessionToken =
     authSession &&
     (!walletAddress || authSession.address === walletAddress) &&
@@ -187,11 +152,6 @@ export function ClaimScreen() {
       };
 
   const loadBalances = async (resolvedProfileId: string) => {
-    if (!backendUrl) {
-      setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load claimable balances.");
-      return;
-    }
-
     setIsLoadingBalances(true);
     setErrorMessage(null);
     try {
@@ -228,62 +188,54 @@ export function ClaimScreen() {
   }, [connectedWalletAddress, walletAddress]);
 
   useEffect(() => {
-    const resolvedProfileId = getProfileIdFromUrl();
-    const resolvedWalletAddress = getWalletAddressFromUrl();
-    setProfileId(resolvedProfileId);
-    setWalletAddress(resolvedWalletAddress);
+    const resolvedProfileId = profileId;
     setIsResolvingOnboardingState(true);
     if (resolvedProfileId) {
-      if (backendUrl) {
-        void (async () => {
-          const summary = await fetchOnboardingStateForProfile(
-            backendUrl,
-            resolvedProfileId,
-          );
-          if (!summary) {
-            setProfileSummary(null);
-            setNeedsOnboarding(false);
-            setErrorMessage("Unable to load onboarding state from backend.");
-            setIsResolvingOnboardingState(false);
-            return;
-          }
-
-          setProfileSummary(summary);
-          setWalletAddress(
-            resolvedWalletAddress ?? summary.profileIdentity.walletAddress,
-          );
-          setNeedsOnboarding(summary.onboardingState.needsOnboarding);
+      void (async () => {
+        const summary = await fetchOnboardingStateForProfile(
+          backendUrl,
+          resolvedProfileId,
+        );
+        if (!summary) {
+          setProfileSummary(null);
+          setNeedsOnboarding(false);
+          setErrorMessage("We couldn't load your claim access right now.");
           setIsResolvingOnboardingState(false);
+          return;
+        }
 
-          if (!summary.onboardingState.needsOnboarding) {
-            await loadBalances(resolvedProfileId);
-            return;
-          }
-
-          setBalances([]);
-          setErrorMessage(null);
-        })();
-      } else {
-        setProfileSummary(null);
-        setNeedsOnboarding(false);
+        setProfileSummary(summary);
+        runtimeContext.setAppContext({
+          profileId: summary.profileIdentity.profileId,
+          walletAddress: summary.profileIdentity.walletAddress,
+        });
+        setNeedsOnboarding(summary.onboardingState.needsOnboarding);
         setIsResolvingOnboardingState(false);
-      }
+
+        if (!summary.onboardingState.needsOnboarding) {
+          await loadBalances(resolvedProfileId);
+          return;
+        }
+
+        setBalances([]);
+        setErrorMessage(null);
+      })();
     } else {
       setProfileSummary(null);
       setBalances([]);
       setNeedsOnboarding(false);
       setIsResolvingOnboardingState(false);
-      setErrorMessage("Open this screen with ?profileId=<uuid> to use backend claim flow.");
+      setErrorMessage("Connect and sign in on the home screen to claim rewards.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  }, [backendUrl, profileId]);
 
   const onClaimToken = async (tokenSymbol: string, amount: string) => {
     if (!backendUrl || !profileId || needsOnboarding || !rareRewardAccessActive) {
       return;
     }
     if (!authSessionToken) {
-      setErrorMessage("Sign in with Base on home before sending a protected claim request.");
+      setErrorMessage("Sign in with Base on the home screen before requesting a claim.");
       return;
     }
 
@@ -322,7 +274,7 @@ export function ClaimScreen() {
       });
       await loadBalances(profileId);
     } catch {
-      setErrorMessage("Backend connection failed while creating claim request.");
+      setErrorMessage("We couldn't submit that claim right now.");
     } finally {
       setClaimingToken(null);
     }
@@ -345,7 +297,10 @@ export function ClaimScreen() {
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Meme-token reward claims</h1>
             </div>
             <Link
-              href={withProfileQuery("/", profileId, connectedWalletAddress ?? walletAddress)}
+              href={withBubbleDropContext("/", {
+                profileId,
+                walletAddress: connectedWalletAddress ?? walletAddress,
+              })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
@@ -369,7 +324,10 @@ export function ClaimScreen() {
               identity setup before opening claim flow.
             </p>
             <Link
-              href={withProfileQuery("/", profileId, connectedWalletAddress ?? walletAddress)}
+              href={withBubbleDropContext("/", {
+                profileId,
+                walletAddress: connectedWalletAddress ?? walletAddress,
+              })}
               className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
             >
               Go to onboarding
@@ -527,7 +485,7 @@ export function ClaimScreen() {
 
           {!canUseBackend ? (
             <p className="mt-3 text-sm text-[#6074a0]">
-              Backend source required. Set `NEXT_PUBLIC_BACKEND_URL` and open with `?profileId=`.
+              Connect and sign in on the home screen to load live claim data.
             </p>
           ) : null}
           {canUseBackend && needsOnboarding ? (

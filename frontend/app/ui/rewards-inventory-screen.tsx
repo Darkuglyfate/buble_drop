@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 
 type InventoryNft = {
@@ -27,26 +32,6 @@ type RewardsInventoryView = {
   cosmetics: InventoryCosmetic[];
 };
 
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function withProfileQuery(path: string, profileId: string | null): string {
-  if (!profileId) {
-    return path;
-  }
-  return `${path}?profileId=${encodeURIComponent(profileId)}`;
-}
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
@@ -62,7 +47,7 @@ async function fetchOnboardingStateForProfile(
 }
 
 export function RewardsInventoryScreen() {
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const { profileId, walletAddress } = useBubbleDropRuntime();
   const [inventory, setInventory] = useState<RewardsInventoryView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -70,14 +55,9 @@ export function RewardsInventoryScreen() {
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
 
   const loadInventory = async (resolvedProfileId: string) => {
-    if (!backendUrl) {
-      setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load rewards inventory.");
-      return;
-    }
-
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -107,18 +87,10 @@ export function RewardsInventoryScreen() {
   };
 
   useEffect(() => {
-    const resolvedProfileId = getProfileIdFromUrl();
-    setProfileId(resolvedProfileId);
+    const resolvedProfileId = profileId;
     if (!resolvedProfileId) {
       setIsResolvingOnboardingState(false);
-      setErrorMessage("Open with ?profileId=<uuid> to view rewards inventory.");
-      return;
-    }
-
-    if (!backendUrl) {
-      setNeedsOnboarding(false);
-      setIsResolvingOnboardingState(false);
-      void loadInventory(resolvedProfileId);
+      setErrorMessage("Connect and sign in to view your rewards.");
       return;
     }
 
@@ -130,7 +102,7 @@ export function RewardsInventoryScreen() {
       if (!onboardingState) {
         setNeedsOnboarding(false);
         setIsResolvingOnboardingState(false);
-        setErrorMessage("Unable to load onboarding state from backend.");
+        setErrorMessage("We couldn't load your reward access right now.");
         return;
       }
 
@@ -146,7 +118,7 @@ export function RewardsInventoryScreen() {
       await loadInventory(resolvedProfileId);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendUrl]);
+  }, [backendUrl, profileId]);
 
   return (
     <div className="relative min-h-screen px-4 py-6 sm:px-6">
@@ -161,17 +133,19 @@ export function RewardsInventoryScreen() {
         <section className="bubble-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP read surface</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Collection</p>
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Rewards inventory</h1>
             </div>
             <Link
-              href={withProfileQuery("/", profileId)}
+              href={withBubbleDropContext("/", { profileId, walletAddress })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
             </Link>
           </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">Read-only unlocked NFTs and cosmetics from backend state.</p>
+          <p className="mt-3 text-sm text-[#5d76a5]">
+            Your unlocked BubbleDrop collectibles and cosmetics appear here after confirmed rewards.
+          </p>
         </section>
 
         {needsOnboarding ? (
@@ -183,11 +157,10 @@ export function RewardsInventoryScreen() {
               Finish onboarding before inventory access
             </h2>
             <p className="mt-3 text-sm text-[#5d76a5]">
-              Backend still marks this profile as first-entry. Return home to complete the onboarding learning cards and
-              identity setup before opening profile-owned reward inventory.
+              Finish your first BubbleDrop setup on the home screen to unlock your collection.
             </p>
             <Link
-              href={withProfileQuery("/", profileId)}
+              href={withBubbleDropContext("/", { profileId, walletAddress })}
               className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
             >
               Go to onboarding
@@ -209,11 +182,11 @@ export function RewardsInventoryScreen() {
               }}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
-              {isLoading ? "Refreshing..." : "Refresh"}
+              {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
           {isResolvingOnboardingState ? (
-            <p className="mt-3 text-sm text-[#6074a0]">Loading backend onboarding state...</p>
+            <p className="mt-3 text-sm text-[#6074a0]">Checking your collection access...</p>
           ) : null}
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div className="gloss-pill rounded-xl bg-white/80 p-3">
@@ -231,7 +204,7 @@ export function RewardsInventoryScreen() {
           <h2 className="text-sm font-semibold text-[#30466f]">NFT ownerships</h2>
           {needsOnboarding ? (
             <p className="mt-3 text-sm text-[#6074a0]">
-              Inventory stays hidden until backend confirms onboarding completion.
+              Your collection will appear after onboarding is complete.
             </p>
           ) : null}
           {inventory?.nfts.length ? (
@@ -244,7 +217,9 @@ export function RewardsInventoryScreen() {
               </article>
             ))
           ) : (
-            <p className="mt-3 text-sm text-[#6074a0]">No NFT ownerships yet.</p>
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              No NFTs unlocked yet. Rare session rewards will show up here once they are confirmed.
+            </div>
           )}
         </section>
 
@@ -252,7 +227,7 @@ export function RewardsInventoryScreen() {
           <h2 className="text-sm font-semibold text-[#30466f]">Cosmetic unlocks</h2>
           {needsOnboarding ? (
             <p className="mt-3 text-sm text-[#6074a0]">
-              Cosmetic unlocks stay hidden until backend confirms onboarding completion.
+              Cosmetic rewards will appear after onboarding is complete.
             </p>
           ) : null}
           {inventory?.cosmetics.length ? (
@@ -263,13 +238,21 @@ export function RewardsInventoryScreen() {
               </article>
             ))
           ) : (
-            <p className="mt-3 text-sm text-[#6074a0]">No cosmetic unlocks yet.</p>
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              No cosmetics unlocked yet. Keep playing to grow your BubbleDrop style set.
+            </div>
           )}
         </section>
 
         {errorMessage ? (
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
+            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+              {errorMessage === "Connect and sign in to view your rewards."
+                ? errorMessage
+                : errorMessage === "We couldn't load your reward access right now."
+                  ? errorMessage
+                  : "We couldn't open your rewards inventory right now."}
+            </p>
           </section>
         ) : null}
       </main>

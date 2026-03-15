@@ -5,6 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
+import {
   createAuthenticatedJsonHeaders,
   getSmokeSignInSessionFromCurrentUrl,
   loadBubbleDropFrontendSignInSession,
@@ -16,6 +21,32 @@ const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
 const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 3 * 60;
 const ACTIVE_SECONDS_PER_TAP = 12;
+const PLAYFIELD_BUBBLE_POSITIONS = [
+  { top: "20%", left: "18%" },
+  { top: "32%", left: "68%" },
+  { top: "54%", left: "24%" },
+  { top: "64%", left: "62%" },
+  { top: "40%", left: "48%" },
+  { top: "22%", left: "54%" },
+  { top: "58%", left: "72%" },
+  { top: "46%", left: "14%" },
+] as const;
+const DECORATIVE_STANDARD_BUBBLES = [
+  { top: "18%", left: "14%", size: "3.25rem" },
+  { top: "26%", left: "76%", size: "4.5rem" },
+  { top: "44%", left: "10%", size: "2.75rem" },
+  { top: "58%", left: "82%", size: "3rem" },
+  { top: "70%", left: "18%", size: "4rem" },
+] as const;
+const DECORATIVE_XP_BUBBLES = [
+  { top: "22%", left: "58%", size: "1.4rem" },
+  { top: "38%", left: "30%", size: "1.1rem" },
+  { top: "62%", left: "64%", size: "1.3rem" },
+] as const;
+const DECORATIVE_PREMIUM_BUBBLES = [
+  { top: "34%", left: "84%", size: "2rem" },
+  { top: "64%", left: "40%", size: "2.4rem" },
+] as const;
 
 type SessionStartResponse = {
   sessionId: string;
@@ -62,47 +93,6 @@ type SessionCompleteResponse = {
   rareRewardOutcome: RareRewardOutcome;
 };
 
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function getWalletAddressFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("walletAddress");
-  return value && value.trim() ? value.trim().toLowerCase() : null;
-}
-
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function withProfileQuery(
-  path: string,
-  profileId: string | null,
-  walletAddress?: string | null,
-): string {
-  if (!profileId && !walletAddress) {
-    return path;
-  }
-
-  const searchParams = new URLSearchParams();
-  if (profileId) {
-    searchParams.set("profileId", profileId);
-  }
-  if (walletAddress) {
-    searchParams.set("walletAddress", walletAddress);
-  }
-
-  return `${path}?${searchParams.toString()}`;
-}
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
@@ -132,11 +122,18 @@ function hasIssuedRareRewardOutcome(outcome: RareRewardOutcome): boolean {
   return !!outcome.tokenReward || outcome.nftRewards.length > 0 || outcome.cosmeticRewards.length > 0;
 }
 
+function clampBubblePosition(value: number): string {
+  return `${Math.max(10, Math.min(82, value))}%`;
+}
+
 export function BubbleSessionPlayScreen() {
+  const runtimeContext = useBubbleDropRuntime();
   const { address } = useAccount();
-  const [backendUrl, setBackendUrl] = useState<string | null>(null);
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const backendUrl = BUBBLEDROP_API_BASE;
+  const profileId = runtimeContext.profileId;
+  const [walletAddress, setWalletAddress] = useState<string | null>(
+    runtimeContext.walletAddress,
+  );
   const [sessionStartedAtMs, setSessionStartedAtMs] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [isActive, setIsActive] = useState(false);
@@ -167,30 +164,26 @@ export function BubbleSessionPlayScreen() {
   }, [connectedWalletAddress, walletAddress]);
 
   useEffect(() => {
-    const resolvedBackendUrl = getBackendUrl();
-    const resolvedProfileId = getProfileIdFromUrl();
-    const resolvedWalletAddress = getWalletAddressFromUrl();
-
-    setBackendUrl(resolvedBackendUrl);
-    setProfileId(resolvedProfileId);
-    setWalletAddress(resolvedWalletAddress);
-
     setIsResolvingOnboardingState(true);
 
-    if (resolvedBackendUrl && resolvedProfileId) {
+    if (profileId) {
       void (async () => {
         const onboardingState = await fetchOnboardingStateForProfile(
-          resolvedBackendUrl,
-          resolvedProfileId,
+          backendUrl,
+          profileId,
         );
         if (!onboardingState) {
           setNeedsOnboarding(false);
-          setActionMessage("Unable to load backend onboarding state.");
+          setActionMessage("We couldn't load your session access right now.");
           setIsResolvingOnboardingState(false);
           return;
         }
 
-        setWalletAddress(resolvedWalletAddress ?? onboardingState.walletAddress);
+        runtimeContext.setAppContext({
+          profileId,
+          walletAddress: onboardingState.walletAddress,
+        });
+        setWalletAddress(onboardingState.walletAddress);
         setNeedsOnboarding(onboardingState.needsOnboarding);
         setIsResolvingOnboardingState(false);
       })();
@@ -199,7 +192,8 @@ export function BubbleSessionPlayScreen() {
 
     setNeedsOnboarding(false);
     setIsResolvingOnboardingState(false);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendUrl, profileId]);
 
   useEffect(() => {
     if (!isActive || sessionStartedAtMs === null) {
@@ -241,40 +235,67 @@ export function BubbleSessionPlayScreen() {
     backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS;
   const elapsedSecondsRemaining = Math.max(0, MIN_SESSION_SECONDS_FOR_COMPLETION - elapsedSeconds);
   const activeSecondsRemaining = Math.max(0, ACTIVE_SECONDS_FOR_COMPLETION_BONUS - backendCountableActiveSeconds);
+  const playfieldBubblePosition =
+    PLAYFIELD_BUBBLE_POSITIONS[activeTapCount % PLAYFIELD_BUBBLE_POSITIONS.length];
+  const activeBubbleStyle = {
+    top: clampBubblePosition(
+      Number.parseFloat(playfieldBubblePosition.top) +
+        ((activeTapCount % 3) - 1) * 4,
+    ),
+    left: clampBubblePosition(
+      Number.parseFloat(playfieldBubblePosition.left) +
+        ((activeTapCount % 4) - 1.5) * 3,
+    ),
+  };
+  const readinessLabel = sessionCompleted
+    ? "Session finished"
+    : isActive
+      ? localCompletionEstimateMet
+        ? "Ready to submit"
+        : "Active run"
+      : "Ready to start";
+  const readinessCopy = sessionCompleted
+    ? "Backend result is locked in below."
+    : isActive
+      ? localCompletionEstimateMet
+        ? "You can submit this run when you're ready."
+        : `Keep playing to build activity and time. ${formatTime(
+            elapsedSecondsRemaining,
+          )} min time and ${formatTime(activeSecondsRemaining)} play target remain.`
+      : "Start a run, then keep tapping the bubble field.";
+  const canStartSession =
+    !isActive &&
+    !sessionCompleted &&
+    !isSubmitting &&
+    !!authSessionToken &&
+    !needsOnboarding &&
+    !isResolvingOnboardingState;
+  const canCompleteSession =
+    isActive &&
+    !sessionCompleted &&
+    !isSubmitting &&
+    !!authSessionToken &&
+    !needsOnboarding &&
+    !isResolvingOnboardingState;
+  const gameplayToastMessage =
+    actionMessage && !sessionCompleted ? actionMessage : null;
+  const resultToastMessage = actionMessage && sessionCompleted ? actionMessage : null;
 
-  const statusText = useMemo(() => {
-    if (sessionCompleted && completionResult) {
-      const hasRareRewardOutcome = hasIssuedRareRewardOutcome(
-        completionResult.rareRewardOutcome,
-      );
-      return completionResult.completionBonusXp > 0
-        ? hasRareRewardOutcome
-          ? "Session completed. Backend confirmed completion reward eligibility and returned the issued rare reward outcome below."
-          : "Session completed. Backend confirmed completion reward eligibility."
-        : "Session completed. Backend awarded only the XP that matched actual session activity.";
-    }
-    if (!isActive) {
-      return "Press Start session to begin backend-timed active bubble play.";
-    }
-    if (localCompletionEstimateMet) {
-      return "Local session estimate meets the current thresholds, but backend still decides final completion eligibility on submit.";
-    }
-    return "Completion-related rewards remain backend-confirmed only after submit. Local progress here is just an estimate against the current thresholds.";
-  }, [completionResult, isActive, localCompletionEstimateMet, sessionCompleted]);
   const hasRareRewardOutcome = completionResult
     ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
     : false;
+  const completedResult = sessionCompleted && completionResult ? completionResult : null;
 
   const onStartSession = () => {
     if (isActive || sessionCompleted || isSubmitting) {
       return;
     }
-    if (!backendUrl || !profileId || needsOnboarding) {
-      setActionMessage("Profile bootstrap required before starting backend session.");
+    if (!profileId || needsOnboarding) {
+      setActionMessage("Finish wallet setup before starting a session.");
       return;
     }
     if (!authSessionToken) {
-      setActionMessage("Sign in with Base on home before starting a protected session.");
+      setActionMessage("Sign in with Base on the home screen before starting a session.");
       return;
     }
 
@@ -289,7 +310,7 @@ export function BubbleSessionPlayScreen() {
         });
 
         if (!response.ok) {
-          setActionMessage("Unable to start backend session.");
+          setActionMessage("We couldn't start that session right now.");
           return;
         }
 
@@ -305,9 +326,9 @@ export function BubbleSessionPlayScreen() {
           profile_id: payload.profileId,
           session_id: payload.sessionId,
         });
-        setActionMessage("Backend session started.");
+        setActionMessage("Session started. Keep tapping to show active play.");
       } catch {
-        setActionMessage("Backend connection failed while starting session.");
+        setActionMessage("We couldn't start that session right now.");
       } finally {
         setIsSubmitting(false);
       }
@@ -321,7 +342,7 @@ export function BubbleSessionPlayScreen() {
 
     setActiveTapCount((prev) => prev + 1);
 
-    if (!backendUrl || !profileId || !backendSessionId || !authSessionToken) {
+    if (!profileId || !backendSessionId || !authSessionToken) {
       return;
     }
 
@@ -339,12 +360,12 @@ export function BubbleSessionPlayScreen() {
     if (!isActive || sessionCompleted || isSubmitting) {
       return;
     }
-    if (!backendUrl || !profileId || !backendSessionId || needsOnboarding) {
-      setActionMessage("No active backend session to complete.");
+    if (!profileId || !backendSessionId || needsOnboarding) {
+      setActionMessage("Start a live session before trying to finish it.");
       return;
     }
     if (!authSessionToken) {
-      setActionMessage("Sign in with Base on home before completing a protected session.");
+      setActionMessage("Sign in with Base on the home screen before finishing a session.");
       return;
     }
 
@@ -363,7 +384,7 @@ export function BubbleSessionPlayScreen() {
         });
 
         if (!response.ok) {
-          setActionMessage("Unable to complete backend session.");
+          setActionMessage("We couldn't complete that session right now.");
           return;
         }
 
@@ -384,7 +405,7 @@ export function BubbleSessionPlayScreen() {
           `Session completed. Granted XP: ${payload.grantedXp}. Completion bonus XP: ${payload.completionBonusXp}. Qualification: ${payload.qualificationStatus}.`,
         );
       } catch {
-        setActionMessage("Backend connection failed while completing session.");
+        setActionMessage("We couldn't complete that session right now.");
       } finally {
         setIsSubmitting(false);
       }
@@ -392,276 +413,352 @@ export function BubbleSessionPlayScreen() {
   };
 
   return (
-    <div className="relative min-h-screen px-4 py-6 sm:px-6">
-      <div className="floating-bubbles">
-        <span className="bubble b1" />
-        <span className="bubble b2" />
-        <span className="bubble b3" />
-        <span className="bubble b4" />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#edf7ff_0%,#e9f2ff_28%,#f8ecff_66%,#fff6fb_100%)]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <span className="absolute -left-10 top-16 h-32 w-32 rounded-full bg-[#d8f3ff]/85 blur-[1px]" />
+        <span className="absolute right-[-1.5rem] top-28 h-40 w-40 rounded-full bg-[#ece0ff]/78 blur-[1px]" />
+        <span className="absolute left-[12%] bottom-[18%] h-28 w-28 rounded-full bg-[#ffe4f0]/70 blur-[1px]" />
+        <span className="absolute right-[12%] bottom-[12%] h-20 w-20 rounded-full bg-[#ddffea]/68 blur-[1px]" />
       </div>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
-        <section className="bubble-card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#45619a]">Bubble session</p>
-              <h1 className="mt-1 text-xl font-bold text-[#273f74]">Active play (5-10 min)</h1>
-            </div>
-            <Link
-              href={withProfileQuery("/", profileId, connectedWalletAddress ?? walletAddress)}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
-            >
-              Back
-            </Link>
-          </div>
-          <p className="mt-3 text-sm text-[#526a96]">{statusText}</p>
-        </section>
-
-        {needsOnboarding ? (
-          <section className="bubble-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#45619a]">
-              First entry required
-            </p>
-            <h2 className="mt-1 text-lg font-bold text-[#273f74]">
-              Finish onboarding before session access
-            </h2>
-            <p className="mt-3 text-sm text-[#526a96]">
-              Backend still marks this profile as first-entry. Return home to complete the onboarding learning cards and
-              profile setup before starting active bubble sessions.
-            </p>
-            <Link
-              href={withProfileQuery("/", profileId, connectedWalletAddress ?? walletAddress)}
-              className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
-            >
-              Go to onboarding
-            </Link>
-          </section>
-        ) : null}
-
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">Session timer</p>
-          <div className="mt-2 flex items-end justify-between">
-            <p className="text-4xl font-bold text-[#2d477f]">{formatTime(elapsedSeconds)}</p>
-            <p className="text-xs text-[#667dab]">{elapsedProgressPercent}% of 10 min window</p>
-          </div>
-
-          <div className="mt-3 h-2 rounded-full bg-[#e7efff]">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[#9ad7ff] to-[#c8c8ff] transition-all"
-              style={{ width: `${elapsedProgressPercent}%` }}
-            />
-          </div>
-          <div className="mt-3 rounded-xl bg-white/80 p-3 text-xs text-[#6077a6]">
-            <p>Local threshold estimate: 5:00 elapsed session time and 3:00 active signal.</p>
-            <p className="mt-1">
-              Elapsed requirement:{" "}
-              <span className="font-semibold text-[#334f82]">
-                {elapsedSeconds >= MIN_SESSION_SECONDS_FOR_COMPLETION
-                  ? "met"
-                  : `${formatTime(elapsedSecondsRemaining)} remaining`}
-              </span>
-            </p>
-            <p className="mt-1 text-[#6b7fa8]">
-              Backend confirms actual completion eligibility only when the session is submitted.
-            </p>
-          </div>
-        </section>
-
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">Active play signal</p>
-          <div className="mt-3 rounded-2xl border border-[#dce5ff] bg-white/80 p-4 text-center">
-            <button
-              type="button"
-              onClick={onRecordActivePlay}
-              disabled={!isActive || sessionCompleted}
-              className={`gloss-pill mx-auto flex h-28 w-28 items-center justify-center rounded-full text-sm font-bold ${
-                isActive && !sessionCompleted
-                  ? "bg-gradient-to-br from-[#ffe7a8] to-[#ffc7ef] text-[#6b3f00] shadow-[0_0_28px_rgba(255,205,120,0.8)]"
-                  : "bg-gradient-to-br from-[#e7edff] to-[#eef3ff] text-[#6a7ea5]"
-              }`}
-            >
-              Active tap
-            </button>
-            <div className="mt-3 h-2 rounded-full bg-[#e7efff]">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#ffe6a8] to-[#ffc7ef] transition-all"
-                style={{ width: `${activeSignalProgressPercent}%` }}
-              />
-            </div>
-            <p className="mt-3 text-xs text-[#6077a6]">
-              Active interactions: <span className="font-semibold text-[#334f82]">{activeTapCount}</span>
-            </p>
-            <p className="mt-1 text-xs text-[#6077a6]">
-              Backend-countable active signal:{" "}
-              <span className="font-semibold text-[#334f82]">{backendCountableActiveSeconds}s</span>
-              {rawActiveSeconds > backendCountableActiveSeconds ? " (capped by elapsed time)" : ""}
-            </p>
-            <p className="mt-1 text-xs text-[#6077a6]">
-              Local active threshold estimate:{" "}
-              <span className="font-semibold text-[#334f82]">
-                {backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS
-                  ? "met"
-                  : `${formatTime(activeSecondsRemaining)} remaining`}
-              </span>
-            </p>
-          </div>
-        </section>
-
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">Session actions</p>
-          {isResolvingOnboardingState ? (
-            <p className="mt-3 text-xs text-[#5f739b]">
-              Loading backend onboarding state...
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={onStartSession}
-              disabled={
-                isActive ||
-                sessionCompleted ||
-                isSubmitting ||
-                !authSessionToken ||
-                needsOnboarding ||
-                isResolvingOnboardingState
-              }
-              className="gloss-pill rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-            >
-              {isSubmitting ? "Submitting..." : "Start session"}
-            </button>
-            <button
-              type="button"
-              onClick={onCompleteSession}
-              disabled={
-                !isActive ||
-                sessionCompleted ||
-                isSubmitting ||
-                !authSessionToken ||
-                needsOnboarding ||
-                isResolvingOnboardingState
-              }
-              className="gloss-pill rounded-xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-3 text-left text-sm font-semibold text-[#403165] disabled:opacity-60"
-            >
-              {isSubmitting ? "Submitting..." : "Complete session with backend validation"}
-            </button>
-          </div>
-          <p className="mt-3 text-xs text-[#5f739b]">
-            MVP note: this screen tracks local active signals, but backend remains the source of truth for elapsed time,
-            completion eligibility, XP, and qualification updates.
-          </p>
-          {needsOnboarding ? (
-            <p className="mt-2 rounded-lg bg-[#f4f7ff] px-3 py-2 text-xs font-semibold text-[#5a6e97]">
-              Session flow is locked until backend confirms onboarding completion.
-            </p>
-          ) : null}
-          {!sessionCompleted && isActive ? (
-            <p
-              className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold ${
-                localCompletionEstimateMet
-                  ? "bg-[#f8f1ff] text-[#5c4f7f]"
-                  : "bg-[#f4f7ff] text-[#5a6e97]"
-              }`}
-            >
-              {localCompletionEstimateMet
-                ? "Local thresholds look met, but backend still validates elapsed time, recorded activity, XP, and completion eligibility on submit."
-                : "Local progress has not yet reached the current threshold estimate. Backend will make the final decision only after submit."}
-            </p>
-          ) : null}
-          {sessionCompleted && completionResult ? (
-            <p
-              className={`mt-2 rounded-lg px-3 py-2 text-xs font-semibold ${
-                completionResult.completionBonusXp > 0 ? "bg-[#eafbf2] text-[#2e6e52]" : "bg-[#f4f7ff] text-[#5a6e97]"
-              }`}
-            >
-              {completionResult.completionBonusXp > 0
-                ? "Backend confirmed completion reward eligibility for this session."
-                : "Backend completed the session without completion reward eligibility."}
-            </p>
-          ) : null}
-        </section>
-        {sessionCompleted && completionResult ? (
-          <section className="bubble-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
-              Confirmed rare reward outcome
-            </p>
-            <h2 className="mt-1 text-lg font-bold text-[#273f74]">
-              {hasRareRewardOutcome ? "Issued rewards for this session" : "No rare reward issued"}
-            </h2>
-            <p className="mt-3 text-sm text-[#526a96]">
-              {hasRareRewardOutcome
-                ? "Only backend-confirmed reward issuance results are shown here immediately after session completion."
-                : completionResult.rareRewardAccessActive
-                  ? "Backend completed the session without issuing a rare reward outcome."
-                  : "Rare reward access was inactive for this session result, so backend returned no rare reward outcome."}
-            </p>
-
-            {completionResult.rareRewardOutcome.tokenReward ? (
-              <article className="mt-3 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
-                <p className="text-sm font-semibold text-[#30466f]">Claimable token reward</p>
-                <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
-                  <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                    <p className="text-xs text-[#6077a6]">Token</p>
-                    <p className="mt-1 font-semibold text-[#334f82]">
-                      {completionResult.rareRewardOutcome.tokenReward.tokenSymbol}
+      {!sessionCompleted ? (
+        <main className="relative z-10 min-h-screen">
+          <header className="pointer-events-none absolute inset-x-0 top-0 z-20 p-4 sm:p-5">
+            <div className="mx-auto flex w-full max-w-md items-start justify-between gap-3">
+              <Link
+                href={withBubbleDropContext("/", {
+                  profileId,
+                  walletAddress: connectedWalletAddress ?? walletAddress,
+                })}
+                className="pointer-events-auto rounded-full border border-white/75 bg-white/76 px-4 py-2 text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.12)] backdrop-blur-sm"
+              >
+                Back
+              </Link>
+              <div className="pointer-events-auto min-w-0 rounded-[1.5rem] border border-white/75 bg-white/78 px-4 py-3 shadow-[0_12px_30px_rgba(96,132,203,0.14)] backdrop-blur-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
+                      Bubble session
+                    </p>
+                    <p className="mt-1 text-2xl font-bold leading-none text-[#2d477f]">
+                      {formatTime(elapsedSeconds)}
                     </p>
                   </div>
-                  <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                    <p className="text-xs text-[#6077a6]">Claimable increment</p>
-                    <p className="mt-1 font-semibold text-[#334f82]">
-                      {completionResult.rareRewardOutcome.tokenReward.tokenAmountAwarded}
+                  <div className="text-right">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
+                      Status
                     </p>
-                  </div>
-                  <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                    <p className="text-xs text-[#6077a6]">Weekly tickets</p>
-                    <p className="mt-1 font-semibold text-[#334f82]">
-                      {completionResult.rareRewardOutcome.tokenReward.weeklyTicketsIssued}
-                    </p>
-                  </div>
-                  <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                    <p className="text-xs text-[#6077a6]">Week start</p>
-                    <p className="mt-1 font-semibold text-[#334f82]">
-                      {completionResult.rareRewardOutcome.tokenReward.weekStartDate}
+                    <p className="mt-1 text-sm font-semibold text-[#3a4f86]">
+                      {readinessLabel}
                     </p>
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-[#6077a6]">
-                  Reward-event context: season {completionResult.rareRewardOutcome.tokenReward.seasonId}
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="h-2 flex-1 rounded-full bg-[#e4ecff]">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
+                      style={{ width: `${elapsedProgressPercent}%` }}
+                    />
+                  </div>
+                  <div className="h-2 w-24 rounded-full bg-[#f3e7ff]">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#ffe1a6] to-[#ffc7ef] transition-all"
+                      style={{ width: `${activeSignalProgressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {needsOnboarding ? (
+            <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-24 sm:px-6">
+              <section className="bubble-card mx-auto w-full max-w-md p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#45619a]">
+                  First entry required
                 </p>
-              </article>
-            ) : null}
-
-            {completionResult.rareRewardOutcome.nftRewards.length > 0 ? (
-              <div className="mt-3">
-                <h3 className="text-sm font-semibold text-[#30466f]">NFT rewards</h3>
-                {completionResult.rareRewardOutcome.nftRewards.map((reward) => (
-                  <article key={reward.id} className="mt-2 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
-                    <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
-                    <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
-                  </article>
+                <h1 className="mt-1 text-xl font-bold text-[#273f74]">
+                  Finish onboarding before session access
+                </h1>
+                <p className="mt-3 text-sm text-[#526a96]">
+                  Return home to finish your first BubbleDrop setup, then come back for active play.
+                </p>
+                <Link
+                  href={withBubbleDropContext("/", {
+                    profileId,
+                    walletAddress: connectedWalletAddress ?? walletAddress,
+                  })}
+                  className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
+                >
+                  Go to onboarding
+                </Link>
+              </section>
+            </div>
+          ) : (
+            <section className="relative min-h-screen">
+              <div className="pointer-events-none absolute inset-0">
+                {DECORATIVE_STANDARD_BUBBLES.map((bubble, index) => (
+                  <span
+                    key={`standard-${index}`}
+                    className="absolute rounded-full border border-white/70 bg-white/34 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
+                    style={{
+                      top: bubble.top,
+                      left: bubble.left,
+                      width: bubble.size,
+                      height: bubble.size,
+                    }}
+                  />
                 ))}
-              </div>
-            ) : null}
-
-            {completionResult.rareRewardOutcome.cosmeticRewards.length > 0 ? (
-              <div className="mt-3">
-                <h3 className="text-sm font-semibold text-[#30466f]">Cosmetic rewards</h3>
-                {completionResult.rareRewardOutcome.cosmeticRewards.map((reward) => (
-                  <article key={reward.id} className="mt-2 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
-                    <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
-                    <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
-                  </article>
+                {DECORATIVE_XP_BUBBLES.map((bubble, index) => (
+                  <span
+                    key={`xp-${index}`}
+                    className="absolute rounded-full border border-[#fff7cf] bg-gradient-to-br from-[#fff3b8]/95 to-[#ffd6ef]/90 shadow-[0_0_18px_rgba(255,207,129,0.45)]"
+                    style={{
+                      top: bubble.top,
+                      left: bubble.left,
+                      width: bubble.size,
+                      height: bubble.size,
+                    }}
+                  />
                 ))}
+                {DECORATIVE_PREMIUM_BUBBLES.map((bubble, index) => (
+                  <span
+                    key={`premium-${index}`}
+                    className="absolute rounded-full border border-white/80 bg-gradient-to-br from-[#fff5c7]/92 via-[#ffd8ef]/92 to-[#e4dfff]/92 shadow-[0_0_26px_rgba(255,200,140,0.48)]"
+                    style={{
+                      top: bubble.top,
+                      left: bubble.left,
+                      width: bubble.size,
+                      height: bubble.size,
+                    }}
+                  />
+                ))}
+                <span className="absolute left-[22%] top-[24%] h-2 w-2 rounded-full bg-white/80" />
+                <span className="absolute left-[68%] top-[48%] h-1.5 w-1.5 rounded-full bg-white/80" />
+                <span className="absolute left-[48%] top-[70%] h-2.5 w-2.5 rounded-full bg-white/75" />
               </div>
-            ) : null}
+
+              <div className="relative flex min-h-screen items-center justify-center px-4 pb-44 pt-28 sm:px-6 sm:pt-32">
+                {!isActive ? (
+                  <div className="max-w-[17rem] rounded-[2.25rem] border border-white/80 bg-white/74 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.16)] backdrop-blur-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                      Immersive play mode
+                    </p>
+                    <h1 className="mt-2 text-3xl font-bold leading-tight text-[#2b467c]">
+                      Enter the bubble field
+                    </h1>
+                    <p className="mt-3 text-sm text-[#6077a6]">
+                      Start the run and keep tapping the moving bubble to build a live session.
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label="Tap bubble"
+                    onClick={onRecordActivePlay}
+                    disabled={!isActive || sessionCompleted}
+                    className="gloss-pill absolute flex h-40 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-gradient-to-br from-[#fff4c2] via-[#ffd9ef] to-[#e6deff] text-center text-sm font-bold text-[#684114] shadow-[0_20px_44px_rgba(255,192,133,0.54)]"
+                    style={activeBubbleStyle}
+                  >
+                    <span className="rounded-full bg-white/58 px-5 py-2.5">Tap bubble</span>
+                  </button>
+                )}
+              </div>
+
+              {gameplayToastMessage ? (
+                <div className="pointer-events-none absolute inset-x-0 bottom-[8.75rem] z-20 px-4 sm:px-6">
+                  <div className="mx-auto w-full max-w-md rounded-full border border-white/75 bg-white/78 px-4 py-2 text-center text-xs font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.14)] backdrop-blur-sm">
+                    {gameplayToastMessage}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 sm:pb-5">
+                <div className="mx-auto w-full max-w-md rounded-[1.9rem] border border-white/82 bg-white/78 p-4 shadow-[0_18px_48px_rgba(95,130,199,0.16)] backdrop-blur-sm">
+                  {isResolvingOnboardingState ? (
+                    <p className="text-xs text-[#5f739b]">Loading session access…</p>
+                  ) : (
+                    <div className="flex items-center justify-between text-xs text-[#6178a7]">
+                      <span>Active taps: {activeTapCount}</span>
+                      <span>{readinessCopy}</span>
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={onStartSession}
+                      disabled={!canStartSession}
+                      className="gloss-pill flex-1 rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-4 text-center text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                    >
+                      {isSubmitting && !isActive ? "Starting..." : "Start session"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onCompleteSession}
+                      disabled={!canCompleteSession}
+                      className="gloss-pill flex-1 rounded-2xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-4 text-center text-sm font-semibold text-[#403165] disabled:opacity-60"
+                    >
+                      {isSubmitting && isActive ? "Submitting..." : "Complete session"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+        </main>
+      ) : completedResult ? (
+        <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-md flex-col justify-center gap-4 px-4 py-8 sm:px-6">
+          <section className="bubble-card overflow-hidden p-0">
+            <div className="bg-[radial-gradient(circle_at_top,#fff4cc_0%,#ffe5f3_38%,#eef0ff_100%)] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a5a2d]">
+                    Session result
+                  </p>
+                  <h1 className="mt-1 text-2xl font-bold text-[#273f74]">
+                    {hasRareRewardOutcome
+                      ? "Issued rewards for this session"
+                      : "No rare reward issued"}
+                  </h1>
+                </div>
+                <div className="rounded-full bg-white/68 px-3 py-2 text-xs font-semibold text-[#6a548a]">
+                  {completedResult.sessionDurationSeconds}s run
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-[#526a96]">
+                {hasRareRewardOutcome
+                  ? "Only backend-confirmed reward issuance results are shown here immediately after session completion."
+                  : completedResult.rareRewardAccessActive
+                    ? "Backend completed the session without issuing a rare reward outcome."
+                    : "Rare reward access was inactive for this run, so no rare reward outcome was returned."}
+              </p>
+            </div>
           </section>
-        ) : null}
-        {actionMessage ? (
+
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-white/80 p-3 text-xs font-semibold text-[#4f648f]">{actionMessage}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
+              Confirmed progress
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Granted XP</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.grantedXp}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Total XP</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.totalXp}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Completion bonus</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.completionBonusXp}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Qualification</p>
+                <p className="mt-1 font-semibold capitalize text-[#334f82]">
+                  {completedResult.qualificationStatus.replaceAll("_", " ")}
+                </p>
+              </div>
+            </div>
           </section>
-        ) : null}
-      </main>
+
+          {completedResult.rareRewardOutcome.tokenReward ? (
+            <section className="bubble-card p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
+                Claimable token reward
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                  <p className="text-xs text-[#6077a6]">Token</p>
+                  <p className="mt-1 font-semibold text-[#334f82]">
+                    {completedResult.rareRewardOutcome.tokenReward.tokenSymbol}
+                  </p>
+                </div>
+                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                  <p className="text-xs text-[#6077a6]">Claimable increment</p>
+                  <p className="mt-1 font-semibold text-[#334f82]">
+                    {completedResult.rareRewardOutcome.tokenReward.tokenAmountAwarded}
+                  </p>
+                </div>
+                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                  <p className="text-xs text-[#6077a6]">Weekly tickets</p>
+                  <p className="mt-1 font-semibold text-[#334f82]">
+                    {completedResult.rareRewardOutcome.tokenReward.weeklyTicketsIssued}
+                  </p>
+                </div>
+                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                  <p className="text-xs text-[#6077a6]">Week start</p>
+                  <p className="mt-1 font-semibold text-[#334f82]">
+                    {completedResult.rareRewardOutcome.tokenReward.weekStartDate}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-[#6077a6]">
+                Reward-event context: season{" "}
+                {completedResult.rareRewardOutcome.tokenReward.seasonId}
+              </p>
+            </section>
+          ) : null}
+
+          {completedResult.rareRewardOutcome.nftRewards.length > 0 ? (
+            <section className="bubble-card p-4">
+              <h2 className="text-sm font-semibold text-[#30466f]">NFT rewards</h2>
+              {completedResult.rareRewardOutcome.nftRewards.map((reward) => (
+                <article key={reward.id} className="mt-3 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
+                  <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
+                  <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
+                </article>
+              ))}
+            </section>
+          ) : null}
+
+          {completedResult.rareRewardOutcome.cosmeticRewards.length > 0 ? (
+            <section className="bubble-card p-4">
+              <h2 className="text-sm font-semibold text-[#30466f]">Cosmetic rewards</h2>
+              {completedResult.rareRewardOutcome.cosmeticRewards.map((reward) => (
+                <article key={reward.id} className="mt-3 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
+                  <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
+                  <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
+                </article>
+              ))}
+            </section>
+          ) : null}
+
+          {resultToastMessage ? (
+            <section className="bubble-card p-4">
+              <p className="rounded-xl bg-white/80 p-3 text-xs font-semibold text-[#4f648f]">
+                {resultToastMessage}
+              </p>
+            </section>
+          ) : null}
+
+          <section className="bubble-card p-4">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSessionCompleted(false);
+                  setCompletionResult(null);
+                  setSessionStartedAtMs(null);
+                  setActiveTapCount(0);
+                  setActionMessage("Ready for another run.");
+                }}
+                className="gloss-pill flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
+              >
+                Play again
+              </button>
+              <Link
+                href={withBubbleDropContext("/", {
+                  profileId,
+                  walletAddress: connectedWalletAddress ?? walletAddress,
+                })}
+                className="gloss-pill flex-1 rounded-xl bg-white/85 px-4 py-3 text-center text-sm font-semibold text-[#425b8a]"
+              >
+                Back home
+              </Link>
+            </div>
+          </section>
+        </main>
+      ) : null}
     </div>
   );
 }

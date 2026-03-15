@@ -19,7 +19,8 @@ This file captures the strict readiness pass for testing BubbleDrop inside the B
 ## Production env required before real Base App testing
 
 - `NEXT_PUBLIC_APP_URL` must be set to the real deployed frontend URL.
-- `NEXT_PUBLIC_BACKEND_URL` must be set to the real deployed backend URL.
+- Frontend `BACKEND_URL` should be set to the real deployed backend URL.
+- `NEXT_PUBLIC_BACKEND_URL` should stay aligned with the same deployed backend URL as the current compatibility fallback.
 - Backend `FRONTEND_ORIGIN` must include the deployed frontend origin.
 - Backend `AUTH_SESSION_SECRET` must be replaced with a strong non-default secret.
 - Backend `BASE_RPC_URL` must be set to a stable Base mainnet RPC endpoint.

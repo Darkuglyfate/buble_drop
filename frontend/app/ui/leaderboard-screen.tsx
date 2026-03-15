@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  BUBBLEDROP_API_BASE,
+  useBubbleDropRuntime,
+  withBubbleDropContext,
+} from "../bubbledrop-runtime";
 
 type LeaderboardEntry = {
   rank: number;
@@ -11,40 +16,14 @@ type LeaderboardEntry = {
   currentStreak: number;
 };
 
-function getBackendUrl(): string | null {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  return backendUrl && backendUrl.trim() ? backendUrl.trim() : null;
-}
-
-function getProfileIdFromUrl(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const value = new URLSearchParams(window.location.search).get("profileId");
-  return value && value.trim() ? value.trim() : null;
-}
-
-function withProfileQuery(path: string, profileId: string | null): string {
-  if (!profileId) {
-    return path;
-  }
-  return `${path}?profileId=${encodeURIComponent(profileId)}`;
-}
-
 export function LeaderboardScreen() {
-  const [profileId, setProfileId] = useState<string | null>(null);
+  const { profileId, walletAddress } = useBubbleDropRuntime();
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const backendUrl = getBackendUrl();
+  const backendUrl = BUBBLEDROP_API_BASE;
 
   const loadLeaderboard = async () => {
-    if (!backendUrl) {
-      setErrorMessage("Set NEXT_PUBLIC_BACKEND_URL to load leaderboard.");
-      return;
-    }
-
     setIsLoading(true);
     setErrorMessage(null);
     try {
@@ -71,7 +50,6 @@ export function LeaderboardScreen() {
   };
 
   useEffect(() => {
-    setProfileId(getProfileIdFromUrl());
     void loadLeaderboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -91,17 +69,19 @@ export function LeaderboardScreen() {
         <section className="bubble-card p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP read surface</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Season momentum</p>
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Leaderboard</h1>
             </div>
             <Link
-              href={withProfileQuery("/", profileId)}
+              href={withBubbleDropContext("/", { profileId, walletAddress })}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               Back
             </Link>
           </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">Read-only progression ranking from backend truth.</p>
+          <p className="mt-3 text-sm text-[#5d76a5]">
+            See who is building the strongest BubbleDrop streaks and XP runs right now.
+          </p>
         </section>
 
         <section className="bubble-card p-4">
@@ -113,12 +93,18 @@ export function LeaderboardScreen() {
               disabled={isLoading}
               className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
-              {isLoading ? "Refreshing..." : "Refresh"}
+              {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
-          <p className="mt-2 text-xs text-[#6074a0]">Loaded: {totalPlayers}</p>
+          <p className="mt-2 text-xs text-[#6074a0]">
+            {totalPlayers > 0
+              ? `${totalPlayers} players loaded`
+              : "Live ranking updates appear here"}
+          </p>
 
-          {isLoading ? <p className="mt-3 text-sm text-[#6074a0]">Loading leaderboard...</p> : null}
+          {isLoading ? (
+            <p className="mt-3 text-sm text-[#6074a0]">Loading the latest standings...</p>
+          ) : null}
 
           {!isLoading
             ? entries.map((entry) => (
@@ -133,11 +119,20 @@ export function LeaderboardScreen() {
                 </article>
               ))
             : null}
+          {!isLoading && entries.length === 0 && !errorMessage ? (
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              No ranking data is live yet. Check back after more players finish their runs.
+            </div>
+          ) : null}
         </section>
 
         {errorMessage ? (
           <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
+            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+              {errorMessage === "Unable to load leaderboard from backend."
+                ? "The leaderboard is unavailable right now."
+                : "We couldn't refresh the leaderboard."}
+            </p>
           </section>
         ) : null}
       </main>

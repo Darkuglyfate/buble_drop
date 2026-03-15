@@ -106,10 +106,11 @@ async function mockBubbleDropApi(page: Page) {
     currentStreak: 6,
   };
 
-  await page.route("http://localhost:3000/**", async (route) => {
+  await page.route("**/api/bubbledrop/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const { pathname, searchParams } = url;
+    const pathname = url.pathname.replace(/^\/api\/bubbledrop/, "");
+    const { searchParams } = url;
 
     if (pathname === "/profile/summary" && request.method() === "GET") {
       const profileId = searchParams.get("profileId");
@@ -443,12 +444,8 @@ test("completes session and reveals confirmed reward outcome", async ({
   );
 
   await page.getByRole("button", { name: "Start session" }).click();
-  await page.getByRole("button", { name: "Active tap" }).click();
-  await page
-    .getByRole("button", {
-      name: "Complete session with backend validation",
-    })
-    .click();
+  await page.getByRole("button", { name: "Tap bubble" }).click();
+  await page.getByRole("button", { name: "Complete session" }).click();
 
   await expect(page.getByText("Issued rewards for this session")).toBeVisible();
   await expect(page.getByText("Claimable token reward")).toBeVisible();

@@ -213,10 +213,29 @@ export class AuthSessionService {
   }
 
   private getAuthSessionSecret(): string {
-    return this.configService.get<string>(
-      'AUTH_SESSION_SECRET',
-      'bubbledrop-dev-auth-session-secret',
-    );
+    const configuredSecret =
+      this.configService.get<string>('AUTH_SESSION_SECRET')?.trim() ?? '';
+
+    if (configuredSecret) {
+      if (
+        process.env.NODE_ENV === 'production' &&
+        configuredSecret === 'replace-with-a-long-random-string'
+      ) {
+        throw new Error(
+          'AUTH_SESSION_SECRET must be replaced before running BubbleDrop in production',
+        );
+      }
+
+      return configuredSecret;
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'AUTH_SESSION_SECRET must be configured for BubbleDrop production auth sessions',
+      );
+    }
+
+    return 'bubbledrop-dev-auth-session-secret';
   }
 
   private createBasePublicClient() {

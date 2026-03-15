@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode, useEffect } from "react";
 import { WagmiProvider } from "wagmi";
 import { initAnalytics } from "./analytics";
+import { BubbleDropRuntimeProvider } from "./bubbledrop-runtime";
 import { walletConfig, walletQueryClient } from "./wallet-config";
 
 function AnalyticsBootstrap() {
@@ -18,8 +19,10 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={walletConfig}>
       <QueryClientProvider client={walletQueryClient}>
-        <AnalyticsBootstrap />
-        {children}
+        <BubbleDropRuntimeProvider>
+          <AnalyticsBootstrap />
+          {children}
+        </BubbleDropRuntimeProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

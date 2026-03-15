@@ -41,6 +41,14 @@ body {
 .gloss-pill {
   position: relative;
   overflow: hidden;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease,
+    opacity 140ms ease;
+  box-shadow:
+    0 10px 24px rgba(96, 132, 203, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .gloss-pill::after {
@@ -54,6 +62,36 @@ body {
     rgba(255, 255, 255, 0) 50%
   );
   pointer-events: none;
+}
+
+button.gloss-pill,
+a.gloss-pill {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.gloss-pill:hover,
+a.gloss-pill:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.04) brightness(1.01);
+}
+
+button.gloss-pill:active,
+a.gloss-pill:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow:
+    0 5px 14px rgba(96, 132, 203, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+button.gloss-pill:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.72) brightness(0.98);
+  opacity: 0.78;
+  transform: none;
+  box-shadow:
+    0 4px 10px rgba(96, 132, 203, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .floating-bubbles {
