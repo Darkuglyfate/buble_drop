@@ -34,18 +34,34 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-function getAccount(privateKeyEnvName: string) {
-  const raw = requiredEnv(privateKeyEnvName);
+function getRpcUrl(): string {
+  return process.env.BASE_RPC_URL?.trim() || 'https://mainnet.base.org';
+}
+
+function getAccountFromAny(privateKeyEnvNames: string[]) {
+  const raw = privateKeyEnvNames
+    .map((name) => process.env[name]?.trim())
+    .find((value) => !!value);
+  if (!raw) {
+    throw new Error(
+      `${privateKeyEnvNames.join(' or ')} is required for deployment`,
+    );
+  }
   const privateKey = raw.startsWith('0x') ? raw : `0x${raw}`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-    throw new Error(`${privateKeyEnvName} must be a 32-byte hex private key`);
+    throw new Error(
+      `${privateKeyEnvNames.join(' or ')} must be a 32-byte hex private key`,
+    );
   }
   return privateKeyToAccount(privateKey as Hex);
 }
 
 async function main() {
-  const rpcUrl = requiredEnv('BASE_RPC_URL');
-  const deployer = getAccount('ONCHAIN_STREAK_DEPLOYER_PRIVATE_KEY');
+  const rpcUrl = getRpcUrl();
+  const deployer = getAccountFromAny([
+    'ONCHAIN_STREAK_DEPLOYER_PRIVATE_KEY',
+    'ONCHAIN_STREAK_PRIVATE_KEY',
+  ]);
   const ownerAddressRaw = process.env.ONCHAIN_STREAK_OWNER_ADDRESS?.trim();
   const writerAddressRaw = process.env.ONCHAIN_STREAK_WRITER_ADDRESS?.trim();
   const ownerAddress = ownerAddressRaw || deployer.address;
@@ -134,7 +150,8 @@ async function main() {
   console.log('\nSet backend env vars:');
   console.log('ONCHAIN_STREAK_ENABLED=1');
   console.log(`ONCHAIN_STREAK_CONTRACT_ADDRESS=${receipt.contractAddress}`);
-  console.log('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY=<writer-private-key>');
+  console.log('ONCHAIN_STREAK_PRIVATE_KEY=<single-private-key>');
+  console.log('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY=<writer-private-key-optional>');
   console.log(`ONCHAIN_STREAK_SIGNER_ADDRESS=${writerAddress}`);
 }
 

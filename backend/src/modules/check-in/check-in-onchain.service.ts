@@ -110,7 +110,14 @@ export class CheckInOnchainService {
   }
 
   private getSignerAccount() {
-    const rawPrivateKey = this.getRequiredEnv('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY');
+    const rawPrivateKey =
+      this.configService.get<string>('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY')?.trim() ||
+      this.configService.get<string>('ONCHAIN_STREAK_PRIVATE_KEY')?.trim();
+    if (!rawPrivateKey) {
+      throw new ServiceUnavailableException(
+        'ONCHAIN_STREAK_SIGNER_PRIVATE_KEY or ONCHAIN_STREAK_PRIVATE_KEY is not configured',
+      );
+    }
     const privateKey = rawPrivateKey.startsWith('0x')
       ? rawPrivateKey
       : `0x${rawPrivateKey}`;
