@@ -7,11 +7,25 @@
   "frame": {
     "version": "1",
     "name": "BubbleDrop",
-    "iconUrl": "https://bubledrop.vercel.app/favicon.ico",
+    "iconUrl": "https://bubledrop.vercel.app/miniapp-icon.png",
     "homeUrl": "https://bubledrop.vercel.app/",
-    "imageUrl": "https://bubledrop.vercel.app/favicon.ico",
+    "imageUrl": "https://bubledrop.vercel.app/miniapp-icon.png",
     "buttonTitle": "Open BubbleDrop",
-    "splashImageUrl": "https://bubledrop.vercel.app/favicon.ico",
-    "splashBackgroundColor": "#111827"
+    "splashImageUrl": "https://bubledrop.vercel.app/miniapp-splash.png",
+    "splashBackgroundColor": "#111827",
+    "primaryCategory": "games",
+    "tags": ["bubbles", "rewards", "xp"]
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "BubbleDrop",
+    "iconUrl": "https://bubledrop.vercel.app/miniapp-icon.png",
+    "homeUrl": "https://bubledrop.vercel.app/",
+    "imageUrl": "https://bubledrop.vercel.app/miniapp-icon.png",
+    "buttonTitle": "Open BubbleDrop",
+    "splashImageUrl": "https://bubledrop.vercel.app/miniapp-splash.png",
+    "splashBackgroundColor": "#111827",
+    "primaryCategory": "games",
+    "tags": ["bubbles", "rewards", "xp"]
   }
 }
