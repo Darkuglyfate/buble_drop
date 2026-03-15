@@ -17,6 +17,11 @@ import {
   identifyAnalyticsUser,
 } from "../analytics";
 import {
+  classifyWalletFlowError,
+  getBubbleDropWalletConnectors,
+  withFlowTimeout,
+} from "../base-wallet-runtime";
+import {
   clearBubbleDropFrontendSignInSession,
   createAuthenticatedJsonHeaders,
   createSmokeSignInSession,
@@ -82,6 +87,24 @@ type OnboardingCard = {
   options: [string, string];
   correctIndex: 0 | 1;
   wrongExplanation: string;
+};
+
+type WalletFlowStage =
+  | "idle"
+  | "connecting"
+  | "awaiting_wallet_approval"
+  | "connected"
+  | "signing_in"
+  | "connect_failed"
+  | "sign_in_failed"
+  | "timed_out";
+
+type WalletFlowPhase = "connect" | "sign_in" | null;
+
+type WalletFlowState = {
+  stage: WalletFlowStage;
+  phase: WalletFlowPhase;
+  message: string | null;
 };
 
 type QualificationStatus =
@@ -153,6 +176,14 @@ const ONBOARDING_CARDS: OnboardingCard[] = [
   },
 ];
 
+const CONNECT_TIMEOUT_MS = 25_000;
+const SIGN_IN_TIMEOUT_MS = 45_000;
+const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
+  stage: "idle",
+  phase: null,
+  message: null,
+};
+
 function getSmokeWalletOverride():
   | {
       address: string;
@@ -214,6 +245,8 @@ export function BubbleDropShell() {
   const [profileSummary, setProfileSummary] = useState<BackendProfileSummary | null>(null);
   const [signInSession, setSignInSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
+  const [walletFlowState, setWalletFlowState] =
+    useState<WalletFlowState>(IDLE_WALLET_FLOW_STATE);
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -236,13 +269,17 @@ export function BubbleDropShell() {
   const effectiveChainId = smokeWalletOverride?.chainId ?? chainId;
   const isConnectedToBase =
     effectiveIsConnected && effectiveChainId === base.id;
-  const baseWalletConnector =
-    connectors.find((connector) => connector.id === "baseAccount") ?? null;
-  const coinbaseWalletConnector =
-    connectors.find((connector) => connector.name === "Coinbase Wallet") ??
-    connectors.find((connector) => connector.id === "coinbaseWalletSDK") ??
-    connectors[0] ??
-    null;
+  const {
+    preferredConnector,
+    injectedCoinbaseProviderAvailable,
+    coinbaseInjectedConnector,
+    coinbaseWalletConnector,
+  } = useMemo(() => getBubbleDropWalletConnectors(connectors), [connectors]);
+  const fallbackWalletConnector =
+    coinbaseWalletConnector &&
+    coinbaseWalletConnector.id !== preferredConnector?.id
+      ? coinbaseWalletConnector
+      : null;
   const onboardingVisible = useMemo(() => {
     return !isResolvingFirstEntry && isFirstEntry && !onboardingSessionCompleted;
   }, [isResolvingFirstEntry, isFirstEntry, onboardingSessionCompleted]);
@@ -258,6 +295,24 @@ export function BubbleDropShell() {
     isSignedInWithBase && hasVerifiedAuthSession(signInSession)
       ? signInSession?.authSessionToken ?? null
       : null;
+  const isWalletFlowBusy =
+    isWalletConnectPending ||
+    isSigningInWithBase ||
+    walletFlowState.stage === "connecting" ||
+    walletFlowState.stage === "awaiting_wallet_approval" ||
+    walletFlowState.stage === "signing_in";
+  const showConnectRecovery =
+    !effectiveIsConnected &&
+    (walletFlowState.stage === "connect_failed" ||
+      (walletFlowState.stage === "timed_out" &&
+        walletFlowState.phase === "connect"));
+  const showSignInRecovery =
+    effectiveIsConnected &&
+    isConnectedToBase &&
+    !isSignedInWithBase &&
+    (walletFlowState.stage === "sign_in_failed" ||
+      (walletFlowState.stage === "timed_out" &&
+        walletFlowState.phase === "sign_in"));
 
   const qualificationStatus = profileSummary?.qualificationState.status;
   const isRareRewardAccessActive = profileSummary?.rareRewardAccess.active ?? false;
@@ -270,6 +325,28 @@ export function BubbleDropShell() {
         label: "Pending",
         className: "bg-[#eef2fb] text-[#5d6f93]",
       };
+  const walletFlowCardStyle =
+    walletFlowState.stage === "connect_failed" ||
+    walletFlowState.stage === "sign_in_failed" ||
+    walletFlowState.stage === "timed_out"
+      ? "border-[#f6c2d4] bg-[#fff2f7] text-[#7f3a53]"
+      : "border-[#dce6ff] bg-[#f8fbff] text-[#2d4578]";
+  const walletFlowTitle =
+    walletFlowState.stage === "connecting"
+      ? "Connecting"
+      : walletFlowState.stage === "awaiting_wallet_approval"
+        ? "Awaiting wallet approval"
+        : walletFlowState.stage === "signing_in"
+          ? "Signing in"
+          : walletFlowState.stage === "connect_failed"
+            ? "Connect failed"
+            : walletFlowState.stage === "sign_in_failed"
+              ? "Sign-in failed"
+              : walletFlowState.stage === "timed_out"
+                ? "Timed out"
+                : walletFlowState.stage === "connected"
+                  ? "Connected"
+                  : null;
 
   useEffect(() => {
     setSmokeWalletOverride(getSmokeWalletOverride());
@@ -308,6 +385,31 @@ export function BubbleDropShell() {
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
   }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride]);
+
+  useEffect(() => {
+    if (!effectiveIsConnected) {
+      setWalletFlowState((currentState) =>
+        currentState.stage === "connect_failed" ||
+        currentState.stage === "timed_out"
+          ? currentState
+          : IDLE_WALLET_FLOW_STATE,
+      );
+      return;
+    }
+
+    if (
+      isSignedInWithBase &&
+      (walletFlowState.stage === "signing_in" ||
+        (walletFlowState.stage === "awaiting_wallet_approval" &&
+          walletFlowState.phase === "sign_in"))
+    ) {
+      setWalletFlowState({
+        stage: "connected",
+        phase: "sign_in",
+        message: "Wallet confirmed. You're signed in.",
+      });
+    }
+  }, [effectiveIsConnected, isSignedInWithBase, walletFlowState.phase, walletFlowState.stage]);
 
   const loadStarterAvatarOptions = async () => {
     if (!backendUrl) {
@@ -515,35 +617,100 @@ export function BubbleDropShell() {
     await bootstrapProfileForWallet(connectedWalletAddress);
   };
 
-  const onConnectWallet = async () => {
-    if (!baseWalletConnector) {
-      setActionMessage("In-app Base wallet is unavailable right now.");
-      return;
-    }
+  const connectWalletWithConnector = async (
+    connector: NonNullable<typeof preferredConnector>,
+    messages: {
+      connecting: string;
+      awaitingApproval: string;
+      success: string;
+      failed: string;
+      timedOut: string;
+    },
+  ) => {
+    setWalletFlowState({
+      stage: "connecting",
+      phase: "connect",
+      message: messages.connecting,
+    });
 
-    setActionMessage("Opening the in-app Base wallet...");
     try {
-      await connectAsync({ connector: baseWalletConnector });
-      setActionMessage("Base wallet connected. Sign in to confirm ownership.");
-    } catch {
-      setActionMessage(
-        "We couldn't connect inside Base App. Stay in the app and try again.",
-      );
+      const connectPromise = connectAsync({ connector });
+      setWalletFlowState({
+        stage: "awaiting_wallet_approval",
+        phase: "connect",
+        message: messages.awaitingApproval,
+      });
+      await withFlowTimeout(connectPromise, CONNECT_TIMEOUT_MS, "connect");
+      setWalletFlowState({
+        stage: "connected",
+        phase: "connect",
+        message: messages.success,
+      });
+    } catch (error) {
+      const classifiedError = classifyWalletFlowError(error);
+      if (classifiedError.kind === "timeout") {
+        setWalletFlowState({
+          stage: "timed_out",
+          phase: "connect",
+          message: messages.timedOut,
+        });
+        return;
+      }
+
+      setWalletFlowState({
+        stage: "connect_failed",
+        phase: "connect",
+        message:
+          classifiedError.kind === "rejected"
+            ? "Connection was cancelled. You can retry when you're ready."
+            : messages.failed,
+      });
     }
   };
 
-  const onConnectCoinbaseWallet = async () => {
-    if (!coinbaseWalletConnector) {
+  const onConnectWallet = async () => {
+    if (!preferredConnector) {
+      setWalletFlowState({
+        stage: "connect_failed",
+        phase: "connect",
+        message: "BubbleDrop could not open a Base wallet connection right now.",
+      });
       return;
     }
 
-    setActionMessage("Opening Coinbase Wallet...");
-    try {
-      await connectAsync({ connector: coinbaseWalletConnector });
-      setActionMessage("Wallet connected. Switch to Base if needed, then sign in.");
-    } catch {
-      setActionMessage("Coinbase Wallet connection did not complete.");
+    const usesInjectedInAppPath =
+      injectedCoinbaseProviderAvailable &&
+      preferredConnector.id === coinbaseInjectedConnector?.id;
+
+    await connectWalletWithConnector(preferredConnector, {
+      connecting: usesInjectedInAppPath
+        ? "Checking for the in-app Base wallet..."
+        : "Opening your Base wallet...",
+      awaitingApproval: usesInjectedInAppPath
+        ? "Approve the in-app wallet prompt to continue."
+        : "Approve the wallet connection request to continue.",
+      success: "Wallet connected. Continue with Sign in with Base.",
+      failed: usesInjectedInAppPath
+        ? "BubbleDrop could not complete the in-app Base connection. Stay in Base App and try again."
+        : "BubbleDrop could not connect this wallet right now.",
+      timedOut: usesInjectedInAppPath
+        ? "The in-app wallet prompt took too long. Stay in Base App and try again."
+        : "Wallet connection took too long. Please retry.",
+    });
+  };
+
+  const onConnectCoinbaseWallet = async () => {
+    if (!fallbackWalletConnector) {
+      return;
     }
+
+    await connectWalletWithConnector(fallbackWalletConnector, {
+      connecting: "Opening Coinbase Wallet fallback...",
+      awaitingApproval: "Approve the Coinbase Wallet connection request to continue.",
+      success: "Wallet connected. Switch to Base if needed, then sign in.",
+      failed: "Coinbase Wallet fallback did not complete.",
+      timedOut: "Coinbase Wallet fallback took too long. Please retry.",
+    });
   };
 
   const onSwitchToBase = async () => {
@@ -559,6 +726,7 @@ export function BubbleDropShell() {
   const onClearBaseSignIn = () => {
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
+    setWalletFlowState(IDLE_WALLET_FLOW_STATE);
     setActionMessage("This browser session is signed out.");
   };
 
@@ -573,19 +741,31 @@ export function BubbleDropShell() {
     }
 
     setIsSigningInWithBase(true);
-    setActionMessage("Waiting for your Base signature...");
+    setWalletFlowState({
+      stage: "signing_in",
+      phase: "sign_in",
+      message: "Preparing secure sign-in...",
+    });
 
     try {
-      const nonceResponse = await fetch(`${backendUrl}/auth/session/nonce`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          walletAddress: connectedWalletAddress,
-          chainId: effectiveChainId,
+      const nonceResponse = await withFlowTimeout(
+        fetch(`${backendUrl}/auth/session/nonce`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress: connectedWalletAddress,
+            chainId: effectiveChainId,
+          }),
         }),
-      });
+        SIGN_IN_TIMEOUT_MS,
+        "sign_in",
+      );
       if (!nonceResponse.ok) {
-        setActionMessage("Sign in could not start right now.");
+        setWalletFlowState({
+          stage: "sign_in_failed",
+          phase: "sign_in",
+          message: "Sign in could not start right now.",
+        });
         return;
       }
 
@@ -602,17 +782,39 @@ export function BubbleDropShell() {
         version: "1",
         issuedAt,
       });
-      const signature = await signMessageAsync({ message });
-      const verifyResponse = await fetch(`${backendUrl}/auth/session/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          signature,
-        }),
+      setWalletFlowState({
+        stage: "awaiting_wallet_approval",
+        phase: "sign_in",
+        message: "Approve the Base signature to finish sign-in.",
       });
+      const signature = await withFlowTimeout(
+        signMessageAsync({ message }),
+        SIGN_IN_TIMEOUT_MS,
+        "sign_in",
+      );
+      setWalletFlowState({
+        stage: "signing_in",
+        phase: "sign_in",
+        message: "Finishing secure sign-in...",
+      });
+      const verifyResponse = await withFlowTimeout(
+        fetch(`${backendUrl}/auth/session/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            signature,
+          }),
+        }),
+        SIGN_IN_TIMEOUT_MS,
+        "sign_in",
+      );
       if (!verifyResponse.ok) {
-        setActionMessage("That signature could not be verified. Please try again.");
+        setWalletFlowState({
+          stage: "sign_in_failed",
+          phase: "sign_in",
+          message: "That signature could not be verified. Please try again.",
+        });
         return;
       }
       const verifiedSession =
@@ -635,12 +837,38 @@ export function BubbleDropShell() {
         wallet_address: verifiedSession.walletAddress,
         chain_id: verifiedSession.chainId,
       });
-      setActionMessage("Wallet confirmed. You're signed in.");
-    } catch {
-      setActionMessage("The signature request did not complete.");
+      setWalletFlowState({
+        stage: "connected",
+        phase: "sign_in",
+        message: "Wallet confirmed. You're signed in.",
+      });
+    } catch (error) {
+      const classifiedError = classifyWalletFlowError(error);
+      if (classifiedError.kind === "timeout") {
+        setWalletFlowState({
+          stage: "timed_out",
+          phase: "sign_in",
+          message: "The signature request took too long. Please retry in Base App.",
+        });
+        return;
+      }
+
+      setWalletFlowState({
+        stage: "sign_in_failed",
+        phase: "sign_in",
+        message:
+          classifiedError.kind === "rejected"
+            ? "The signature request was cancelled. You can retry when you're ready."
+            : "The signature request did not complete.",
+      });
     } finally {
       setIsSigningInWithBase(false);
     }
+  };
+
+  const onDisconnectWallet = () => {
+    setWalletFlowState(IDLE_WALLET_FLOW_STATE);
+    disconnect();
   };
 
   const onRefreshProfile = async () => {
@@ -968,37 +1196,71 @@ export function BubbleDropShell() {
                           ? `Signed at ${new Date(signInSession.issuedAt).toLocaleString()}${signInSession.mode === "smoke" ? " (smoke override)." : "."}`
                           : "BubbleDrop keeps backend verification as the source of truth for your signed-in session."}
                       </p>
+                      {walletFlowTitle && walletFlowState.message ? (
+                        <div
+                          className={`mt-3 rounded-xl border px-3 py-3 ${walletFlowCardStyle}`}
+                        >
+                          <p className="text-xs uppercase tracking-[0.08em]">
+                            {walletFlowTitle}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {walletFlowState.message}
+                          </p>
+                          {showConnectRecovery ? (
+                            <div className="mt-3 flex flex-col gap-2">
+                              <button
+                                type="button"
+                                onClick={onConnectWallet}
+                                disabled={isWalletFlowBusy || isSubmittingAction}
+                                className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                              >
+                                Retry in-app Base connection
+                              </button>
+                              {fallbackWalletConnector ? (
+                                <button
+                                  type="button"
+                                  onClick={onConnectCoinbaseWallet}
+                                  disabled={isWalletFlowBusy || isSubmittingAction}
+                                  className="rounded-xl bg-white/85 px-4 py-3 text-left text-sm font-semibold text-[#425b8a] disabled:opacity-60"
+                                >
+                                  Try Coinbase Wallet fallback
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {showSignInRecovery ? (
+                            <div className="mt-3">
+                              <button
+                                type="button"
+                                onClick={onSignInWithBase}
+                                disabled={isWalletFlowBusy || isSubmittingAction}
+                                className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                              >
+                                Retry Base sign-in
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   {!effectiveIsConnected ? (
                     <button
                       type="button"
                       onClick={onConnectWallet}
-                      disabled={isWalletConnectPending || isSubmittingAction}
+                      disabled={isWalletFlowBusy || isSubmittingAction}
                       className="gloss-pill rounded-xl bg-gradient-to-r from-[#c9f1ff] to-[#d6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                     >
-                      {isWalletConnectPending
-                        ? "Connecting inside Base App..."
+                      {isWalletFlowBusy
+                        ? "Connecting in Base App..."
                         : "Connect in Base App"}
-                    </button>
-                  ) : null}
-                  {!effectiveIsConnected &&
-                  coinbaseWalletConnector &&
-                  coinbaseWalletConnector.id !== baseWalletConnector?.id ? (
-                    <button
-                      type="button"
-                      onClick={onConnectCoinbaseWallet}
-                      disabled={isWalletConnectPending || isSubmittingAction}
-                      className="rounded-xl bg-white/85 px-4 py-3 text-left text-sm font-semibold text-[#425b8a] disabled:opacity-60"
-                    >
-                      Use Coinbase Wallet instead
                     </button>
                   ) : null}
                   {effectiveIsConnected && !isConnectedToBase ? (
                     <button
                       type="button"
                       onClick={onSwitchToBase}
-                      disabled={isSwitchingChain || isSubmittingAction}
+                      disabled={isSwitchingChain || isSubmittingAction || isWalletFlowBusy}
                       className="gloss-pill rounded-xl bg-gradient-to-r from-[#d9f2ff] to-[#e6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                     >
                       {isSwitchingChain ? "Switching to Base..." : "Switch connected wallet to Base"}
@@ -1008,11 +1270,11 @@ export function BubbleDropShell() {
                     <button
                       type="button"
                       onClick={onSignInWithBase}
-                      disabled={isSigningInWithBase || isSubmittingAction}
+                      disabled={isWalletFlowBusy || isSubmittingAction}
                       className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                     >
-                      {isSigningInWithBase
-                        ? "Waiting for signature..."
+                      {isWalletFlowBusy && walletFlowState.phase === "sign_in"
+                        ? "Signing in..."
                         : "Sign in with Base"}
                     </button>
                   ) : null}
@@ -1020,7 +1282,7 @@ export function BubbleDropShell() {
                     <button
                       type="button"
                       onClick={onClearBaseSignIn}
-                      disabled={isSubmittingAction || isSigningInWithBase}
+                      disabled={isSubmittingAction || isWalletFlowBusy}
                       className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs font-semibold text-[#48608f] disabled:opacity-60"
                     >
                       Clear frontend Base sign-in
@@ -1056,8 +1318,8 @@ export function BubbleDropShell() {
                   {effectiveIsConnected && !smokeWalletOverride ? (
                     <button
                       type="button"
-                      onClick={() => disconnect()}
-                      disabled={isSubmittingAction}
+                      onClick={onDisconnectWallet}
+                      disabled={isSubmittingAction || isWalletFlowBusy}
                       className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs font-semibold text-[#48608f] disabled:opacity-60"
                     >
                       Disconnect wallet
