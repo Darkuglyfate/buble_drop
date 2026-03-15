@@ -63,7 +63,13 @@ type VerifiedAuthSessionResponse = {
 };
 
 type DailyCheckInResponse = {
+  success: boolean;
   checkInDate: string;
+  xpAwarded?: number;
+  newStreak?: number;
+  rareAccessActive?: boolean;
+  currentStreak?: number;
+  rareRewardAccessActive?: boolean;
 };
 
 type StarterAvatar = {
@@ -176,6 +182,29 @@ const ONBOARDING_CARDS: OnboardingCard[] = [
       "Qualified is a live overlay. Rank Frame remains long-term profile status.",
   },
 ];
+
+function shortenWalletAddress(value: string | null): string {
+  if (!value) {
+    return "No wallet yet";
+  }
+
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function getAvatarGlyph(
+  nickname: string | null | undefined,
+  avatarLabel: string | null | undefined,
+): string {
+  const source = nickname?.trim() || avatarLabel?.trim() || "Bubble";
+  const cleaned = source.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return cleaned.slice(0, 2).toUpperCase() || "BD";
+}
 
 const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
@@ -323,15 +352,22 @@ export function BubbleDropShell() {
     effectiveIsConnected && effectiveChainId === base.id;
   const {
     preferredConnector,
-    injectedCoinbaseProviderAvailable,
     coinbaseInjectedConnector,
+    baseAccountConnector,
     coinbaseWalletConnector,
   } = useMemo(() => getBubbleDropWalletConnectors(connectors), [connectors]);
+  const preferredConnectorUsesInjectedBase =
+    preferredConnector?.id === coinbaseInjectedConnector?.id;
+  const preferredConnectorUsesCoinbaseWallet =
+    preferredConnector?.id === coinbaseWalletConnector?.id;
+  const preferredConnectorUsesBaseAccount =
+    preferredConnector?.id === baseAccountConnector?.id;
   const fallbackWalletConnector =
-    coinbaseWalletConnector &&
-    coinbaseWalletConnector.id !== preferredConnector?.id
-      ? coinbaseWalletConnector
-      : null;
+    [coinbaseWalletConnector, baseAccountConnector].find(
+      (connector) => connector && connector.id !== preferredConnector?.id,
+    ) ?? null;
+  const fallbackConnectorUsesCoinbaseWallet =
+    fallbackWalletConnector?.id === coinbaseWalletConnector?.id;
   const onboardingVisible = useMemo(() => {
     return !isResolvingFirstEntry && isFirstEntry && !onboardingSessionCompleted;
   }, [isResolvingFirstEntry, isFirstEntry, onboardingSessionCompleted]);
@@ -368,15 +404,80 @@ export function BubbleDropShell() {
 
   const qualificationStatus = profileSummary?.qualificationState.status;
   const isRareRewardAccessActive = profileSummary?.rareRewardAccess.active ?? false;
-  const qualificationLabel = qualificationStatus
-    ? qualificationStatus.replaceAll("_", " ")
-    : "backend pending";
   const qualificationBadge = qualificationStatus
     ? QUALIFICATION_BADGE_COPY[qualificationStatus]
     : {
         label: "Pending",
         className: "bg-[#eef2fb] text-[#5d6f93]",
       };
+  const nicknameDisplay =
+    profileSummary?.profileIdentity.nickname ??
+    (connectedWalletAddress ? "Fresh bubble" : "Guest bubble");
+  const avatarLabel =
+    profileSummary?.avatarState.currentAvatar?.label ??
+    (profileId ? "Starter bubble" : "Wake BubbleDrop");
+  const avatarGlyph = getAvatarGlyph(nicknameDisplay, avatarLabel);
+  const walletDisplay = shortenWalletAddress(
+    activeWalletAddress ?? connectedWalletAddress,
+  );
+  const totalXp = profileSummary?.xpSummary.totalXp ?? 0;
+  const currentStreak = profileSummary?.xpSummary.currentStreak ?? 0;
+  const currentFrameLabel =
+    profileSummary?.rankFrameState.currentFrame?.label ?? "Fresh bubble";
+  const nextFrame = profileSummary?.rankFrameState.nextFrame;
+  const currentFrameFloorXp =
+    profileSummary?.rankFrameState.currentFrame?.minLifetimeXp ?? 0;
+  const equippedAvatarKey = profileSummary?.avatarState.currentAvatar?.key ?? null;
+  const hasProfile = Boolean(profileId);
+  const hasUnlockedCollection =
+    Boolean(profileId) && !profileSummary?.onboardingState.needsOnboarding;
+  const progressToNextFramePercent = nextFrame
+    ? Math.max(
+        8,
+        Math.min(
+          100,
+          Math.round(
+            ((totalXp - currentFrameFloorXp) /
+              Math.max(1, nextFrame.minLifetimeXp - currentFrameFloorXp)) *
+              100,
+          ),
+        ),
+      )
+    : profileSummary
+      ? 100
+      : 8;
+  const rewardsTokenCount =
+    profileSummary?.claimableTokenBalanceSummary.tokenCount ?? 0;
+  const claimableTokenAmount =
+    profileSummary?.claimableTokenBalanceSummary.totalClaimableAmount ?? "0";
+  const quickSessionHref = withBubbleDropContext("/session", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const rewardsInventoryHref = withBubbleDropContext("/inventory", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const referralsHref = withBubbleDropContext("/referrals", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const leaderboardHref = withBubbleDropContext("/leaderboard", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const seasonHref = withBubbleDropContext("/season", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const partnerTokensHref = withBubbleDropContext("/partner-tokens", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
+  const claimsHref = withBubbleDropContext("/claim", {
+    profileId,
+    walletAddress: activeWalletAddress,
+  });
   const walletFlowCardStyle =
     walletFlowState.stage === "connect_failed" ||
     walletFlowState.stage === "sign_in_failed" ||
@@ -399,8 +500,6 @@ export function BubbleDropShell() {
                 : walletFlowState.stage === "connected"
                   ? "Connected"
                   : null;
-  const walletFlowDetail = walletFlowState.detail?.trim() || null;
-
   useEffect(() => {
     setSmokeWalletOverride(getSmokeWalletOverride());
   }, []);
@@ -484,7 +583,7 @@ export function BubbleDropShell() {
   const refreshProfileSummary = async (targetProfileId: string) => {
     const summary = await fetchBackendProfileSummary(backendUrl, targetProfileId);
     if (!summary) {
-      setActionMessage("Live BubbleDrop data is unavailable right now.");
+      setActionMessage("BubbleDrop is still waking up. Try again in a moment.");
       return null;
     }
 
@@ -579,7 +678,7 @@ export function BubbleDropShell() {
 
       if (!response.ok) {
         if (!silent) {
-          setActionMessage("Profile bootstrap failed.");
+        setActionMessage("Your BubbleDrop home did not open just yet.");
         }
         return;
       }
@@ -607,11 +706,11 @@ export function BubbleDropShell() {
         source,
       });
       if (!silent) {
-        setActionMessage("BubbleDrop profile is ready.");
+        setActionMessage("Your BubbleDrop home is ready.");
       }
     } catch {
       if (!silent) {
-        setActionMessage("We couldn't finish setting up your profile. Please try again.");
+        setActionMessage("Your profile is still settling in. Try again in a moment.");
       }
     } finally {
       setIsSubmittingAction(false);
@@ -741,22 +840,40 @@ export function BubbleDropShell() {
       return;
     }
 
-    const usesInjectedInAppPath =
-      injectedCoinbaseProviderAvailable &&
-      preferredConnector.id === coinbaseInjectedConnector?.id;
+    if (preferredConnectorUsesCoinbaseWallet) {
+      await connectWalletWithConnector(preferredConnector, {
+        connecting: "Opening Coinbase Wallet...",
+        awaitingApproval: "Approve the Coinbase Wallet connection request to continue.",
+        success: "Wallet connected. Switch to Base if needed, then sign in.",
+        failed: "Coinbase Wallet did not complete.",
+        timedOut: "Coinbase Wallet took too long. Please retry.",
+      });
+      return;
+    }
+
+    if (preferredConnectorUsesBaseAccount) {
+      await connectWalletWithConnector(preferredConnector, {
+        connecting: "Opening Base connection...",
+        awaitingApproval: "Approve the Base connection request to continue.",
+        success: "Wallet connected. Continue with Sign in with Base.",
+        failed: "BubbleDrop could not complete the Base connection right now.",
+        timedOut: "Base connection took too long. Please retry.",
+      });
+      return;
+    }
 
     await connectWalletWithConnector(preferredConnector, {
-      connecting: usesInjectedInAppPath
+      connecting: preferredConnectorUsesInjectedBase
         ? "Checking for the in-app Base wallet..."
         : "Opening your Base wallet...",
-      awaitingApproval: usesInjectedInAppPath
+      awaitingApproval: preferredConnectorUsesInjectedBase
         ? "Approve the in-app wallet prompt to continue."
         : "Approve the wallet connection request to continue.",
       success: "Wallet connected. Continue with Sign in with Base.",
-      failed: usesInjectedInAppPath
+      failed: preferredConnectorUsesInjectedBase
         ? "BubbleDrop could not complete the in-app Base connection. Stay in Base App and try again."
         : "BubbleDrop could not connect this wallet right now.",
-      timedOut: usesInjectedInAppPath
+      timedOut: preferredConnectorUsesInjectedBase
         ? "The in-app wallet prompt took too long. Stay in Base App and try again."
         : "Wallet connection took too long. Please retry.",
     });
@@ -767,12 +884,23 @@ export function BubbleDropShell() {
       return;
     }
 
+    if (fallbackConnectorUsesCoinbaseWallet) {
+      await connectWalletWithConnector(fallbackWalletConnector, {
+        connecting: "Opening Coinbase Wallet fallback...",
+        awaitingApproval: "Approve the Coinbase Wallet connection request to continue.",
+        success: "Wallet connected. Switch to Base if needed, then sign in.",
+        failed: "Coinbase Wallet fallback did not complete.",
+        timedOut: "Coinbase Wallet fallback took too long. Please retry.",
+      });
+      return;
+    }
+
     await connectWalletWithConnector(fallbackWalletConnector, {
-      connecting: "Opening Coinbase Wallet fallback...",
-      awaitingApproval: "Approve the Coinbase Wallet connection request to continue.",
+      connecting: "Opening alternate Base connection...",
+      awaitingApproval: "Approve the alternate Base connection request to continue.",
       success: "Wallet connected. Switch to Base if needed, then sign in.",
-      failed: "Coinbase Wallet fallback did not complete.",
-      timedOut: "Coinbase Wallet fallback took too long. Please retry.",
+      failed: "Alternate Base connection did not complete.",
+      timedOut: "Alternate Base connection took too long. Please retry.",
     });
   };
 
@@ -956,14 +1084,14 @@ export function BubbleDropShell() {
 
   const onRefreshProfile = async () => {
     if (!profileId) {
-      setActionMessage("Connect and sign in to load your BubbleDrop profile.");
+      setActionMessage("Connect and sign in to open your BubbleDrop home.");
       return;
     }
     setIsSubmittingAction(true);
     setActionMessage(null);
     try {
       await refreshProfileSummary(profileId);
-      setActionMessage("Profile summary refreshed.");
+      setActionMessage("Your home is refreshed.");
     } finally {
       setIsSubmittingAction(false);
     }
@@ -971,7 +1099,7 @@ export function BubbleDropShell() {
 
   const onDailyCheckIn = async () => {
     if (!profileId) {
-      setActionMessage("Finish wallet setup before daily check-in.");
+      setActionMessage("Connect, sign in, and sync your profile before checking in.");
       return;
     }
     if (effectiveIsConnected && !isConnectedToBase) {
@@ -993,7 +1121,7 @@ export function BubbleDropShell() {
       });
 
       if (!response.ok) {
-        setActionMessage("Today's check-in is already complete or unavailable.");
+        setActionMessage("Today's glow is already locked in.");
         return;
       }
 
@@ -1003,10 +1131,18 @@ export function BubbleDropShell() {
         profile_id: profileId,
         wallet_address: activeWalletAddress ?? connectedWalletAddress ?? "",
         check_in_date: payload.checkInDate,
+        xp_awarded: payload.xpAwarded ?? 0,
+        new_streak: payload.newStreak ?? payload.currentStreak ?? 0,
+        rare_access_active:
+          payload.rareAccessActive ?? payload.rareRewardAccessActive ?? false,
       });
-      setActionMessage(`Daily check-in recorded for ${payload.checkInDate}.`);
+      setActionMessage(
+        `Daily check-in complete. +${payload.xpAwarded ?? 0} XP. Streak: ${
+          payload.newStreak ?? payload.currentStreak ?? 0
+        }.`,
+      );
     } catch {
-      setActionMessage("We couldn't complete today's check-in.");
+      setActionMessage("Today's check-in did not land. Try again in a moment.");
     } finally {
       setIsSubmittingAction(false);
     }
@@ -1014,7 +1150,7 @@ export function BubbleDropShell() {
 
   const onCompleteOnboarding = async () => {
     if (!profileId) {
-      setActionMessage("Finish wallet setup before onboarding.");
+      setActionMessage("Connect, sign in, and sync your profile before finishing onboarding.");
       return;
     }
     if (effectiveIsConnected && !isConnectedToBase) {
@@ -1069,14 +1205,196 @@ export function BubbleDropShell() {
           `Onboarding completed. ${payload.onboardingXpGranted} XP granted. Total XP: ${payload.totalXp}.`,
         );
       } else {
-        setActionMessage("Onboarding completed. Live profile details are still refreshing.");
+        setActionMessage("Onboarding completed. Your new bubble is still settling in.");
       }
     } catch {
-      setActionMessage("We couldn't finish onboarding right now.");
+      setActionMessage("Your identity update did not land. Try again in a moment.");
     } finally {
       setIsSubmittingAction(false);
     }
   };
+
+  const homeStatusPills = [
+    effectiveIsConnected
+      ? isConnectedToBase
+        ? "Base ready"
+        : "Switch to Base"
+      : "Connect wallet",
+    authenticatedSessionToken ? "Signed in" : "Secure sign-in needed",
+    isRareRewardAccessActive ? "Rare glow live" : qualificationBadge.label,
+  ];
+  const canSyncProfile =
+    !isSubmittingAction &&
+    Boolean(authenticatedSessionToken) &&
+    Boolean(connectedWalletAddress) &&
+    isConnectedToBase;
+  let heroStatusLabel = "Arrival";
+  let heroTitle = "Wake your bubble and step into today's drop.";
+  let heroBody =
+    "Connect first, then BubbleDrop turns your profile, streak, and reward path back on.";
+  let heroAccentClass =
+    "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
+  let primaryActionLabel = "Connect in BubbleDrop";
+  let primaryActionDisabled = isWalletFlowBusy || isSubmittingAction;
+  let primaryActionHandler: () => void = onConnectWallet;
+  let primaryActionHref: string | null = null;
+  let primaryActionKind: "button" | "link" = "button";
+  let secondaryHeroActionLabel: string | null = null;
+  let secondaryHeroActionDisabled = false;
+  let secondaryHeroActionHandler: (() => void) | null = null;
+  let heroPortalCopy = "Bubble lane offline";
+  let profileVaultLabel = "Open NFT vault";
+  let profileVaultHint = "NFTs, cosmetics, and bubble drops live here.";
+  let profileVaultHref: string | null = rewardsInventoryHref;
+  let profileVaultHandler: (() => void) | null = null;
+  let profileVaultDisabled = false;
+  const avatarSpotlightTitle = avatarLabel;
+  let avatarSpotlightBody = hasProfile
+    ? "Your player profile is live. XP growth keeps changing how this bubble identity feels."
+    : "This is the player profile shell. Choose your starter avatar during onboarding to wake it up.";
+
+  if (!effectiveIsConnected) {
+    heroPortalCopy = "Connect to wake";
+    profileVaultLabel = "Connect wallet to unlock collection";
+    profileVaultHint = "First connect a wallet, then BubbleDrop can open your player collection.";
+    profileVaultHref = null;
+    profileVaultHandler = onConnectWallet;
+  } else if (effectiveIsConnected && !isConnectedToBase) {
+    heroStatusLabel = "Base needed";
+    heroTitle = "Your bubble is here, but it still needs the Base lane.";
+    heroBody =
+      "Switch chains to unlock daily check-in, onboarding completion, and the live reward path.";
+    heroAccentClass =
+      "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
+    primaryActionLabel = isSwitchingChain
+      ? "Switching to Base..."
+      : "Switch to Base";
+    primaryActionDisabled =
+      isSwitchingChain || isSubmittingAction || isWalletFlowBusy;
+    primaryActionHandler = onSwitchToBase;
+    heroPortalCopy = "Base lane waiting";
+    profileVaultLabel = "Switch to Base to unlock collection";
+    profileVaultHint = "Collection access opens after your wallet is on Base.";
+    profileVaultHref = null;
+    profileVaultHandler = onSwitchToBase;
+  } else if (effectiveIsConnected && !isSignedInWithBase) {
+    heroStatusLabel = "Secure sign-in";
+    heroTitle = "Confirm this bubble so the app can trust your next move.";
+    heroBody =
+      "One quick Base signature unlocks profile sync, onboarding, daily check-in, and session actions.";
+    heroAccentClass =
+      "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
+    primaryActionLabel =
+      isWalletFlowBusy && walletFlowState.phase === "sign_in"
+        ? "Signing in..."
+        : "Sign in with Base";
+    primaryActionDisabled = isWalletFlowBusy || isSubmittingAction;
+    primaryActionHandler = onSignInWithBase;
+    heroPortalCopy = "Seal your glow";
+    profileVaultLabel = "Sign in to unlock collection";
+    profileVaultHint = "Secure sign-in is required before BubbleDrop can load NFTs and cosmetics.";
+    profileVaultHref = null;
+    profileVaultHandler = onSignInWithBase;
+  } else if (!profileId) {
+    heroStatusLabel = "Profile sync";
+    heroTitle = "Shape this bubble into your BubbleDrop identity.";
+    heroBody =
+      "Bring your wallet into BubbleDrop so your profile, onboarding state, and daily progression can wake up.";
+    heroAccentClass =
+      "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
+    primaryActionLabel = "Open my BubbleDrop home";
+    primaryActionDisabled = !canSyncProfile;
+    primaryActionHandler = onBootstrapProfile;
+    heroPortalCopy = "Home still forming";
+    profileVaultLabel = "Create profile to unlock collection";
+    profileVaultHint = "Your NFT and cosmetic vault appears after BubbleDrop creates your player profile.";
+    profileVaultHref = null;
+    profileVaultHandler = onBootstrapProfile;
+    profileVaultDisabled = !canSyncProfile;
+  } else if (!profileSummary) {
+    heroStatusLabel = "Refreshing";
+    heroTitle = "Your bubble is almost ready to glow.";
+    heroBody =
+      "Pull in your latest profile state so the home screen can show today's rewards, streak, and next move.";
+    heroAccentClass =
+      "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
+    primaryActionLabel = "Refresh my home";
+    primaryActionDisabled = isSubmittingAction;
+    primaryActionHandler = onRefreshProfile;
+    heroPortalCopy = "Glow calibrating";
+    profileVaultLabel = "Refresh profile to open collection";
+    profileVaultHint = "Your vault appears as soon as the latest player state finishes loading.";
+    profileVaultHref = null;
+    profileVaultHandler = onRefreshProfile;
+  } else if (qualificationStatus === "paused") {
+    heroStatusLabel = "Rewards paused";
+    heroTitle = "Your glow is still alive, but premium drops are resting.";
+    heroBody =
+      "Step into a bubble run to keep progression alive, then touch in to warm rare reward access back up.";
+    heroAccentClass =
+      "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
+    primaryActionLabel = "Enter a warm-up run";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
+    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionDisabled = isSubmittingAction;
+    secondaryHeroActionHandler = onDailyCheckIn;
+    heroPortalCopy = "Premium lane resting";
+    avatarSpotlightBody =
+      "Your current avatar is equipped. Keep growing XP and cosmetics to make the profile feel richer over time.";
+  } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
+    heroStatusLabel = "Qualified";
+    heroTitle = "Your rare reward lane is glowing today.";
+    heroBody =
+      "The lounge is lit. Dive into bubble play while your premium reward path is bright and alive.";
+    heroAccentClass =
+      "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
+    primaryActionLabel = "Enter today's bubble run";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
+    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionDisabled = isSubmittingAction;
+    secondaryHeroActionHandler = onDailyCheckIn;
+    heroPortalCopy = "Rare lane live";
+    avatarSpotlightBody =
+      "This profile is in full glow mode. XP, frame growth, cosmetics, and drops now read as one player identity.";
+  } else if (!isRareRewardAccessActive) {
+    heroStatusLabel = "XP-only mode";
+    heroTitle = "Today still moves your bubble forward.";
+    heroBody =
+      "Rare drops can wait. Slip into bubble play, build momentum, and let the glow come back naturally.";
+    heroAccentClass =
+      "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
+    primaryActionLabel = "Enter an XP run";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
+    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionDisabled = isSubmittingAction;
+    secondaryHeroActionHandler = onDailyCheckIn;
+    heroPortalCopy = "XP lane open";
+    avatarSpotlightBody =
+      "Your avatar is still part of progression even on XP-only days. Cosmetics and NFT drops remain visible in the vault.";
+  } else if (profileSummary) {
+    heroStatusLabel = "Ready to play";
+    heroTitle = "Your bubble board is awake and ready for today's run.";
+    heroBody =
+      "Everything is warmed up. Enter bubble play and let your progression lounge turn into motion.";
+    heroAccentClass =
+      "from-[#b7f0ff]/95 via-[#d8dcff]/92 to-[#ffe0f0]/92 text-[#173056]";
+    primaryActionLabel = "Enter bubble play";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
+    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionDisabled = isSubmittingAction;
+    secondaryHeroActionHandler = onDailyCheckIn;
+    heroPortalCopy = "Play portal ready";
+    avatarSpotlightBody =
+      "This is your player profile core. As XP grows, frame, cosmetics, and avatar presence should feel more premium.";
+  }
 
   const onAnswer = (index: number) => {
     setSelectedOption(index);
@@ -1104,11 +1422,18 @@ export function BubbleDropShell() {
 
   return (
     <div className="relative min-h-screen px-4 py-6 sm:px-6">
+      <div className="ambient-aura">
+        <span className="aura aura1" />
+        <span className="aura aura2" />
+        <span className="aura aura3" />
+      </div>
       <div className="floating-bubbles">
         <span className="bubble b1" />
         <span className="bubble b2" />
         <span className="bubble b3" />
         <span className="bubble b4" />
+        <span className="bubble b5" />
+        <span className="bubble b6" />
       </div>
 
       <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
@@ -1232,359 +1557,458 @@ export function BubbleDropShell() {
           </section>
         ) : (
           <>
-            <section className="bubble-card p-4">
-              <div className="gloss-pill rounded-2xl bg-gradient-to-r from-[#9dd5ff] to-[#c7c6ff] p-4 text-[#1c2a52]">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#364e7f]">
-                  Daily Base check-in
-                </p>
-                <p className="mt-1 text-lg font-bold">Check-in once per day to keep rare access path active.</p>
-                <p className="mt-1 text-sm text-[#42567f]">
-                  Status:{" "}
-                    {profileSummary
-                    ? "Ready for backend action."
-                    : connectedWalletAddress
-                      ? "Connected wallet ready for backend bootstrap."
-                      : "Connect Base wallet to bootstrap backend profile."}
-                </p>
-                <div className="mt-3 flex flex-col gap-2">
-                  <div className="rounded-xl border border-[#d6e3ff] bg-white/80 px-3 py-3 text-sm text-[#2d4578]">
-                    <p className="text-xs uppercase tracking-[0.08em] text-[#6074a0]">Base wallet</p>
-                    <p className="mt-1 break-all font-semibold">
-                      {connectedWalletAddress ?? "Not connected"}
+            <section className="bubble-card player-profile-card overflow-hidden p-4">
+              <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_70%)]" />
+              <div className="absolute -right-10 top-0 h-28 w-28 rounded-full bg-[#ffdff0]/50 blur-3xl" />
+              <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
+              <div className="relative flex items-start gap-3">
+                <div className="profile-emblem relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.96),rgba(255,255,255,0.42)_32%,rgba(163,221,255,0.96)_58%,rgba(230,217,255,0.98)_100%)] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70">
+                  <span className="relative z-10">{avatarGlyph}</span>
+                  <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-white/80" />
+                  <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#7085b0]">
+                    Player profile
+                  </p>
+                  <h1 className="mt-1 truncate text-[1.7rem] font-black tracking-[-0.04em] text-[#20365d]">
+                    {nicknameDisplay}
+                  </h1>
+                  <p className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-[#526ca0]">
+                    Equipped avatar
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-[#6177a2]">{avatarLabel}</p>
+                  <p className="mt-1 text-xs text-[#7b8fb8]">
+                    {walletDisplay}
+                    {bootstrappedWalletAddress &&
+                    bootstrappedWalletAddress !== connectedWalletAddress
+                      ? ` • synced to ${shortenWalletAddress(bootstrappedWalletAddress)}`
+                      : ""}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] ${qualificationBadge.className}`}
+                >
+                  {qualificationBadge.label}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="rounded-2xl bg-white/72 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">XP</p>
+                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#233b67]">{totalXp}</p>
+                </div>
+                <div className="rounded-2xl bg-white/72 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">Streak</p>
+                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#233b67]">{currentStreak}</p>
+                </div>
+                <div className="rounded-2xl bg-white/72 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">Frame</p>
+                  <p className="mt-1 truncate text-sm font-black tracking-[-0.02em] text-[#233b67]">
+                    {currentFrameLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[1.35rem] bg-white/72 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold text-[#5d729d]">
+                    {nextFrame
+                      ? `${nextFrame.label} is ${nextFrame.xpToReach} XP away`
+                      : profileSummary
+                        ? "Your bubble is resting at its current frame"
+                        : "Progression wakes up once your profile is synced"}
+                  </p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">
+                    {nextFrame ? `${progressToNextFramePercent}%` : "Live"}
+                  </p>
+                </div>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#e9efff]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#8fdcff] via-[#c8d3ff] to-[#ffcae8] transition-[width] duration-300"
+                    style={{ width: `${progressToNextFramePercent}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-2">
+                <div className="rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
+                    Avatar spotlight
+                  </p>
+                  <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">
+                    {avatarSpotlightTitle}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[#5f749f]">{avatarSpotlightBody}</p>
+                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8fb7]">
+                    {equippedAvatarKey ? `Avatar key: ${equippedAvatarKey}` : "Starter avatar unlocks during onboarding"}
+                  </p>
+                </div>
+
+                {profileVaultHref ? (
+                  <Link
+                    href={profileVaultHref}
+                    className="action-card rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-sm font-semibold text-[#433763]"
+                  >
+                    <span className="block">
+                      <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
+                        Collection vault
+                      </span>
+                      <span className="mt-2 block text-base font-black tracking-[-0.03em] text-[#3f3163]">
+                        {hasUnlockedCollection ? "Open NFT & cosmetics" : profileVaultLabel}
+                      </span>
+                      <span className="mt-2 block text-sm leading-5 text-[#6e6490]">
+                        {hasUnlockedCollection
+                          ? "See the NFTs, cosmetics, and bubble rewards you have already unlocked."
+                          : profileVaultHint}
+                      </span>
+                    </span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={profileVaultHandler ?? primaryActionHandler}
+                    disabled={profileVaultDisabled || primaryActionDisabled}
+                    className="action-card rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-left text-sm font-semibold text-[#433763] disabled:opacity-60"
+                  >
+                    <span className="block">
+                      <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
+                        Collection vault
+                      </span>
+                      <span className="mt-2 block text-base font-black tracking-[-0.03em] text-[#3f3163]">
+                        {profileVaultLabel}
+                      </span>
+                      <span className="mt-2 block text-sm leading-5 text-[#6e6490]">
+                        {profileVaultHint}
+                      </span>
+                    </span>
+                  </button>
+                )}
+              </div>
+            </section>
+
+            <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
+              <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
+              <div className="absolute -bottom-12 left-0 h-32 w-32 rounded-full bg-white/20 blur-3xl" />
+              <div className="hero-portal-glow absolute right-[-1.5rem] top-[-0.6rem] h-44 w-44 rounded-full" />
+              <div className="hero-portal-ring absolute right-[0.9rem] top-[1.1rem] h-24 w-24 rounded-full border border-white/35" />
+              <div className="hero-portal-ring hero-portal-ring-delay absolute right-[0.2rem] top-[0.4rem] h-32 w-32 rounded-full border border-white/20" />
+              <div className="relative">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                      {heroStatusLabel}
                     </p>
-                    <p className="mt-1 text-xs text-[#5f739b]">
-                      Network:{" "}
-                      {effectiveIsConnected
-                        ? isConnectedToBase
-                          ? "Base"
-                          : `Wrong network (${effectiveChainId ?? "unknown"})`
-                        : "Connect required"}
-                    </p>
-                    {bootstrappedWalletAddress ? (
-                      <p className="mt-1 text-xs text-[#5f739b]">
-                        Backend-bound wallet: {bootstrappedWalletAddress}
-                      </p>
-                    ) : null}
-                    <div className="mt-3 rounded-xl border border-[#dce6ff] bg-[#f8fbff] px-3 py-3">
-                      <p className="text-xs uppercase tracking-[0.08em] text-[#6074a0]">
-                        Sign in with Base
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-[#2d4578]">
-                        {isSignedInWithBase
-                          ? "Wallet ownership confirmed in this browser session."
-                          : "Confirm your wallet in-app to unlock protected BubbleDrop actions."}
-                      </p>
-                      <p className="mt-1 text-xs text-[#5f739b]">
-                        {isSignedInWithBase && signInSession
-                          ? `Signed at ${new Date(signInSession.issuedAt).toLocaleString()}${signInSession.mode === "smoke" ? " (smoke override)." : "."}`
-                          : "BubbleDrop keeps backend verification as the source of truth for your signed-in session."}
-                      </p>
-                      {walletFlowTitle && walletFlowState.message ? (
-                        <div
-                          className={`mt-3 rounded-xl border px-3 py-3 ${walletFlowCardStyle}`}
-                        >
-                          <p className="text-xs uppercase tracking-[0.08em]">
-                            {walletFlowTitle}
-                          </p>
-                          <p className="mt-1 text-sm font-semibold">
-                            {walletFlowState.message}
-                          </p>
-                          {walletFlowDetail ? (
-                            <p className="mt-2 text-xs leading-relaxed opacity-80">
-                              {walletFlowDetail}
-                            </p>
-                          ) : null}
-                          {showConnectRecovery ? (
-                            <div className="mt-3 flex flex-col gap-2">
-                              <button
-                                type="button"
-                                onClick={onConnectWallet}
-                                disabled={isWalletFlowBusy || isSubmittingAction}
-                                className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                              >
-                                Retry in-app Base connection
-                              </button>
-                              {fallbackWalletConnector ? (
-                                <button
-                                  type="button"
-                                  onClick={onConnectCoinbaseWallet}
-                                  disabled={isWalletFlowBusy || isSubmittingAction}
-                                  className="rounded-xl bg-white/85 px-4 py-3 text-left text-sm font-semibold text-[#425b8a] disabled:opacity-60"
-                                >
-                                  Try Coinbase Wallet fallback
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {showSignInRecovery ? (
-                            <div className="mt-3">
-                              <button
-                                type="button"
-                                onClick={onSignInWithBase}
-                                disabled={isWalletFlowBusy || isSubmittingAction}
-                                className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                              >
-                                Retry Base sign-in
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
+                    <h2 className="mt-2 text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
+                      {heroTitle}
+                    </h2>
+                    <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">{heroBody}</p>
                   </div>
-                  {!effectiveIsConnected ? (
+                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
+                    <div className="absolute inset-3 rounded-full border border-white/28" />
+                    <div
+                      className={`hero-portal-core h-10 w-10 rounded-full ${
+                        isRareRewardAccessActive
+                          ? "bg-gradient-to-br from-[#fff1a8] via-[#ffd8e8] to-[#b5dfff] shadow-[0_0_30px_rgba(255,215,146,0.95)]"
+                          : "bg-gradient-to-br from-white/90 to-white/45"
+                      }`}
+                    />
+                    <span className="absolute bottom-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#29456f]/70">
+                      {heroPortalCopy}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {homeStatusPills.map((pill) => (
+                    <span
+                      key={pill}
+                      className="rounded-full bg-white/60 px-3 py-1.5 text-[11px] font-semibold tracking-[0.04em] text-[#28456f] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
+                    >
+                      {pill}
+                    </span>
+                  ))}
+                </div>
+
+                {primaryActionKind === "link" && primaryActionHref ? (
+                  <Link
+                    href={primaryActionHref}
+                    className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"
+                  >
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
+                      Play portal
+                    </span>
+                    <span className="mt-1 block">{primaryActionLabel}</span>
+                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
+                      Let the lounge turn into motion.
+                    </span>
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={primaryActionHandler}
+                    disabled={primaryActionDisabled}
+                    className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
+                  >
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
+                      Next move
+                    </span>
+                    <span className="mt-1 block">{primaryActionLabel}</span>
+                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
+                      Take the cleanest path from lounge into play.
+                    </span>
+                  </button>
+                )}
+
+                {secondaryHeroActionLabel && secondaryHeroActionHandler ? (
+                  <button
+                    type="button"
+                    onClick={secondaryHeroActionHandler}
+                    disabled={secondaryHeroActionDisabled}
+                    className="mt-3 rounded-[1.1rem] bg-white/56 px-4 py-3 text-left text-sm font-semibold text-[#28456f] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition-transform duration-150 hover:-translate-y-[1px] disabled:opacity-60"
+                  >
+                    {secondaryHeroActionLabel}
+                  </button>
+                ) : null}
+
+                {walletFlowTitle && walletFlowState.message ? (
+                  <div className={`mt-3 rounded-[1.2rem] border px-4 py-3 ${walletFlowCardStyle}`}>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">
+                      {walletFlowTitle}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-6">{walletFlowState.message}</p>
+                  </div>
+                ) : null}
+
+                {showConnectRecovery ? (
+                  <div className="mt-3 flex flex-col gap-2">
                     <button
                       type="button"
                       onClick={onConnectWallet}
                       disabled={isWalletFlowBusy || isSubmittingAction}
-                      className="gloss-pill rounded-xl bg-gradient-to-r from-[#c9f1ff] to-[#d6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                    className="action-chip gloss-pill rounded-[1.1rem] bg-white/72 px-4 py-3 text-left text-sm font-semibold text-[#28456f] disabled:opacity-60"
                     >
-                      {isWalletFlowBusy
-                        ? "Connecting in Base App..."
-                        : "Connect in Base App"}
+                    Retry{" "}
+                    {preferredConnectorUsesCoinbaseWallet
+                      ? "Coinbase Wallet"
+                      : preferredConnectorUsesBaseAccount
+                        ? "Base connection"
+                        : "in-app Base"}
                     </button>
-                  ) : null}
-                  {effectiveIsConnected && !isConnectedToBase ? (
-                    <button
-                      type="button"
-                      onClick={onSwitchToBase}
-                      disabled={isSwitchingChain || isSubmittingAction || isWalletFlowBusy}
-                      className="gloss-pill rounded-xl bg-gradient-to-r from-[#d9f2ff] to-[#e6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                    >
-                      {isSwitchingChain ? "Switching to Base..." : "Switch connected wallet to Base"}
-                    </button>
-                  ) : null}
-                  {effectiveIsConnected && isConnectedToBase && !isSignedInWithBase ? (
+                    {fallbackWalletConnector ? (
+                      <button
+                        type="button"
+                        onClick={onConnectCoinbaseWallet}
+                        disabled={isWalletFlowBusy || isSubmittingAction}
+                        className="action-chip rounded-[1.1rem] bg-white/52 px-4 py-3 text-left text-sm font-semibold text-[#355889] disabled:opacity-60"
+                      >
+                        {fallbackConnectorUsesCoinbaseWallet
+                          ? "Try Coinbase Wallet fallback"
+                          : "Try alternate Base route"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {showSignInRecovery ? (
+                  <div className="mt-3">
                     <button
                       type="button"
                       onClick={onSignInWithBase}
                       disabled={isWalletFlowBusy || isSubmittingAction}
-                      className="gloss-pill rounded-xl bg-gradient-to-r from-[#d3f6ff] to-[#dbe1ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                      className="action-chip gloss-pill rounded-[1.1rem] bg-white/72 px-4 py-3 text-left text-sm font-semibold text-[#28456f] disabled:opacity-60"
                     >
-                      {isWalletFlowBusy && walletFlowState.phase === "sign_in"
-                        ? "Signing in..."
-                        : "Sign in with Base"}
+                      Retry Base sign-in
                     </button>
-                  ) : null}
-                  {effectiveIsConnected && isConnectedToBase && isSignedInWithBase && !smokeWalletOverride ? (
-                    <button
-                      type="button"
-                      onClick={onClearBaseSignIn}
-                      disabled={isSubmittingAction || isWalletFlowBusy}
-                      className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs font-semibold text-[#48608f] disabled:opacity-60"
-                    >
-                      Clear frontend Base sign-in
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={onBootstrapProfile}
-                    disabled={
-                      isSubmittingAction ||
-                      !authenticatedSessionToken ||
-                      !connectedWalletAddress ||
-                      !isConnectedToBase
-                    }
-                    className="gloss-pill rounded-xl bg-gradient-to-r from-[#c9f1ff] to-[#d6deff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                  >
-                    Bootstrap / refresh profile from connected wallet
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onDailyCheckIn}
-                    disabled={
-                      isSubmittingAction ||
-                      !authenticatedSessionToken ||
-                      !profileId ||
-                      !connectedWalletAddress ||
-                      !isConnectedToBase
-                    }
-                    className="gloss-pill rounded-xl bg-gradient-to-r from-[#a5f0ff] to-[#b8c8ff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                  >
-                    Daily Base check-in
-                  </button>
-                  {effectiveIsConnected && !smokeWalletOverride ? (
-                    <button
-                      type="button"
-                      onClick={onDisconnectWallet}
-                      disabled={isSubmittingAction || isWalletFlowBusy}
-                      className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs font-semibold text-[#48608f] disabled:opacity-60"
-                    >
-                      Disconnect wallet
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={onRefreshProfile}
-                    disabled={isSubmittingAction}
-                    className="rounded-xl bg-white/80 px-4 py-2 text-left text-xs font-semibold text-[#48608f] disabled:opacity-60"
-                  >
-                    Refresh backend summary
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">XP summary</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div className="gloss-pill rounded-xl bg-white/80 p-3">
-                  <p className="text-xs text-[#6074a0]">Total XP</p>
-                  <p className="mt-1 font-semibold">{profileSummary ? profileSummary.xpSummary.totalXp : "—"}</p>
-                </div>
-                <div className="gloss-pill rounded-xl bg-white/80 p-3">
-                  <p className="text-xs text-[#6074a0]">Current streak</p>
-                  <p className="mt-1 font-semibold">{profileSummary ? profileSummary.xpSummary.currentStreak : "—"}</p>
-                </div>
-              </div>
-            </section>
-
-            <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Rank frame + qualification overlay</h2>
-              <div className="mt-3 rounded-2xl border border-[#d6e3ff] bg-white/80 p-4">
-                <div className="relative">
-                  <div className="gloss-pill inline-flex rounded-full bg-gradient-to-r from-[#c3dbff] to-[#e2d7ff] px-4 py-2 text-sm font-semibold text-[#30466f]">
-                    Frame: {profileSummary?.rankFrameState.currentFrame?.label ?? "—"}
                   </div>
-                  <span
-                    className={`absolute -top-2 -right-2 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${qualificationBadge.className}`}
-                  >
-                    {qualificationBadge.label}
-                  </span>
-                </div>
-                <p className="mt-3 text-xs text-[#5f739b]">
-                  Next frame:{" "}
-                  {profileSummary?.rankFrameState.nextFrame
-                    ? `${profileSummary.rankFrameState.nextFrame.label} in ${profileSummary.rankFrameState.nextFrame.xpToReach} XP`
-                    : "Top frame reached or backend pending"}
-                </p>
-              </div>
-            </section>
-
-            <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Rare reward access</h2>
-              <div className="mt-3 flex flex-col gap-2">
-                <div className="rounded-xl bg-white/80 p-3">
-                  <p className="text-xs text-[#6074a0]">Qualification state</p>
-                  <p className="mt-1 text-sm font-semibold capitalize">{qualificationLabel}</p>
-                </div>
-                <div
-                  className={`gloss-pill rounded-xl p-3 ${
-                    isRareRewardAccessActive
-                      ? "bg-gradient-to-r from-[#ffe8a8] via-[#ffd5ef] to-[#d7d4ff]"
-                      : "bg-gradient-to-r from-[#eef3ff] to-[#f6f8ff]"
-                  }`}
-                >
-                  <p className="text-xs text-[#6074a0]">
-                    {isRareRewardAccessActive ? "Rare reward access" : "XP-only mode"}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-[#324d7a]">
-                    {isRareRewardAccessActive ? "Active" : "Rare reward access inactive"}
-                  </p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span
-                      className={`h-6 w-6 rounded-full ${
-                        isRareRewardAccessActive
-                          ? "bg-gradient-to-br from-[#ffe388] to-[#ff9ed8] shadow-[0_0_16px_rgba(255,197,125,0.75)]"
-                          : "bg-gradient-to-br from-[#dfe7fb] to-[#edf2ff]"
-                      }`}
-                    />
-                    <span className="text-xs text-[#566b95]">
-                      {isRareRewardAccessActive
-                        ? "Rare bubbles get premium glow when access is active."
-                        : "Backend currently keeps this profile in XP-only mode until rare reward access is restored."}
-                    </span>
-                  </div>
-                  {!isRareRewardAccessActive ? (
-                    <div className="mt-3 rounded-xl border border-[#d9e5ff] bg-white/80 p-3 text-xs text-[#556b96]">
-                      Claim requests are unavailable while access is locked or paused. Keep daily check-ins active and continue valid bubble sessions to restore rare reward eligibility.
-                    </div>
-                  ) : null}
-                </div>
-                {isRareRewardAccessActive ? (
-                  <Link
-                    href={withBubbleDropContext("/claim", {
-                      profileId,
-                      walletAddress: activeWalletAddress,
-                    })}
-                    className="gloss-pill rounded-xl bg-gradient-to-r from-[#ffe7b4] to-[#ffd3ee] px-4 py-3 text-left text-sm font-semibold text-[#5e3f21]"
-                  >
-                    Open meme-token claims
-                  </Link>
                 ) : null}
               </div>
             </section>
 
             <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Active bubble session</h2>
-              <Link
-                href={withBubbleDropContext("/session", {
-                  profileId,
-                  walletAddress: activeWalletAddress,
-                })}
-                className="gloss-pill mt-3 block w-full rounded-xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-3 text-left text-sm font-semibold text-[#403165]"
-              >
-                Enter active bubble session
-              </Link>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                    Rewards glow
+                  </p>
+                  <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
+                    {isRareRewardAccessActive
+                      ? "Premium rewards are live"
+                      : qualificationStatus === "paused"
+                        ? "Rare rewards are resting"
+                        : "XP-first day"}
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[#6278a3]">
+                    {isRareRewardAccessActive
+                      ? "Your rare lane is open. Keep your streak bright and check what is waiting in the vault."
+                      : "Progress still feels alive through streaks, XP, and future unlocks even while rare access cools down."}
+                  </p>
+                </div>
+                <div className="rounded-[1.15rem] bg-gradient-to-br from-[#fff1b3] via-[#ffd7ee] to-[#e3dcff] px-3 py-2 text-right shadow-[0_16px_36px_rgba(133,119,189,0.16)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d6390]">
+                    Vault
+                  </p>
+                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#553a63]">
+                    {rewardsTokenCount}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-white/78 px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">
+                    Claimable
+                  </p>
+                  <p className="mt-1 text-base font-black tracking-[-0.02em] text-[#20365d]">
+                    {claimableTokenAmount}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-white/78 px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">
+                    State
+                  </p>
+                  <p className="mt-1 text-base font-black capitalize tracking-[-0.02em] text-[#20365d]">
+                    {qualificationBadge.label}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {isRareRewardAccessActive ? (
+                  <Link
+                    href={claimsHref}
+                    className="action-chip gloss-pill rounded-[1.1rem] bg-gradient-to-r from-[#ffe4b4] to-[#ffd6ed] px-4 py-3 text-sm font-semibold text-[#5b3920]"
+                  >
+                    Open reward claims
+                  </Link>
+                ) : null}
+                <Link
+                  href={rewardsInventoryHref}
+                  className="action-chip rounded-[1.1rem] bg-white/82 px-4 py-3 text-sm font-semibold text-[#355889]"
+                >
+                  Open reward vault
+                </Link>
+              </div>
             </section>
+
             <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Read surfaces</h2>
-              <div className="mt-3 flex flex-col gap-2">
-                <Link
-                  href={withBubbleDropContext("/leaderboard", {
-                    profileId,
-                    walletAddress: activeWalletAddress,
-                  })}
-                  className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                    Play lane
+                  </p>
+                  <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
+                    Bubble time
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-[#6278a3]">
+                    Sessions are where the app feels alive. Tap in, stay active, and turn the day into progression.
+                  </p>
+                </div>
+                <div className="rounded-[1.15rem] bg-gradient-to-br from-[#d7f3ff] via-[#e4e1ff] to-[#ffe0f1] px-3 py-2 text-right shadow-[0_16px_36px_rgba(109,145,219,0.14)]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6f7fb0]">
+                    Session
+                  </p>
+                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#3d4574]">Ready</p>
+                </div>
+              </div>
+
+              <Link
+                href={quickSessionHref}
+                className="action-chip gloss-pill mt-4 block rounded-[1.3rem] bg-gradient-to-r from-[#ffdbe9] via-[#ebe1ff] to-[#d4f1ff] px-4 py-4 text-base font-black tracking-[-0.02em] text-[#382f63]"
+              >
+                Enter bubble session
+              </Link>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {canSyncProfile ? (
+                  <button
+                    type="button"
+                    onClick={onBootstrapProfile}
+                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f]"
+                  >
+                    Sync profile
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={onRefreshProfile}
+                  disabled={isSubmittingAction}
+                  className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
                 >
-                  Open leaderboard
+                  Refresh home
+                </button>
+                {effectiveIsConnected && isConnectedToBase && isSignedInWithBase && !smokeWalletOverride ? (
+                  <button
+                    type="button"
+                    onClick={onClearBaseSignIn}
+                    disabled={isSubmittingAction || isWalletFlowBusy}
+                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+                  >
+                    Clear sign-in
+                  </button>
+                ) : null}
+                {effectiveIsConnected && !smokeWalletOverride ? (
+                  <button
+                    type="button"
+                    onClick={onDisconnectWallet}
+                    disabled={isSubmittingAction || isWalletFlowBusy}
+                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+                  >
+                    Disconnect
+                  </button>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="bubble-card p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                Bubble world
+              </p>
+              <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
+                Keep the world feeling alive
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[#6278a3]">
+                Drift through the compact surfaces that shape the season around your profile, rewards, and social pulse.
+              </p>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Link
+                  href={seasonHref}
+                  className="action-card rounded-[1.2rem] bg-gradient-to-br from-[#dff3ff] to-[#ede3ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
+                >
+                  Open season spotlight
                 </Link>
                 <Link
-                  href={withBubbleDropContext("/inventory", {
-                    profileId,
-                    walletAddress: activeWalletAddress,
-                  })}
-                  className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
+                  href={leaderboardHref}
+                  className="action-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open rewards inventory
+                  Open signal board
                 </Link>
                 <Link
-                  href={withBubbleDropContext("/referrals", {
-                    profileId,
-                    walletAddress: activeWalletAddress,
-                  })}
-                  className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
+                  href={referralsHref}
+                  className="action-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open referral progress
+                  Open referral bloom
                 </Link>
                 <Link
-                  href={withBubbleDropContext("/season", {
-                    profileId,
-                    walletAddress: activeWalletAddress,
-                  })}
-                  className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
-                >
-                  Open season hub
-                </Link>
-                <Link
-                  href={withBubbleDropContext("/partner-tokens", {
-                    profileId,
-                    walletAddress: activeWalletAddress,
-                  })}
+                  href={partnerTokensHref}
                   onClick={() =>
                     captureAnalyticsEvent("bubbledrop_partner_transparency_opened", {
                       profile_id: profileId,
                     })
                   }
-                  className="rounded-xl bg-white/80 px-4 py-3 text-sm font-semibold text-[#36568d]"
+                  className="action-card rounded-[1.2rem] bg-gradient-to-br from-[#ffe7f0] to-[#e7e6ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open partner token transparency
+                  Open token pulse
                 </Link>
               </div>
             </section>
+
             {actionMessage ? (
-              <section className="bubble-card p-4">
-                <p className="rounded-xl bg-white/80 p-3 text-xs font-semibold text-[#4f648f]">{actionMessage}</p>
+              <section className="sticky bottom-3 z-20">
+                <p className="bubble-card rounded-[1.2rem] px-4 py-3 text-sm font-semibold text-[#3f5887]">
+                  {actionMessage}
+                </p>
               </section>
             ) : null}
           </>

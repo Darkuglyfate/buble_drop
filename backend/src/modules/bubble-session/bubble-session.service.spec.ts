@@ -126,6 +126,7 @@ describe('BubbleSessionService', () => {
       currentAvatarId: 'avatar-1',
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 50,
+      currentStreak: 0,
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '22222222-2222-4222-8222-222222222222',
@@ -158,6 +159,10 @@ describe('BubbleSessionService', () => {
       360,
     );
 
+    expect(result.success).toBe(true);
+    expect(result.xpAwarded).toBe(result.grantedXp);
+    expect(result.newStreak).toBe(0);
+    expect(result.rareAccessActive).toBe(false);
     expect(result.grantedXp).toBeGreaterThan(0);
     expect(result.totalXp).toBe(50 + result.grantedXp);
     expect(result.activeSeconds).toBe(360);
@@ -188,6 +193,7 @@ describe('BubbleSessionService', () => {
       currentAvatarId: 'avatar-1',
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 80,
+      currentStreak: 0,
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '33333333-3333-4333-8333-333333333333',
@@ -212,6 +218,10 @@ describe('BubbleSessionService', () => {
       0,
     );
 
+    expect(result.success).toBe(true);
+    expect(result.xpAwarded).toBe(0);
+    expect(result.newStreak).toBe(0);
+    expect(result.rareAccessActive).toBe(false);
     expect(result.grantedXp).toBe(0);
     expect(result.totalXp).toBe(80);
     expect(xpService.grantXp).toHaveBeenCalled();
@@ -417,6 +427,7 @@ describe('BubbleSessionService', () => {
       currentAvatarId: 'avatar-1',
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 10,
+      currentStreak: 3,
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '66666666-6666-4666-8666-666666666666',
@@ -446,6 +457,10 @@ describe('BubbleSessionService', () => {
       300,
     );
 
+    expect(result.success).toBe(true);
+    expect(result.xpAwarded).toBe(0);
+    expect(result.newStreak).toBe(3);
+    expect(result.rareAccessActive).toBe(false);
     expect(result.activeSeconds).toBe(12);
     expect(result.completionBonusXp).toBe(0);
     expect(redisClient.del).toHaveBeenCalled();
@@ -459,6 +474,7 @@ describe('BubbleSessionService', () => {
       currentAvatarId: 'avatar-1',
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 15,
+      currentStreak: 4,
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '77777777-7777-4777-8777-777777777777',
@@ -487,6 +503,10 @@ describe('BubbleSessionService', () => {
       120,
     );
 
+    expect(result.success).toBe(true);
+    expect(result.xpAwarded).toBe(10);
+    expect(result.newStreak).toBe(4);
+    expect(result.rareAccessActive).toBe(false);
     expect(result.activeSeconds).toBe(120);
     expect(result.totalXp).toBe(25);
     expect(redisClient.zrange).toHaveBeenCalled();

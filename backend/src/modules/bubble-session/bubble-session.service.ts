@@ -35,6 +35,7 @@ export interface BubbleSessionStartResult {
 }
 
 export interface BubbleSessionCompleteResult {
+  success: true;
   sessionId: string;
   profileId: string;
   endedAt: Date;
@@ -42,6 +43,9 @@ export interface BubbleSessionCompleteResult {
   activeSeconds: number;
   activePlayXp: number;
   completionBonusXp: number;
+  xpAwarded: number;
+  newStreak: number;
+  rareAccessActive: boolean;
   grantedXp: number;
   totalXp: number;
   qualificationStatus: QualificationStatus;
@@ -232,6 +236,7 @@ export class BubbleSessionService {
       });
 
     return {
+      success: true,
       sessionId: session.id,
       profileId,
       endedAt,
@@ -239,6 +244,9 @@ export class BubbleSessionService {
       activeSeconds,
       activePlayXp,
       completionBonusXp,
+      xpAwarded: grantedXp,
+      newStreak: profile.currentStreak,
+      rareAccessActive: qualification.rareRewardAccessActive,
       grantedXp,
       totalXp: profile.totalXp,
       qualificationStatus: qualification.qualificationStatus,

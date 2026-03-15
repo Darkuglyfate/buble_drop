@@ -44,6 +44,8 @@ export interface OnboardingCompletionResult {
   needsOnboarding: false;
 }
 
+const DEFAULT_ONBOARDING_XP_AMOUNT = 20;
+
 export interface ProfileSummary {
   onboardingState: {
     needsOnboarding: boolean;
@@ -262,9 +264,9 @@ export class ProfileService {
     }
 
     let onboardingXpGranted = 0;
-    const onboardingXpAmount = this.configService.get<number>(
+    const onboardingXpAmount = this.getConfiguredNonNegativeInteger(
       'ONBOARDING_XP_AMOUNT',
-      0,
+      DEFAULT_ONBOARDING_XP_AMOUNT,
     );
     if (onboardingXpAmount > 0) {
       const xpGrant = await this.xpService.grantXp(profile.id, [
@@ -569,6 +571,23 @@ export class ProfileService {
       );
     }
     return BigInt(normalized);
+  }
+
+  private getConfiguredNonNegativeInteger(
+    key: string,
+    defaultValue: number,
+  ): number {
+    const rawValue = this.configService.get<string | number | undefined>(key);
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+      return Math.max(0, Math.floor(rawValue));
+    }
+    if (typeof rawValue === 'string' && rawValue.trim() !== '') {
+      const parsed = Number(rawValue);
+      if (Number.isFinite(parsed)) {
+        return Math.max(0, Math.floor(parsed));
+      }
+    }
+    return defaultValue;
   }
 
   private profileNeedsOnboarding(profile: Profile): boolean {

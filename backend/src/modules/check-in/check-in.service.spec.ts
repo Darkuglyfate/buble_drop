@@ -63,6 +63,7 @@ describe('CheckInService', () => {
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       currentStreak: 0,
+      totalXp: 0,
     });
     checkInRepository
       .findOne!.mockResolvedValueOnce(null) // existing today
@@ -95,8 +96,13 @@ describe('CheckInService', () => {
     );
 
     expect(result).toEqual({
+      success: true,
       profileId: '11111111-1111-4111-8111-111111111111',
       checkInDate: '2026-03-14',
+      xpAwarded: 20,
+      newStreak: 1,
+      totalXp: 20,
+      rareAccessActive: false,
       currentStreak: 1,
       qualificationStatus: QualificationStatus.IN_PROGRESS,
       rareRewardAccessActive: false,
@@ -123,6 +129,7 @@ describe('CheckInService', () => {
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       currentStreak: 7,
+      totalXp: 40,
     });
     checkInRepository
       .findOne!.mockResolvedValueOnce(null) // existing today
@@ -158,8 +165,12 @@ describe('CheckInService', () => {
       '11111111-1111-4111-8111-111111111111',
     );
 
+    expect(result.success).toBe(true);
+    expect(result.xpAwarded).toBe(20);
+    expect(result.newStreak).toBe(1);
     expect(result.currentStreak).toBe(1);
     expect(result.qualificationStatus).toBe(QualificationStatus.PAUSED);
+    expect(result.rareAccessActive).toBe(false);
     expect(result.rareRewardAccessActive).toBe(false);
   });
 

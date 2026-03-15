@@ -79,6 +79,7 @@ type RareRewardOutcome = {
 };
 
 type SessionCompleteResponse = {
+  success: boolean;
   sessionId: string;
   profileId: string;
   endedAt: string;
@@ -86,6 +87,9 @@ type SessionCompleteResponse = {
   activeSeconds: number;
   activePlayXp: number;
   completionBonusXp: number;
+  xpAwarded: number;
+  newStreak: number;
+  rareAccessActive: boolean;
   grantedXp: number;
   totalXp: number;
   qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
@@ -396,13 +400,16 @@ export function BubbleSessionPlayScreen() {
         captureAnalyticsEvent("bubbledrop_bubble_session_completed", {
           profile_id: profileId,
           session_id: payload.sessionId,
-          granted_xp: payload.grantedXp,
+          granted_xp: payload.xpAwarded,
           completion_bonus_xp: payload.completionBonusXp,
+          new_streak: payload.newStreak,
           qualification_status: payload.qualificationStatus,
-          rare_reward_access_active: payload.rareRewardAccessActive,
+          rare_reward_access_active: payload.rareAccessActive,
         });
         setActionMessage(
-          `Session completed. Granted XP: ${payload.grantedXp}. Completion bonus XP: ${payload.completionBonusXp}. Qualification: ${payload.qualificationStatus}.`,
+          `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Rare access: ${
+            payload.rareAccessActive ? "active" : "inactive"
+          }.`,
         );
       } catch {
         setActionMessage("We couldn't complete that session right now.");
@@ -628,7 +635,7 @@ export function BubbleSessionPlayScreen() {
               <p className="mt-3 text-sm text-[#526a96]">
                 {hasRareRewardOutcome
                   ? "Only backend-confirmed reward issuance results are shown here immediately after session completion."
-                  : completedResult.rareRewardAccessActive
+                  : completedResult.rareAccessActive
                     ? "Backend completed the session without issuing a rare reward outcome."
                     : "Rare reward access was inactive for this run, so no rare reward outcome was returned."}
               </p>
@@ -641,12 +648,22 @@ export function BubbleSessionPlayScreen() {
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                <p className="text-xs text-[#6077a6]">Granted XP</p>
-                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.grantedXp}</p>
+                <p className="text-xs text-[#6077a6]">XP awarded</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.xpAwarded}</p>
               </div>
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
                 <p className="text-xs text-[#6077a6]">Total XP</p>
                 <p className="mt-1 font-semibold text-[#334f82]">{completedResult.totalXp}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Streak</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.newStreak}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Rare access</p>
+                <p className="mt-1 font-semibold text-[#334f82]">
+                  {completedResult.rareAccessActive ? "Active" : "Inactive"}
+                </p>
               </div>
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
                 <p className="text-xs text-[#6077a6]">Completion bonus</p>

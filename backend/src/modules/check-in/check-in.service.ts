@@ -13,8 +13,13 @@ import { XpService, XpSource } from '../rewards/xp.service';
 import { CheckInRecord } from './entities/check-in-record.entity';
 
 export interface DailyCheckInResult {
+  success: true;
   profileId: string;
   checkInDate: string;
+  xpAwarded: number;
+  newStreak: number;
+  totalXp: number;
+  rareAccessActive: boolean;
   currentStreak: number;
   qualificationStatus: QualificationStatus;
   rareRewardAccessActive: boolean;
@@ -83,8 +88,9 @@ export class CheckInService {
         },
       },
     ]);
-    if (xpGrant.grantedTotal > 0) {
-      profile.totalXp += xpGrant.grantedTotal;
+    const xpAwarded = xpGrant.grantedTotal;
+    if (xpAwarded > 0) {
+      profile.totalXp += xpAwarded;
       await this.profileRepository.save(profile);
     }
 
@@ -95,8 +101,13 @@ export class CheckInService {
       );
 
     return {
+      success: true,
       profileId: profile.id,
       checkInDate: today,
+      xpAwarded,
+      newStreak: profile.currentStreak,
+      totalXp: profile.totalXp,
+      rareAccessActive: qualification.rareRewardAccessActive,
       currentStreak: profile.currentStreak,
       qualificationStatus: qualification.qualificationStatus,
       rareRewardAccessActive: qualification.rareRewardAccessActive,

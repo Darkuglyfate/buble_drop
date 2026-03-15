@@ -188,7 +188,11 @@ async function mockBubbleDropApi(page: Page) {
       state.currentStreak += 1;
       await route.fulfill({
         json: {
+          success: true,
           checkInDate: "2026-03-15",
+          xpAwarded: 20,
+          newStreak: state.currentStreak,
+          rareAccessActive: true,
         },
       });
       return;
@@ -236,6 +240,7 @@ async function mockBubbleDropApi(page: Page) {
     ) {
       await route.fulfill({
         json: {
+          success: true,
           sessionId: "session-1",
           profileId: activeProfileId,
           endedAt: "2026-03-15T12:10:00.000Z",
@@ -243,6 +248,9 @@ async function mockBubbleDropApi(page: Page) {
           activeSeconds: 360,
           activePlayXp: 12,
           completionBonusXp: 20,
+          xpAwarded: 62,
+          newStreak: state.currentStreak,
+          rareAccessActive: true,
           grantedXp: 62,
           totalXp: 772,
           qualificationStatus: "qualified",
@@ -368,21 +376,15 @@ test.beforeEach(async ({ page }) => {
 test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await page.goto(`/?${smokeWalletQuery}`);
 
+  await expect(page.getByText("Signed in")).toBeVisible();
+  await expect(page.getByText("0x1000...0001")).toBeVisible();
+  await expect(page.getByText("Rare lane live")).toBeVisible();
   await expect(
-    page.getByText("Wallet ownership confirmed in this browser session."),
+    page.getByRole("link", { name: "Enter today's bubble run" }),
   ).toBeVisible();
-  await expect(
-    page.getByText(`Backend-bound wallet: ${walletAddress}`),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: "Bootstrap / refresh profile from connected wallet",
-    }),
-  ).toBeEnabled();
-  await expect(
-    page.getByRole("button", { name: "Daily Base check-in" }),
-  ).toBeEnabled();
-  await expect(page.getByRole("link", { name: "Open season hub" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Lock today's streak" })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "Enter bubble session" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open season spotlight" })).toBeVisible();
 });
 
 test("completes onboarding flow with mocked backend confirmation", async ({
@@ -392,11 +394,11 @@ test("completes onboarding flow with mocked backend confirmation", async ({
     `/?profileId=${onboardingProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
   );
 
-  await expect(page.getByText("Learning card 1/3")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Daily rhythm" })).toBeVisible();
   await page.getByRole("button", { name: "Daily Base check-in" }).click();
-  await expect(page.getByText("Learning card 2/3")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Active session" })).toBeVisible();
   await page.getByRole("button", { name: "Only during active play" }).click();
-  await expect(page.getByText("Learning card 3/3")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Status logic" })).toBeVisible();
   await page
     .getByRole("button", { name: "It overlays Rank Frame" })
     .click();
@@ -413,7 +415,8 @@ test("completes onboarding flow with mocked backend confirmation", async ({
   await expect(
     page.getByText("Onboarding completed. 20 XP granted. Total XP: 20."),
   ).toBeVisible();
-  await expect(page.getByText("Rare reward access inactive")).toBeVisible();
+  await expect(page.getByText("XP-first day")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open reward vault" })).toBeVisible();
 });
 
 test("runs daily check-in and shows refreshed summary state", async ({
@@ -423,16 +426,11 @@ test("runs daily check-in and shows refreshed summary state", async ({
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
   );
 
-  await page.getByRole("button", { name: "Daily Base check-in" }).click();
+  await page.getByRole("button", { name: "Lock today's streak" }).click();
 
+  await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
   await expect(
-    page.getByText("Daily check-in recorded for 2026-03-15."),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator("section")
-      .filter({ hasText: "XP summary" })
-      .getByText("7", { exact: true }),
+    page.locator("section").first().getByText("7", { exact: true }),
   ).toBeVisible();
 });
 
@@ -448,6 +446,8 @@ test("completes session and reveals confirmed reward outcome", async ({
   await page.getByRole("button", { name: "Complete session" }).click();
 
   await expect(page.getByText("Issued rewards for this session")).toBeVisible();
+  await expect(page.getByText("XP awarded")).toBeVisible();
+  await expect(page.getByText("Rare access", { exact: true })).toBeVisible();
   await expect(page.getByText("Claimable token reward")).toBeVisible();
   await expect(page.getByText("genesis-spark")).toBeVisible();
   await expect(page.getByText("glossy-aura")).toBeVisible();
@@ -478,7 +478,7 @@ test("navigates season hub, token detail, and partner transparency", async ({
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
   );
 
-  await page.getByRole("link", { name: "Open season hub" }).click();
+  await page.getByRole("link", { name: "Open season spotlight" }).click();
   await expect(page.getByText("Season hub")).toBeVisible();
   await expect(page.getByText("Genesis Bloom")).toBeVisible();
 

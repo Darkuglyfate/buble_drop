@@ -332,6 +332,54 @@ describe('ProfileService', () => {
     expect(xpService.grantXp).toHaveBeenCalled();
   });
 
+  it('uses production-safe default onboarding xp when config is missing', async () => {
+    profileRepository.findOne!.mockResolvedValue({
+      id: 'profile-4',
+      nickname: null,
+      currentAvatarId: null,
+      totalXp: 0,
+      onboardingCompletedAt: null,
+    });
+    avatarRepository.findOne!.mockResolvedValue({
+      id: 'avatar-starter',
+      isStarter: true,
+    });
+    profileAvatarUnlockRepository.findOne!.mockResolvedValue(null);
+    profileAvatarUnlockRepository.create!.mockImplementation(
+      (value: { profileId: string; avatarId: string }) => value,
+    );
+    profileAvatarUnlockRepository.save!.mockImplementation(
+      (value: { profileId: string; avatarId: string }) =>
+        Promise.resolve(value),
+    );
+    configService.get.mockReturnValue(undefined);
+    xpService.grantXp.mockResolvedValue({
+      grantedTotal: 20,
+      remainingDailyCap: 80,
+      grantedAllocations: [],
+    });
+    profileRepository.save!.mockImplementation((profile: Profile) =>
+      Promise.resolve(profile),
+    );
+
+    const result = await service.completeOnboarding(
+      '11111111-1111-4111-8111-111111111111',
+      'defaulted',
+      '22222222-2222-4222-8222-222222222222',
+    );
+
+    expect(result.onboardingXpGranted).toBe(20);
+    expect(result.totalXp).toBe(20);
+    expect(xpService.grantXp).toHaveBeenCalledWith(
+      expect.any(String),
+      [
+        expect.objectContaining({
+          amount: 20,
+        }),
+      ],
+    );
+  });
+
   it('rejects repeated onboarding completion after first success', async () => {
     profileRepository.findOne!.mockResolvedValue({
       id: 'profile-3',
