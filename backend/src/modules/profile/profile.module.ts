@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuthSessionModule } from '../auth-session/auth-session.module';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { QualificationModule } from '../qualification/qualification.module';
 import { RewardsModule } from '../rewards/rewards.module';
@@ -30,6 +31,7 @@ import { ProfileService } from './profile.service';
       CosmeticDefinition,
       ProfileCosmeticUnlock,
     ]),
+    AuthSessionModule,
     QualificationModule,
     RewardsModule,
     WalletBindingModule,

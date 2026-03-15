@@ -17,6 +17,12 @@ jest.mock('viem/accounts', () => ({
   privateKeyToAccount: jest.fn(),
 }));
 
+const mockCreatePublicClient = createPublicClient as jest.Mock;
+const mockCreateWalletClient = createWalletClient as jest.Mock;
+const mockHttp = http as jest.Mock;
+const mockIsAddress = isAddress as unknown as jest.Mock;
+const mockPrivateKeyToAccount = privateKeyToAccount as jest.Mock;
+
 describe('RewardWalletPayoutService', () => {
   let service: RewardWalletPayoutService;
   let configService: { get: jest.Mock };
@@ -26,11 +32,11 @@ describe('RewardWalletPayoutService', () => {
       get: jest.fn(),
     };
 
-    (createPublicClient as jest.Mock).mockReset();
-    (createWalletClient as jest.Mock).mockReset();
-    (http as jest.Mock).mockReset();
-    (isAddress as jest.Mock).mockReset();
-    (privateKeyToAccount as jest.Mock).mockReset();
+    mockCreatePublicClient.mockReset();
+    mockCreateWalletClient.mockReset();
+    mockHttp.mockReset();
+    mockIsAddress.mockReset();
+    mockPrivateKeyToAccount.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -77,12 +83,12 @@ describe('RewardWalletPayoutService', () => {
       };
       return values[key];
     });
-    (privateKeyToAccount as jest.Mock).mockReturnValue({
+    mockPrivateKeyToAccount.mockReturnValue({
       address: '0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa',
     });
-    (isAddress as jest.Mock).mockReturnValue(true);
-    (http as jest.Mock).mockReturnValue({ type: 'http' });
-    (createPublicClient as jest.Mock).mockReturnValue({
+    mockIsAddress.mockReturnValue(true);
+    mockHttp.mockReturnValue({ type: 'http' });
+    mockCreatePublicClient.mockReturnValue({
       simulateContract: jest.fn().mockResolvedValue({
         request: { to: '0x2222222222222222222222222222222222222222' },
       }),
@@ -90,7 +96,7 @@ describe('RewardWalletPayoutService', () => {
         status: 'success',
       }),
     });
-    (createWalletClient as jest.Mock).mockReturnValue({
+    mockCreateWalletClient.mockReturnValue({
       writeContract: jest
         .fn()
         .mockResolvedValue(

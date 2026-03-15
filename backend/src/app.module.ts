@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthSessionModule } from './modules/auth-session/auth-session.module';
 import { CheckInModule } from './modules/check-in/check-in.module';
 import { BubbleSessionModule } from './modules/bubble-session/bubble-session.module';
 import { ClaimModule } from './modules/claim/claim.module';
@@ -31,6 +32,7 @@ import { RedisModule } from './redis/redis.module';
         synchronize: false,
       }),
     }),
+    AuthSessionModule,
     RedisModule,
     ProfileModule,
     CheckInModule,

@@ -6,10 +6,8 @@ import {
 } from './claim.service';
 import { CreateTokenClaimDto } from './dto/create-token-claim.dto';
 import { GetClaimBalancesDto } from './dto/get-claim-balances.dto';
-import {
-  WALLET_ADDRESS_HEADER,
-  WalletBindingService,
-} from '../wallet-binding/wallet-binding.service';
+import { AUTH_SESSION_HEADER } from '../auth-session/auth-session.service';
+import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 
 @Controller('claim')
 export class ClaimController {
@@ -28,11 +26,11 @@ export class ClaimController {
   @Post('request')
   async createTokenClaim(
     @Body() dto: CreateTokenClaimDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<CreateTokenClaimResult> {
     await this.walletBindingService.assertProfileAccess(
       dto.profileId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.claimService.createTokenClaim(dto);

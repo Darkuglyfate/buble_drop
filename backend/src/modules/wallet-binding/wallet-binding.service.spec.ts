@@ -1,17 +1,11 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuthSessionService } from '../auth-session/auth-session.service';
 import { Referral } from '../partner-token/entities/referral.entity';
 import { Profile } from '../profile/entities/profile.entity';
-import {
-  WALLET_ADDRESS_HEADER,
-  WalletBindingService,
-} from './wallet-binding.service';
+import { WalletBindingService } from './wallet-binding.service';
 
 type MockRepository<T extends object> = Partial<
   Record<keyof Repository<T>, jest.Mock>
@@ -19,6 +13,10 @@ type MockRepository<T extends object> = Partial<
 
 describe('WalletBindingService', () => {
   let service: WalletBindingService;
+  let authSessionService: Pick<
+    AuthSessionService,
+    'getAuthenticatedWalletAddress'
+  >;
   let profileRepository: MockRepository<Profile>;
   let referralRepository: MockRepository<Referral>;
 
@@ -29,10 +27,19 @@ describe('WalletBindingService', () => {
     referralRepository = {
       findOne: jest.fn(),
     };
+    authSessionService = {
+      getAuthenticatedWalletAddress: jest
+        .fn()
+        .mockReturnValue('0x1111111111111111111111111111111111111111'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletBindingService,
+        {
+          provide: AuthSessionService,
+          useValue: authSessionService,
+        },
         {
           provide: getRepositoryToken(Profile),
           useValue: profileRepository,
@@ -63,18 +70,10 @@ describe('WalletBindingService', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('rejects profile mutation when wallet header is missing', async () => {
-    await expect(
-      service.assertProfileAccess(
-        '11111111-1111-4111-8111-111111111111',
-        undefined,
-      ),
-    ).rejects.toEqual(
-      new BadRequestException(`Missing ${WALLET_ADDRESS_HEADER} header`),
-    );
-  });
-
   it('rejects profile mutation when wallet does not own profile', async () => {
+    authSessionService.getAuthenticatedWalletAddress = jest
+      .fn()
+      .mockReturnValue('0x2222222222222222222222222222222222222222');
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       wallet: {
@@ -110,6 +109,9 @@ describe('WalletBindingService', () => {
   });
 
   it('rejects referral mutation when inviter wallet binding mismatches', async () => {
+    authSessionService.getAuthenticatedWalletAddress = jest
+      .fn()
+      .mockReturnValue('0x2222222222222222222222222222222222222222');
     referralRepository.findOne!.mockResolvedValue({
       id: '33333333-3333-4333-8333-333333333333',
       inviterProfile: {

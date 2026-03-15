@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
+import {
+  createAuthenticatedJsonHeaders,
+  getSmokeSignInSessionFromCurrentUrl,
+  loadBubbleDropFrontendSignInSession,
+  type BubbleDropFrontendSignInSession,
+} from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 
 const SESSION_DURATION_SECONDS = 10 * 60;
@@ -97,13 +103,6 @@ function withProfileQuery(
   return `${path}?${searchParams.toString()}`;
 }
 
-function createWalletBoundJsonHeaders(walletAddress: string): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    "x-bubbledrop-wallet-address": walletAddress.trim().toLowerCase(),
-  };
-}
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
@@ -147,10 +146,25 @@ export function BubbleSessionPlayScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
+  const [authSession, setAuthSession] =
+    useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const connectedWalletAddress = address?.trim().toLowerCase() ?? null;
+  const authSessionToken =
+    authSession &&
+    (!walletAddress || authSession.address === walletAddress) &&
+    (!connectedWalletAddress || authSession.address === connectedWalletAddress)
+      ? authSession.authSessionToken
+      : null;
+
+  useEffect(() => {
+    setAuthSession(
+      getSmokeSignInSessionFromCurrentUrl() ??
+        loadBubbleDropFrontendSignInSession(),
+    );
+  }, [connectedWalletAddress, walletAddress]);
 
   useEffect(() => {
     const resolvedBackendUrl = getBackendUrl();
@@ -259,9 +273,8 @@ export function BubbleSessionPlayScreen() {
       setActionMessage("Profile bootstrap required before starting backend session.");
       return;
     }
-    const requestWalletAddress = connectedWalletAddress ?? walletAddress;
-    if (!requestWalletAddress) {
-      setActionMessage("Wallet binding unavailable. Return to home and refresh backend profile first.");
+    if (!authSessionToken) {
+      setActionMessage("Sign in with Base on home before starting a protected session.");
       return;
     }
 
@@ -271,7 +284,7 @@ export function BubbleSessionPlayScreen() {
       try {
         const response = await fetch(`${backendUrl}/bubble-session/start`, {
           method: "POST",
-          headers: createWalletBoundJsonHeaders(requestWalletAddress),
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({ profileId }),
         });
 
@@ -308,14 +321,13 @@ export function BubbleSessionPlayScreen() {
 
     setActiveTapCount((prev) => prev + 1);
 
-    const requestWalletAddress = connectedWalletAddress ?? walletAddress;
-    if (!backendUrl || !profileId || !backendSessionId || !requestWalletAddress) {
+    if (!backendUrl || !profileId || !backendSessionId || !authSessionToken) {
       return;
     }
 
     void fetch(`${backendUrl}/bubble-session/activity`, {
       method: "POST",
-      headers: createWalletBoundJsonHeaders(requestWalletAddress),
+      headers: createAuthenticatedJsonHeaders(authSessionToken),
       body: JSON.stringify({
         profileId,
         sessionId: backendSessionId,
@@ -331,9 +343,8 @@ export function BubbleSessionPlayScreen() {
       setActionMessage("No active backend session to complete.");
       return;
     }
-    const requestWalletAddress = connectedWalletAddress ?? walletAddress;
-    if (!requestWalletAddress) {
-      setActionMessage("Wallet binding unavailable. Return to home and refresh backend profile first.");
+    if (!authSessionToken) {
+      setActionMessage("Sign in with Base on home before completing a protected session.");
       return;
     }
 
@@ -343,7 +354,7 @@ export function BubbleSessionPlayScreen() {
       try {
         const response = await fetch(`${backendUrl}/bubble-session/complete`, {
           method: "POST",
-          headers: createWalletBoundJsonHeaders(requestWalletAddress),
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({
             profileId,
             sessionId: backendSessionId,
@@ -511,6 +522,7 @@ export function BubbleSessionPlayScreen() {
                 isActive ||
                 sessionCompleted ||
                 isSubmitting ||
+                !authSessionToken ||
                 needsOnboarding ||
                 isResolvingOnboardingState
               }
@@ -525,6 +537,7 @@ export function BubbleSessionPlayScreen() {
                 !isActive ||
                 sessionCompleted ||
                 isSubmitting ||
+                !authSessionToken ||
                 needsOnboarding ||
                 isResolvingOnboardingState
               }

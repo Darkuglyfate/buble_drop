@@ -8,10 +8,8 @@ import {
 import { CompleteBubbleSessionDto } from './dto/complete-bubble-session.dto';
 import { RecordBubbleSessionActivityDto } from './dto/record-bubble-session-activity.dto';
 import { StartBubbleSessionDto } from './dto/start-bubble-session.dto';
-import {
-  WALLET_ADDRESS_HEADER,
-  WalletBindingService,
-} from '../wallet-binding/wallet-binding.service';
+import { AUTH_SESSION_HEADER } from '../auth-session/auth-session.service';
+import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 
 @Controller('bubble-session')
 export class BubbleSessionController {
@@ -23,11 +21,11 @@ export class BubbleSessionController {
   @Post('start')
   async startSession(
     @Body() dto: StartBubbleSessionDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<BubbleSessionStartResult> {
     await this.walletBindingService.assertProfileAccess(
       dto.profileId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.bubbleSessionService.startSession(dto.profileId);
@@ -36,11 +34,11 @@ export class BubbleSessionController {
   @Post('complete')
   async completeSession(
     @Body() dto: CompleteBubbleSessionDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<BubbleSessionCompleteResult> {
     await this.walletBindingService.assertProfileAccess(
       dto.profileId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.bubbleSessionService.completeSession(
@@ -53,11 +51,11 @@ export class BubbleSessionController {
   @Post('activity')
   async recordActivity(
     @Body() dto: RecordBubbleSessionActivityDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<BubbleSessionActivityRecordResult> {
     await this.walletBindingService.assertProfileAccess(
       dto.profileId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.bubbleSessionService.recordActivitySignal(

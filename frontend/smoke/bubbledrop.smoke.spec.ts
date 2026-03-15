@@ -368,6 +368,9 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await page.goto(`/?${smokeWalletQuery}`);
 
   await expect(
+    page.getByText("Wallet ownership confirmed in this browser session."),
+  ).toBeVisible();
+  await expect(
     page.getByText(`Backend-bound wallet: ${walletAddress}`),
   ).toBeVisible();
   await expect(
@@ -384,7 +387,9 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
 test("completes onboarding flow with mocked backend confirmation", async ({
   page,
 }) => {
-  await page.goto(`/?profileId=${onboardingProfileId}`);
+  await page.goto(
+    `/?profileId=${onboardingProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+  );
 
   await expect(page.getByText("Learning card 1/3")).toBeVisible();
   await page.getByRole("button", { name: "Daily Base check-in" }).click();

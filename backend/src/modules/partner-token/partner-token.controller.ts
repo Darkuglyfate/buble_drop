@@ -8,10 +8,8 @@ import {
   Query,
 } from '@nestjs/common';
 import { MarkReferralSuccessDto } from './dto/mark-referral-success.dto';
-import {
-  WALLET_ADDRESS_HEADER,
-  WalletBindingService,
-} from '../wallet-binding/wallet-binding.service';
+import { AUTH_SESSION_HEADER } from '../auth-session/auth-session.service';
+import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 import {
   PartnerTokenDetailView,
   PartnerTokenService,
@@ -36,11 +34,11 @@ export class PartnerTokenController {
   @Post('referral/success')
   async markReferralSuccessful(
     @Body() dto: MarkReferralSuccessDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ReferralSuccessResult> {
     await this.walletBindingService.assertReferralAccess(
       dto.referralId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.partnerTokenService.markReferralSuccessful(dto.referralId);

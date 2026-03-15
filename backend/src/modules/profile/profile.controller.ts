@@ -1,11 +1,20 @@
-import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { ConnectWalletDto } from './dto/connect-wallet.dto';
 import { GetProfileSummaryDto } from './dto/get-profile-summary.dto';
 import {
-  WALLET_ADDRESS_HEADER,
-  WalletBindingService,
-} from '../wallet-binding/wallet-binding.service';
+  AUTH_SESSION_HEADER,
+  AuthSessionService,
+} from '../auth-session/auth-session.service';
+import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 import {
   OnboardingCompletionResult,
   LeaderboardEntry,
@@ -20,12 +29,27 @@ import {
 export class ProfileController {
   constructor(
     private readonly profileService: ProfileService,
+    private readonly authSessionService: AuthSessionService,
     private readonly walletBindingService: WalletBindingService,
   ) {}
 
   @Post('connect-wallet')
-  connectWallet(@Body() dto: ConnectWalletDto): Promise<ProfileStartupState> {
-    return this.profileService.connectWallet(dto.walletAddress);
+  connectWallet(
+    @Body() dto: ConnectWalletDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
+  ): Promise<ProfileStartupState> {
+    const authenticatedWalletAddress =
+      this.authSessionService.getAuthenticatedWalletAddress(authSessionHeader);
+    if (
+      dto.walletAddress?.trim() &&
+      dto.walletAddress.trim().toLowerCase() !== authenticatedWalletAddress
+    ) {
+      throw new ForbiddenException(
+        'Verified auth session does not match requested wallet bootstrap',
+      );
+    }
+
+    return this.profileService.connectWallet(authenticatedWalletAddress);
   }
 
   @Get('summary')
@@ -38,11 +62,11 @@ export class ProfileController {
   @Post('onboarding/complete')
   async completeOnboarding(
     @Body() dto: CompleteOnboardingDto,
-    @Headers(WALLET_ADDRESS_HEADER) walletAddressHeader?: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<OnboardingCompletionResult> {
     await this.walletBindingService.assertProfileAccess(
       dto.profileId,
-      walletAddressHeader,
+      authSessionHeader,
     );
 
     return this.profileService.completeOnboarding(

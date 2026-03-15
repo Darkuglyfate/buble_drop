@@ -6,14 +6,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuthSessionService } from '../auth-session/auth-session.service';
 import { Referral } from '../partner-token/entities/referral.entity';
 import { Profile } from '../profile/entities/profile.entity';
-
-export const WALLET_ADDRESS_HEADER = 'x-bubbledrop-wallet-address';
 
 @Injectable()
 export class WalletBindingService {
   constructor(
+    private readonly authSessionService: AuthSessionService,
     @InjectRepository(Profile)
     private readonly profileRepository: Repository<Profile>,
     @InjectRepository(Referral)
@@ -22,11 +22,11 @@ export class WalletBindingService {
 
   async assertProfileAccess(
     profileId: string,
-    walletAddressHeader: string | undefined,
+    authSessionHeader: string | undefined,
   ): Promise<void> {
     this.assertUuid(profileId, 'Invalid profileId format');
     const normalizedWalletAddress =
-      this.normalizeWalletAddressHeader(walletAddressHeader);
+      this.authSessionService.getAuthenticatedWalletAddress(authSessionHeader);
 
     const profile = await this.profileRepository.findOne({
       where: { id: profileId },
@@ -51,11 +51,11 @@ export class WalletBindingService {
 
   async assertReferralAccess(
     referralId: string,
-    walletAddressHeader: string | undefined,
+    authSessionHeader: string | undefined,
   ): Promise<void> {
     this.assertUuid(referralId, 'Invalid referralId format');
     const normalizedWalletAddress =
-      this.normalizeWalletAddressHeader(walletAddressHeader);
+      this.authSessionService.getAuthenticatedWalletAddress(authSessionHeader);
 
     const referral = await this.referralRepository.findOne({
       where: { id: referralId },
@@ -78,21 +78,6 @@ export class WalletBindingService {
         'Wallet address does not match requested referral mutation',
       );
     }
-  }
-
-  private normalizeWalletAddressHeader(
-    walletAddressHeader: string | undefined,
-  ): string {
-    const normalized = walletAddressHeader?.trim().toLowerCase();
-    if (!normalized) {
-      throw new BadRequestException(`Missing ${WALLET_ADDRESS_HEADER} header`);
-    }
-
-    if (!/^0x[a-f0-9]{40}$/.test(normalized)) {
-      throw new BadRequestException('Invalid wallet address format');
-    }
-
-    return normalized;
   }
 
   private assertUuid(value: string, message: string): void {

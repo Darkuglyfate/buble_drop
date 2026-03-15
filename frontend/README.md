@@ -11,6 +11,7 @@ Create `frontend/.env.local` with:
 
 ```bash
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=https://bubledrop.vercel.app
 NEXT_PUBLIC_POSTHOG_KEY=
 NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 ```
@@ -56,6 +57,8 @@ If you change either port, update both:
 - `NEXT_PUBLIC_BACKEND_URL` in the frontend env
 - `FRONTEND_ORIGIN` in the backend env
 
+`NEXT_PUBLIC_APP_URL` should point at the production frontend domain once BubbleDrop is deployed. The frontend uses it for canonical and social metadata, and it is also the expected primary URL value for Base.dev registration.
+
 ## Production Build Check
 
 ```bash
@@ -92,3 +95,17 @@ If you want a visible browser:
 ```bash
 npm run smoke:headed
 ```
+
+## Base.dev registration prep
+
+The repo now includes a minimal registration-ready metadata package in `frontend/BASE_DEV_REGISTRATION.md`.
+
+Use it to prepare:
+
+- app name
+- tagline
+- description
+- category suggestion
+- expected production URL
+- current asset inventory and missing listing assets
+- manual Base.dev steps that still happen outside the repo

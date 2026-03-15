@@ -5,6 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
+  createAuthenticatedJsonHeaders,
+  getSmokeSignInSessionFromCurrentUrl,
+  loadBubbleDropFrontendSignInSession,
+  type BubbleDropFrontendSignInSession,
+} from "../base-sign-in";
+import {
   type BackendProfileSummary,
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
@@ -95,13 +101,6 @@ function withProfileQuery(
   return `${path}?${searchParams.toString()}`;
 }
 
-function createWalletBoundJsonHeaders(walletAddress: string): Record<string, string> {
-  return {
-    "Content-Type": "application/json",
-    "x-bubbledrop-wallet-address": walletAddress.trim().toLowerCase(),
-  };
-}
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
@@ -150,6 +149,8 @@ export function ClaimScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [claimingToken, setClaimingToken] = useState<string | null>(null);
   const [claimResult, setClaimResult] = useState<ClaimResponse | null>(null);
+  const [authSession, setAuthSession] =
+    useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -158,6 +159,12 @@ export function ClaimScreen() {
 
   const backendUrl = getBackendUrl();
   const connectedWalletAddress = address?.trim().toLowerCase() ?? null;
+  const authSessionToken =
+    authSession &&
+    (!walletAddress || authSession.address === walletAddress) &&
+    (!connectedWalletAddress || authSession.address === connectedWalletAddress)
+      ? authSession.authSessionToken
+      : null;
 
   const totalClaimable = useMemo(() => {
     return balances.reduce((sum, item) => addIntegerStrings(sum, item.claimableAmount), "0");
@@ -170,6 +177,7 @@ export function ClaimScreen() {
     canUseBackend &&
     !needsOnboarding &&
     !isResolvingOnboardingState &&
+    !!authSessionToken &&
     rareRewardAccessActive;
   const qualificationBadge = qualificationStatus
     ? QUALIFICATION_BADGE_COPY[qualificationStatus]
@@ -211,6 +219,13 @@ export function ClaimScreen() {
       setIsLoadingBalances(false);
     }
   };
+
+  useEffect(() => {
+    setAuthSession(
+      getSmokeSignInSessionFromCurrentUrl() ??
+        loadBubbleDropFrontendSignInSession(),
+    );
+  }, [connectedWalletAddress, walletAddress]);
 
   useEffect(() => {
     const resolvedProfileId = getProfileIdFromUrl();
@@ -267,9 +282,8 @@ export function ClaimScreen() {
     if (!backendUrl || !profileId || needsOnboarding || !rareRewardAccessActive) {
       return;
     }
-    const requestWalletAddress = connectedWalletAddress ?? walletAddress;
-    if (!requestWalletAddress) {
-      setErrorMessage("Wallet binding unavailable. Return to home and refresh backend profile first.");
+    if (!authSessionToken) {
+      setErrorMessage("Sign in with Base on home before sending a protected claim request.");
       return;
     }
 
@@ -280,7 +294,7 @@ export function ClaimScreen() {
     try {
       const response = await fetch(`${backendUrl}/claim/request`, {
         method: "POST",
-        headers: createWalletBoundJsonHeaders(requestWalletAddress),
+        headers: createAuthenticatedJsonHeaders(authSessionToken),
         body: JSON.stringify({
           profileId,
           tokenSymbol,
