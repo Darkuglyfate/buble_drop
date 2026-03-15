@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -56,6 +57,8 @@ export interface BubbleSessionActivityRecordResult {
 
 @Injectable()
 export class BubbleSessionService {
+  private readonly logger = new Logger(BubbleSessionService.name);
+
   constructor(
     @InjectRepository(BubbleSession)
     private readonly bubbleSessionRepository: Repository<BubbleSession>,
@@ -147,6 +150,7 @@ export class BubbleSessionService {
     const recordedActiveSeconds = await this.getRecordedActiveSeconds(
       session,
       endedAt,
+      reportedActiveSeconds,
     );
     const activeSeconds = Math.min(
       reportedActiveSeconds,
@@ -270,11 +274,19 @@ export class BubbleSessionService {
     }
 
     const recordedAt = new Date();
-    const client = this.redisService.getClient();
-    const activityKey = this.getActivityKey(session.id);
-    const timestampMs = recordedAt.getTime();
-    await client.zadd(activityKey, timestampMs, `${timestampMs}`);
-    await client.expire(activityKey, SESSION_ACTIVITY_TTL_SECONDS);
+    try {
+      const client = this.redisService.getClient();
+      const activityKey = this.getActivityKey(session.id);
+      const timestampMs = recordedAt.getTime();
+      await client.zadd(activityKey, timestampMs, `${timestampMs}`);
+      await client.expire(activityKey, SESSION_ACTIVITY_TTL_SECONDS);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'unknown redis failure';
+      this.logger.warn(
+        `Redis activity write failed for bubble session ${session.id}; gameplay will continue with reported activeSeconds fallback. ${detail}`,
+      );
+    }
 
     return {
       sessionId: session.id,
@@ -286,45 +298,62 @@ export class BubbleSessionService {
   private async getRecordedActiveSeconds(
     session: BubbleSession,
     endedAt: Date,
+    fallbackActiveSeconds: number,
   ): Promise<number> {
-    const client = this.redisService.getClient();
-    const activityKey = this.getActivityKey(session.id);
-    const rawTimestamps = await client.zrange(activityKey, 0, -1);
-    await client.del(activityKey);
-
-    if (rawTimestamps.length === 0) {
-      return 0;
-    }
-
     const sessionStartedAtMs = session.startedAt.getTime();
     const sessionEndedAtMs = endedAt.getTime();
-    const uniqueBuckets = new Set<number>();
-
-    for (const timestamp of rawTimestamps) {
-      const timestampMs = Number(timestamp);
-      if (
-        !Number.isFinite(timestampMs) ||
-        timestampMs < sessionStartedAtMs ||
-        timestampMs > sessionEndedAtMs
-      ) {
-        continue;
-      }
-
-      uniqueBuckets.add(
-        Math.floor(
-          (timestampMs - sessionStartedAtMs) / 1000 / ACTIVE_SECONDS_PER_SIGNAL,
-        ),
-      );
-    }
-
-    const recordedActiveSeconds =
-      uniqueBuckets.size * ACTIVE_SECONDS_PER_SIGNAL;
     const sessionDurationSeconds = Math.max(
       0,
       Math.floor((sessionEndedAtMs - sessionStartedAtMs) / 1000),
     );
+    const boundedFallbackActiveSeconds = Math.min(
+      Math.max(0, Math.floor(fallbackActiveSeconds)),
+      sessionDurationSeconds,
+    );
 
-    return Math.min(recordedActiveSeconds, sessionDurationSeconds);
+    try {
+      const client = this.redisService.getClient();
+      const activityKey = this.getActivityKey(session.id);
+      const rawTimestamps = await client.zrange(activityKey, 0, -1);
+      await client.del(activityKey);
+
+      if (rawTimestamps.length === 0) {
+        return 0;
+      }
+
+      const uniqueBuckets = new Set<number>();
+
+      for (const timestamp of rawTimestamps) {
+        const timestampMs = Number(timestamp);
+        if (
+          !Number.isFinite(timestampMs) ||
+          timestampMs < sessionStartedAtMs ||
+          timestampMs > sessionEndedAtMs
+        ) {
+          continue;
+        }
+
+        uniqueBuckets.add(
+          Math.floor(
+            (timestampMs - sessionStartedAtMs) /
+              1000 /
+              ACTIVE_SECONDS_PER_SIGNAL,
+          ),
+        );
+      }
+
+      const recordedActiveSeconds =
+        uniqueBuckets.size * ACTIVE_SECONDS_PER_SIGNAL;
+
+      return Math.min(recordedActiveSeconds, sessionDurationSeconds);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'unknown redis failure';
+      this.logger.warn(
+        `Redis activity replay failed for bubble session ${session.id}; falling back to reported activeSeconds. ${detail}`,
+      );
+      return boundedFallbackActiveSeconds;
+    }
   }
 
   private getActivityKey(sessionId: string): string {

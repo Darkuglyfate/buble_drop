@@ -363,6 +363,29 @@ describe('BubbleSessionService', () => {
     expect(redisClient.expire).toHaveBeenCalled();
   });
 
+  it('does not fail activity recording when redis is unavailable', async () => {
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'ready',
+      currentAvatarId: 'avatar-1',
+      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+    });
+    sessionRepository.findOne!.mockResolvedValue({
+      id: '55555555-5555-4555-8555-555555555555',
+      profileId: '11111111-1111-4111-8111-111111111111',
+      isCompleted: false,
+    });
+    redisClient.zadd.mockRejectedValue(new Error('redis down'));
+
+    const result = await service.recordActivitySignal(
+      '11111111-1111-4111-8111-111111111111',
+      '55555555-5555-4555-8555-555555555555',
+    );
+
+    expect(result.sessionId).toBe('55555555-5555-4555-8555-555555555555');
+    expect(redisClient.zadd).toHaveBeenCalled();
+  });
+
   it('rejects session activity recording when onboarding is incomplete', async () => {
     sessionRepository.findOne!.mockResolvedValue({
       id: '55555555-5555-4555-8555-555555555555',
@@ -426,5 +449,46 @@ describe('BubbleSessionService', () => {
     expect(result.activeSeconds).toBe(12);
     expect(result.completionBonusXp).toBe(0);
     expect(redisClient.del).toHaveBeenCalled();
+  });
+
+  it('falls back to reported active seconds when redis replay fails', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'ready',
+      currentAvatarId: 'avatar-1',
+      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+      totalXp: 15,
+    });
+    sessionRepository.findOne!.mockResolvedValue({
+      id: '77777777-7777-4777-8777-777777777777',
+      profileId: '11111111-1111-4111-8111-111111111111',
+      startedAt,
+      isCompleted: false,
+      endedAt: null,
+      activeSeconds: 0,
+    });
+    redisClient.zrange.mockRejectedValue(new Error('redis down'));
+    sessionRepository.save!.mockImplementation(
+      (session: unknown): Promise<unknown> => Promise.resolve(session),
+    );
+    xpService.grantXp.mockResolvedValue({
+      grantedTotal: 10,
+      remainingDailyCap: 90,
+      grantedAllocations: [],
+    });
+    profileRepository.save!.mockImplementation(
+      (profile: unknown): Promise<unknown> => Promise.resolve(profile),
+    );
+
+    const result = await service.completeSession(
+      '11111111-1111-4111-8111-111111111111',
+      '77777777-7777-4777-8777-777777777777',
+      120,
+    );
+
+    expect(result.activeSeconds).toBe(120);
+    expect(result.totalXp).toBe(25);
+    expect(redisClient.zrange).toHaveBeenCalled();
   });
 });
