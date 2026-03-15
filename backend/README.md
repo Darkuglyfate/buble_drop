@@ -117,6 +117,47 @@ $ npm run test:cov
 
 ## Deployment
 
+### Render
+
+For low-memory Render instances, do not start the backend with the Nest CLI runtime.
+Use the compiled production entry instead:
+
+```bash
+# build command
+npm install && npm run build
+
+# start command
+npm run start
+```
+
+`npm run start` now runs `node dist/main`, which is the same lightweight production path as `npm run start:prod`.
+
+Required Render runtime env values:
+
+```bash
+NODE_ENV=production
+PORT=<provided by Render>
+FRONTEND_ORIGIN=https://your-frontend.example.com
+AUTH_SESSION_SECRET=<long-random-secret>
+DB_HOST=...
+DB_PORT=5432
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=...
+REDIS_HOST=...
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+BASE_RPC_URL=https://your-stable-base-mainnet-rpc
+```
+
+If live reward-wallet payout is intended for launch, also set:
+
+```bash
+REWARD_WALLET_ADDRESS=0x...
+REWARD_WALLET_PRIVATE_KEY=0x...
+```
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
