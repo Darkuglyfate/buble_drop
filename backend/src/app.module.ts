@@ -30,6 +30,13 @@ import { RedisModule } from './redis/redis.module';
         database: configService.get<string>('DB_NAME', 'bubbledrop'),
         autoLoadEntities: true,
         synchronize: false,
+        extra: {
+          connectionTimeoutMillis: 5000,
+          query_timeout: 5000,
+          statement_timeout: 5000,
+          idle_in_transaction_session_timeout: 5000,
+          keepAlive: true,
+        },
       }),
     }),
     AuthSessionModule,

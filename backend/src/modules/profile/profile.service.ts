@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -131,6 +132,8 @@ export interface RewardsInventoryView {
 
 @Injectable()
 export class ProfileService {
+  private readonly logger = new Logger(ProfileService.name);
+
   constructor(
     private readonly configService: ConfigService,
     @InjectRepository(UserWallet)
@@ -291,16 +294,34 @@ export class ProfileService {
   }
 
   async getStarterAvatars(): Promise<StarterAvatarView[]> {
-    const avatars = await this.avatarRepository.find({
-      where: { isStarter: true },
-      order: { createdAt: 'ASC' },
-    });
+    const startedAt = Date.now();
 
-    return avatars.map((avatar) => ({
-      id: avatar.id,
-      key: avatar.key,
-      label: avatar.label,
-    }));
+    try {
+      const avatars = await this.avatarRepository.find({
+        where: { isStarter: true },
+        order: { createdAt: 'ASC' },
+      });
+
+      const durationMs = Date.now() - startedAt;
+      if (durationMs > 1000) {
+        this.logger.warn(
+          `Starter avatar query completed slowly in ${durationMs}ms`,
+        );
+      }
+
+      return avatars.map((avatar) => ({
+        id: avatar.id,
+        key: avatar.key,
+        label: avatar.label,
+      }));
+    } catch (error) {
+      const durationMs = Date.now() - startedAt;
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Starter avatar query failed after ${durationMs}ms: ${message}`,
+      );
+      throw error;
+    }
   }
 
   async getProfileSummary(profileId: string): Promise<ProfileSummary> {

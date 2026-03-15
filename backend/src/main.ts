@@ -1,3 +1,4 @@
+import type { Server } from 'http';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -20,6 +21,9 @@ async function bootstrap() {
     origin: frontendOrigins,
   });
 
-  await app.listen(port, '0.0.0.0');
+  const server = (await app.listen(port, '0.0.0.0')) as Server;
+  server.requestTimeout = 15000;
+  server.headersTimeout = 16000;
+  server.keepAliveTimeout = 5000;
 }
 void bootstrap();

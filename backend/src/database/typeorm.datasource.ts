@@ -28,4 +28,11 @@ export default new DataSource({
   ],
   migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
   synchronize: false,
+  extra: {
+    connectionTimeoutMillis: 5000,
+    query_timeout: 5000,
+    statement_timeout: 5000,
+    idle_in_transaction_session_timeout: 5000,
+    keepAlive: true,
+  },
 });
