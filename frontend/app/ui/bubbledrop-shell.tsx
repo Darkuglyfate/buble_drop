@@ -428,6 +428,7 @@ export function BubbleDropShell() {
   const currentFrameFloorXp =
     profileSummary?.rankFrameState.currentFrame?.minLifetimeXp ?? 0;
   const equippedAvatarKey = profileSummary?.avatarState.currentAvatar?.key ?? null;
+  const unlockedAvatarCount = profileSummary?.avatarState.unlockedAvatarCount ?? 0;
   const hasProfile = Boolean(profileId);
   const hasUnlockedCollection =
     Boolean(profileId) && !profileSummary?.onboardingState.needsOnboarding;
@@ -450,6 +451,12 @@ export function BubbleDropShell() {
     profileSummary?.claimableTokenBalanceSummary.tokenCount ?? 0;
   const claimableTokenAmount =
     profileSummary?.claimableTokenBalanceSummary.totalClaimableAmount ?? "0";
+  const nextAvatarMilestone =
+    unlockedAvatarCount < 3 ? 3 : unlockedAvatarCount < 6 ? 6 : 10;
+  const avatarsToMilestone = Math.max(0, nextAvatarMilestone - unlockedAvatarCount);
+  const tokenHuntHint = isRareRewardAccessActive
+    ? "Complete one more bubble session now to roll partner token drops."
+    : "Lock today's streak first to warm premium partner-token drop odds.";
   const quickSessionHref = withBubbleDropContext("/session", {
     profileId,
     walletAddress: activeWalletAddress,
@@ -1643,6 +1650,11 @@ export function BubbleDropShell() {
                   <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8fb7]">
                     {equippedAvatarKey ? `Avatar key: ${equippedAvatarKey}` : "Starter avatar unlocks during onboarding"}
                   </p>
+                  <p className="mt-2 text-xs font-semibold text-[#5f739b]">
+                    {avatarsToMilestone > 0
+                      ? `${avatarsToMilestone} more avatar unlocks to reach your next cosmetic milestone (${nextAvatarMilestone}).`
+                      : "Cosmetic milestone reached. Keep collecting to tier up your style set."}
+                  </p>
                 </div>
 
                 {profileVaultHref ? (
@@ -1889,6 +1901,9 @@ export function BubbleDropShell() {
                   Open reward vault
                 </Link>
               </div>
+              <div className="mt-3 rounded-2xl bg-white/72 px-3 py-3 text-xs font-semibold text-[#4f648f]">
+                Hunt tip: {tokenHuntHint}
+              </div>
             </section>
 
             <section className="bubble-card p-4">
@@ -1969,6 +1984,9 @@ export function BubbleDropShell() {
               </h3>
               <p className="mt-2 text-sm leading-6 text-[#6278a3]">
                 Drift through the compact surfaces that shape the season around your profile, rewards, and social pulse.
+              </p>
+              <p className="mt-2 rounded-xl bg-white/78 px-3 py-2 text-xs font-semibold text-[#4f648f]">
+                Long-loop goal: push streak + sessions daily, then check partner token pulse and cosmetics vault for fresh upgrades.
               </p>
 
               <div className="mt-4 grid grid-cols-2 gap-2">

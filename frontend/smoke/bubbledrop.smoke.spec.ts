@@ -52,6 +52,7 @@ function buildProfileSummary(
               key: "starter-bubble-blue",
               label: "Starter Bubble Blue",
             },
+      unlockedAvatarCount: overrides.needsOnboarding ?? false ? 0 : 2,
     },
     xpSummary: {
       totalXp: overrides.totalXp ?? 710,

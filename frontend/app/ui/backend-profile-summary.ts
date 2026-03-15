@@ -16,6 +16,7 @@ export type BackendProfileSummary = {
       key: string;
       label: string;
     } | null;
+    unlockedAvatarCount: number;
   };
   xpSummary: {
     totalXp: number;

@@ -21,6 +21,10 @@ const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
 const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 3 * 60;
 const ACTIVE_SECONDS_PER_TAP = 12;
+const SESSION_REWARD_BUBBLES_XP = 30;
+const SESSION_COMPLETION_BONUS_XP = 20;
+const SESSION_ACTIVE_PLAY_XP_MAX = 20;
+const SESSION_ACTIVE_SECONDS_XP_CAP = 10 * 60;
 const PLAYFIELD_BUBBLE_POSITIONS = [
   { top: "20%", left: "18%" },
   { top: "32%", left: "68%" },
@@ -146,6 +150,7 @@ export function BubbleSessionPlayScreen() {
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [lastTapFeedbackAtMs, setLastTapFeedbackAtMs] = useState<number | null>(null);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
@@ -237,6 +242,19 @@ export function BubbleSessionPlayScreen() {
   const localCompletionEstimateMet =
     elapsedSeconds >= MIN_SESSION_SECONDS_FOR_COMPLETION &&
     backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS;
+  const projectedActivePlayXp = Math.floor(
+    (Math.min(backendCountableActiveSeconds, SESSION_ACTIVE_SECONDS_XP_CAP) /
+      SESSION_ACTIVE_SECONDS_XP_CAP) *
+      SESSION_ACTIVE_PLAY_XP_MAX,
+  );
+  const projectedCompletionBonusXp = localCompletionEstimateMet
+    ? SESSION_COMPLETION_BONUS_XP
+    : 0;
+  const projectedRewardBubblesXp = localCompletionEstimateMet
+    ? SESSION_REWARD_BUBBLES_XP
+    : 0;
+  const projectedXpAwarded =
+    projectedActivePlayXp + projectedCompletionBonusXp + projectedRewardBubblesXp;
   const elapsedSecondsRemaining = Math.max(0, MIN_SESSION_SECONDS_FOR_COMPLETION - elapsedSeconds);
   const activeSecondsRemaining = Math.max(0, ACTIVE_SECONDS_FOR_COMPLETION_BONUS - backendCountableActiveSeconds);
   const playfieldBubblePosition =
@@ -262,7 +280,7 @@ export function BubbleSessionPlayScreen() {
     ? "Backend result is locked in below."
     : isActive
       ? localCompletionEstimateMet
-        ? "You can submit this run when you're ready."
+        ? `You can submit this run now. Projected reward: ${projectedXpAwarded} XP.`
         : `Keep playing to build activity and time. ${formatTime(
             elapsedSecondsRemaining,
           )} min time and ${formatTime(activeSecondsRemaining)} play target remain.`
@@ -284,6 +302,8 @@ export function BubbleSessionPlayScreen() {
   const gameplayToastMessage =
     actionMessage && !sessionCompleted ? actionMessage : null;
   const resultToastMessage = actionMessage && sessionCompleted ? actionMessage : null;
+  const showTapFeedback =
+    lastTapFeedbackAtMs !== null && Date.now() - lastTapFeedbackAtMs < 850;
 
   const hasRareRewardOutcome = completionResult
     ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
@@ -324,6 +344,7 @@ export function BubbleSessionPlayScreen() {
         setNowMs(Date.now());
         setIsActive(true);
         setActiveTapCount(0);
+        setLastTapFeedbackAtMs(null);
         setSessionCompleted(false);
         setCompletionResult(null);
         captureAnalyticsEvent("bubbledrop_bubble_session_started", {
@@ -345,6 +366,7 @@ export function BubbleSessionPlayScreen() {
     }
 
     setActiveTapCount((prev) => prev + 1);
+    setLastTapFeedbackAtMs(Date.now());
 
     if (!profileId || !backendSessionId || !authSessionToken) {
       return;
@@ -559,16 +581,30 @@ export function BubbleSessionPlayScreen() {
                     </p>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    aria-label="Tap bubble"
-                    onClick={onRecordActivePlay}
-                    disabled={!isActive || sessionCompleted}
-                    className="gloss-pill absolute flex h-40 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-gradient-to-br from-[#fff4c2] via-[#ffd9ef] to-[#e6deff] text-center text-sm font-bold text-[#684114] shadow-[0_20px_44px_rgba(255,192,133,0.54)]"
-                    style={activeBubbleStyle}
-                  >
-                    <span className="rounded-full bg-white/58 px-5 py-2.5">Tap bubble</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Tap bubble"
+                      onClick={onRecordActivePlay}
+                      disabled={!isActive || sessionCompleted}
+                      className="gloss-pill absolute flex h-40 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-gradient-to-br from-[#fff4c2] via-[#ffd9ef] to-[#e6deff] text-center text-sm font-bold text-[#684114] shadow-[0_20px_44px_rgba(255,192,133,0.54)]"
+                      style={activeBubbleStyle}
+                    >
+                      <span className="rounded-full bg-white/58 px-5 py-2.5">Tap bubble</span>
+                    </button>
+                    {showTapFeedback ? (
+                      <div
+                        className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-sm font-black text-[#3e4f82]"
+                        style={{
+                          top: activeBubbleStyle.top,
+                          left: activeBubbleStyle.left,
+                          marginTop: "-5.4rem",
+                        }}
+                      >
+                        +{ACTIVE_SECONDS_PER_TAP}s active
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
 
@@ -585,9 +621,19 @@ export function BubbleSessionPlayScreen() {
                   {isResolvingOnboardingState ? (
                     <p className="text-xs text-[#5f739b]">Loading session access…</p>
                   ) : (
-                    <div className="flex items-center justify-between text-xs text-[#6178a7]">
+                    <div className="flex flex-col gap-1 text-xs text-[#6178a7]">
+                      <div className="flex items-center justify-between">
+                        <span>Projected XP: {projectedXpAwarded}</span>
+                        <span>
+                          {localCompletionEstimateMet
+                            ? "Partner drop roll unlocked for this run"
+                            : "Keep tapping to unlock partner drop roll"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
                       <span>Active taps: {activeTapCount}</span>
                       <span>{readinessCopy}</span>
+                      </div>
                     </div>
                   )}
                   <div className="mt-3 flex items-center gap-2">
