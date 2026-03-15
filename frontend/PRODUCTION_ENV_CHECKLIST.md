@@ -56,23 +56,65 @@ BASE_RPC_URL=https://your-stable-base-mainnet-rpc
   - Base mainnet RPC used for SIWE verification client creation and reward-wallet payout execution
   - required for reliable production behavior
 
-## Current production-ready repo behavior
+## Reward wallet envs for launch payout
+
+Only required if live claim payout is intended for launch:
+
+```bash
+REWARD_WALLET_ADDRESS=0x...
+REWARD_WALLET_PRIVATE_KEY=0x...
+```
+
+### What each value does
+
+- `REWARD_WALLET_ADDRESS`
+  - optional until live payout is enabled
+  - if set, must match the address derived from `REWARD_WALLET_PRIVATE_KEY`
+  - used as a safety check before payout execution
+
+- `REWARD_WALLET_PRIVATE_KEY`
+  - optional until live payout is enabled
+  - must be a valid 32-byte hex private key
+  - required for signing Base token transfers from the reward wallet
+
+### Launch note
+
+- If BubbleDrop launches with claim request creation but without real payout enabled, leave reward wallet envs unset and treat payout verification as post-launch or gated rollout work.
+- If BubbleDrop launches with real payout enabled, both reward wallet envs plus a working `BASE_RPC_URL` are mandatory.
+
+## Already production-ready in the repo
 
 - Frontend read surfaces now use same-origin `/api/bubbledrop/...` proxy routes instead of depending on direct browser-side backend URLs.
 - Frontend proxy prefers `BACKEND_URL`, then `NEXT_PUBLIC_BACKEND_URL`, and only falls back to `http://localhost:3000` outside production.
 - Backend now fails fast in production when `FRONTEND_ORIGIN` is missing.
 - Backend auth-session signing now fails fast in production when `AUTH_SESSION_SECRET` is missing or left as the placeholder value.
+- Home wallet/auth flow, protected mutation auth usage, gameplay session UI, and read-surface runtime wiring all pass current automated repo checks.
 
-## Deploy-side requirements still outside the repo
+## Deploy-side configuration still required
 
 - Production PostgreSQL and Redis connectivity
 - Real deployed backend HTTPS origin
 - Stable Base RPC provider with acceptable uptime/rate limits
-- Reward wallet env values if live token payout verification is needed
+- Correct frontend env values:
+  - `BACKEND_URL`
+  - `NEXT_PUBLIC_BACKEND_URL`
+  - `NEXT_PUBLIC_APP_URL`
+- Correct backend env values:
+  - `FRONTEND_ORIGIN`
+  - `AUTH_SESSION_SECRET`
+  - `BASE_RPC_URL`
+- Reward wallet env values if live token payout is intended for launch
+
+## Remaining repo-side gaps to keep in mind
+
+- Frontend production success still depends on deployers setting at least one backend origin env for the proxy route; the repo now fails safely with a 503-style response, but live data will not load without deploy-side config.
+- Full backend e2e proof is still outside repo-only verification because automated checks do not exercise a live PostgreSQL/Redis production environment.
+- Reward payout remains environment-gated rather than repo-proven because live signing and transfer confirmation depend on funded wallet credentials and chain access.
 
 ## Live verification still required
 
 - Base App in-app wallet connect and sign flow on a real device
 - Production CORS success from frontend origin to backend
 - Real SIWE nonce/verify flow against deployed backend
+- Real profile bootstrap, daily check-in, session completion, and claim request flow against deployed services
 - Live claim payout behavior if reward wallet is enabled
