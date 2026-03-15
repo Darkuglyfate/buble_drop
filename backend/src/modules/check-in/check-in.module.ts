@@ -5,6 +5,7 @@ import { QualificationModule } from '../qualification/qualification.module';
 import { RewardsModule } from '../rewards/rewards.module';
 import { WalletBindingModule } from '../wallet-binding/wallet-binding.module';
 import { CheckInController } from './check-in.controller';
+import { CheckInOnchainService } from './check-in-onchain.service';
 import { CheckInRecord } from './entities/check-in-record.entity';
 import { CheckInService } from './check-in.service';
 
@@ -16,7 +17,7 @@ import { CheckInService } from './check-in.service';
     WalletBindingModule,
   ],
   controllers: [CheckInController],
-  providers: [CheckInService],
+  providers: [CheckInService, CheckInOnchainService],
   exports: [CheckInService],
 })
 export class CheckInModule {}

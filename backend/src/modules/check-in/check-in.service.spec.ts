@@ -6,6 +6,7 @@ import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
 import { XpService } from '../rewards/xp.service';
+import { CheckInOnchainService } from './check-in-onchain.service';
 import { CheckInRecord } from './entities/check-in-record.entity';
 import { CheckInService } from './check-in.service';
 
@@ -19,6 +20,7 @@ describe('CheckInService', () => {
   let profileRepository: MockRepository<Profile>;
   let qualificationService: { processAfterDailyCheckIn: jest.Mock };
   let xpService: { grantXp: jest.Mock };
+  let checkInOnchainService: { recordDailyCheckIn: jest.Mock };
 
   beforeEach(async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-03-14T10:00:00.000Z'));
@@ -38,6 +40,9 @@ describe('CheckInService', () => {
     xpService = {
       grantXp: jest.fn(),
     };
+    checkInOnchainService = {
+      recordDailyCheckIn: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +54,7 @@ describe('CheckInService', () => {
         { provide: getRepositoryToken(Profile), useValue: profileRepository },
         { provide: QualificationService, useValue: qualificationService },
         { provide: XpService, useValue: xpService },
+        { provide: CheckInOnchainService, useValue: checkInOnchainService },
       ],
     }).compile();
 
@@ -64,6 +70,9 @@ describe('CheckInService', () => {
       id: '11111111-1111-4111-8111-111111111111',
       currentStreak: 0,
       totalXp: 0,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     checkInRepository
       .findOne!.mockResolvedValueOnce(null) // existing today
@@ -90,6 +99,10 @@ describe('CheckInService', () => {
       remainingDailyCap: 80,
       grantedAllocations: [],
     });
+    checkInOnchainService.recordDailyCheckIn.mockResolvedValue({
+      txHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      submitted: true,
+    });
 
     const result = await service.performDailyCheckIn(
       '11111111-1111-4111-8111-111111111111',
@@ -107,6 +120,16 @@ describe('CheckInService', () => {
       qualificationStatus: QualificationStatus.IN_PROGRESS,
       rareRewardAccessActive: false,
     });
+    expect(checkInOnchainService.recordDailyCheckIn).toHaveBeenCalledWith({
+      walletAddress: '0x1111111111111111111111111111111111111111',
+      checkInDate: '2026-03-14',
+    });
+    expect(checkInRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        txHash:
+          '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      }),
+    );
   });
 
   it('rejects duplicate check-in on the same day', async () => {
