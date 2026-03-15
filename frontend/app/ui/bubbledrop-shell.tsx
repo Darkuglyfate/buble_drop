@@ -105,6 +105,7 @@ type WalletFlowState = {
   stage: WalletFlowStage;
   phase: WalletFlowPhase;
   message: string | null;
+  detail?: string | null;
 };
 
 type QualificationStatus =
@@ -182,7 +183,58 @@ const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
   stage: "idle",
   phase: null,
   message: null,
+  detail: null,
 };
+
+type BackendFailureDetails = {
+  userMessage: string;
+  detail: string | null;
+};
+
+async function getBackendFailureDetails(
+  response: Response,
+  fallbackMessage: string,
+): Promise<BackendFailureDetails> {
+  let rawMessage = "";
+
+  try {
+    const responseText = await response.text();
+    if (responseText) {
+      try {
+        const parsed = JSON.parse(responseText) as { message?: unknown };
+        rawMessage =
+          typeof parsed.message === "string" ? parsed.message.trim() : responseText.trim();
+      } catch {
+        rawMessage = responseText.trim();
+      }
+    }
+  } catch {
+    rawMessage = "";
+  }
+
+  if (
+    response.status === 503 &&
+    rawMessage === "BubbleDrop live data is unavailable right now."
+  ) {
+    return {
+      userMessage: "BubbleDrop sign-in is temporarily unavailable right now.",
+      detail:
+        "Diagnostic: the frontend backend-proxy returned 503 because this deployment does not have a backend origin configured.",
+    };
+  }
+
+  if (rawMessage) {
+    return {
+      userMessage: fallbackMessage,
+      detail: `Diagnostic: backend returned ${response.status} ${rawMessage}`,
+    };
+  }
+
+  return {
+    userMessage: fallbackMessage,
+    detail: `Diagnostic: backend returned HTTP ${response.status}.`,
+  };
+}
 
 function getSmokeWalletOverride():
   | {
@@ -347,6 +399,7 @@ export function BubbleDropShell() {
                 : walletFlowState.stage === "connected"
                   ? "Connected"
                   : null;
+  const walletFlowDetail = walletFlowState.detail?.trim() || null;
 
   useEffect(() => {
     setSmokeWalletOverride(getSmokeWalletOverride());
@@ -407,6 +460,7 @@ export function BubbleDropShell() {
         stage: "connected",
         phase: "sign_in",
         message: "Wallet confirmed. You're signed in.",
+        detail: null,
       });
     }
   }, [effectiveIsConnected, isSignedInWithBase, walletFlowState.phase, walletFlowState.stage]);
@@ -631,6 +685,7 @@ export function BubbleDropShell() {
       stage: "connecting",
       phase: "connect",
       message: messages.connecting,
+      detail: null,
     });
 
     try {
@@ -639,12 +694,14 @@ export function BubbleDropShell() {
         stage: "awaiting_wallet_approval",
         phase: "connect",
         message: messages.awaitingApproval,
+        detail: null,
       });
       await withFlowTimeout(connectPromise, CONNECT_TIMEOUT_MS, "connect");
       setWalletFlowState({
         stage: "connected",
         phase: "connect",
         message: messages.success,
+        detail: null,
       });
     } catch (error) {
       const classifiedError = classifyWalletFlowError(error);
@@ -653,6 +710,7 @@ export function BubbleDropShell() {
           stage: "timed_out",
           phase: "connect",
           message: messages.timedOut,
+          detail: "Diagnostic: wallet connection did not resolve before the local timeout window expired.",
         });
         return;
       }
@@ -664,6 +722,10 @@ export function BubbleDropShell() {
           classifiedError.kind === "rejected"
             ? "Connection was cancelled. You can retry when you're ready."
             : messages.failed,
+        detail:
+          classifiedError.kind === "rejected"
+            ? "Diagnostic: wallet connection request was rejected or closed by the wallet runtime."
+            : `Diagnostic: ${classifiedError.message}`,
       });
     }
   };
@@ -674,6 +736,7 @@ export function BubbleDropShell() {
         stage: "connect_failed",
         phase: "connect",
         message: "BubbleDrop could not open a Base wallet connection right now.",
+        detail: "Diagnostic: no compatible Base or Coinbase wallet connector is available in this runtime.",
       });
       return;
     }
@@ -745,6 +808,7 @@ export function BubbleDropShell() {
       stage: "signing_in",
       phase: "sign_in",
       message: "Preparing secure sign-in...",
+        detail: null,
     });
 
     try {
@@ -761,10 +825,15 @@ export function BubbleDropShell() {
         "sign_in",
       );
       if (!nonceResponse.ok) {
+        const failureDetails = await getBackendFailureDetails(
+          nonceResponse,
+          "Sign in could not start right now.",
+        );
         setWalletFlowState({
           stage: "sign_in_failed",
           phase: "sign_in",
-          message: "Sign in could not start right now.",
+          message: failureDetails.userMessage,
+          detail: failureDetails.detail,
         });
         return;
       }
@@ -786,6 +855,7 @@ export function BubbleDropShell() {
         stage: "awaiting_wallet_approval",
         phase: "sign_in",
         message: "Approve the Base signature to finish sign-in.",
+        detail: null,
       });
       const signature = await withFlowTimeout(
         signMessageAsync({ message }),
@@ -796,6 +866,7 @@ export function BubbleDropShell() {
         stage: "signing_in",
         phase: "sign_in",
         message: "Finishing secure sign-in...",
+        detail: null,
       });
       const verifyResponse = await withFlowTimeout(
         fetch(`${backendUrl}/auth/session/verify`, {
@@ -810,10 +881,15 @@ export function BubbleDropShell() {
         "sign_in",
       );
       if (!verifyResponse.ok) {
+        const failureDetails = await getBackendFailureDetails(
+          verifyResponse,
+          "That signature could not be verified. Please try again.",
+        );
         setWalletFlowState({
           stage: "sign_in_failed",
           phase: "sign_in",
-          message: "That signature could not be verified. Please try again.",
+          message: failureDetails.userMessage,
+          detail: failureDetails.detail,
         });
         return;
       }
@@ -841,6 +917,7 @@ export function BubbleDropShell() {
         stage: "connected",
         phase: "sign_in",
         message: "Wallet confirmed. You're signed in.",
+        detail: null,
       });
     } catch (error) {
       const classifiedError = classifyWalletFlowError(error);
@@ -849,6 +926,8 @@ export function BubbleDropShell() {
           stage: "timed_out",
           phase: "sign_in",
           message: "The signature request took too long. Please retry in Base App.",
+          detail:
+            "Diagnostic: the sign-in flow did not complete before the local timeout window expired.",
         });
         return;
       }
@@ -860,6 +939,10 @@ export function BubbleDropShell() {
           classifiedError.kind === "rejected"
             ? "The signature request was cancelled. You can retry when you're ready."
             : "The signature request did not complete.",
+        detail:
+          classifiedError.kind === "rejected"
+            ? "Diagnostic: the wallet rejected or closed the signature prompt."
+            : `Diagnostic: ${classifiedError.message}`,
       });
     } finally {
       setIsSigningInWithBase(false);
@@ -1206,6 +1289,11 @@ export function BubbleDropShell() {
                           <p className="mt-1 text-sm font-semibold">
                             {walletFlowState.message}
                           </p>
+                          {walletFlowDetail ? (
+                            <p className="mt-2 text-xs leading-relaxed opacity-80">
+                              {walletFlowDetail}
+                            </p>
+                          ) : null}
                           {showConnectRecovery ? (
                             <div className="mt-3 flex flex-col gap-2">
                               <button
