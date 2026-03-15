@@ -1,0 +1,17 @@
+{
+  "accountAssociation": {
+    "header": "REPLACE_WITH_FARCASTER_HEADER",
+    "payload": "REPLACE_WITH_FARCASTER_PAYLOAD",
+    "signature": "REPLACE_WITH_FARCASTER_SIGNATURE"
+  },
+  "frame": {
+    "version": "1",
+    "name": "BubbleDrop",
+    "iconUrl": "https://bubledrop.vercel.app/favicon.ico",
+    "homeUrl": "https://bubledrop.vercel.app/",
+    "imageUrl": "https://bubledrop.vercel.app/favicon.ico",
+    "buttonTitle": "Open BubbleDrop",
+    "splashImageUrl": "https://bubledrop.vercel.app/favicon.ico",
+    "splashBackgroundColor": "#111827"
+  }
+}
