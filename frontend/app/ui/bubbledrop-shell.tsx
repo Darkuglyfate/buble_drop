@@ -115,6 +115,10 @@ type WalletFlowState = {
   detail?: string | null;
 };
 
+function getUtcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 type QualificationStatus =
   | "locked"
   | "in_progress"
@@ -480,6 +484,7 @@ export function BubbleDropShell() {
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [dailyCheckInCompletedToday, setDailyCheckInCompletedToday] = useState(false);
   const [glassMode, setGlassMode] = useState<GlassMode>("medium");
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -605,7 +610,7 @@ export function BubbleDropShell() {
     profileSummary?.claimableTokenBalanceSummary.totalClaimableAmount ?? "0";
   const tokenHuntHint = isRareRewardAccessActive
     ? "Complete one more bubble session now to roll partner token drops."
-    : "Lock today's streak first to warm premium partner-token drop odds.";
+    : "Daily check-in boosts premium partner-token drop odds.";
   const quickSessionHref = withBubbleDropContext("/session", {
     profileId,
     walletAddress: activeWalletAddress,
@@ -1008,6 +1013,17 @@ export function BubbleDropShell() {
     }
   };
 
+  useEffect(() => {
+    if (!profileId || typeof window === "undefined") {
+      setDailyCheckInCompletedToday(false);
+      return;
+    }
+    const today = getUtcDateKey(new Date());
+    const storageKey = `bubbledrop:daily-checkin:${profileId}`;
+    const storedDate = window.localStorage.getItem(storageKey);
+    setDailyCheckInCompletedToday(storedDate === today);
+  }, [profileId]);
+
   const onConnectWallet = async () => {
     if (!preferredConnector) {
       setWalletFlowState({
@@ -1300,12 +1316,35 @@ export function BubbleDropShell() {
       });
 
       if (!response.ok) {
-        setActionMessage("Today's glow is already locked in.");
+        if (response.status === 409) {
+          if (profileId && typeof window !== "undefined") {
+            window.localStorage.setItem(
+              `bubbledrop:daily-checkin:${profileId}`,
+              getUtcDateKey(new Date()),
+            );
+          }
+          setDailyCheckInCompletedToday(true);
+          setActionMessage("Daily check-in is already done for today. Session is open.");
+          if (quickSessionHref) {
+            window.location.assign(quickSessionHref);
+          }
+          return;
+        }
+        setActionMessage("Daily check-in is unavailable right now. You can still play a session.");
         return;
       }
 
       const payload = (await response.json()) as DailyCheckInResponse;
       await refreshProfileSummary(profileId);
+      if (profileId && typeof window !== "undefined") {
+        window.localStorage.setItem(
+          `bubbledrop:daily-checkin:${profileId}`,
+          payload.checkInDate ?? getUtcDateKey(new Date()),
+        );
+      }
+      setDailyCheckInCompletedToday(
+        (payload.checkInDate ?? getUtcDateKey(new Date())) === getUtcDateKey(new Date()),
+      );
       captureAnalyticsEvent("bubbledrop_daily_check_in_completed", {
         profile_id: profileId,
         wallet_address: activeWalletAddress ?? connectedWalletAddress ?? "",
@@ -1421,11 +1460,6 @@ export function BubbleDropShell() {
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
-  let profileVaultLabel = "Open NFT vault";
-  let profileVaultHint = "NFTs, cosmetics, and bubble drops live here.";
-  let profileVaultHref: string | null = rewardsInventoryHref;
-  let profileVaultHandler: (() => void) | null = null;
-  let profileVaultDisabled = false;
   const canAttemptDailyCheckIn = !isSubmittingAction;
   const dailyMissionActionLabel = !effectiveIsConnected
     ? "Connect wallet"
@@ -1437,19 +1471,42 @@ export function BubbleDropShell() {
           ? "Sync profile"
           : isFirstEntry
             ? "Finish onboarding"
-            : "Claim daily check-in";
+            : dailyCheckInCompletedToday
+              ? "Open session"
+              : "Claim daily check-in";
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
       ? "Rare access is warm."
       : "Rare access needs check-in.";
+  const dropRadarPercent = !effectiveIsConnected
+    ? 16
+    : !isConnectedToBase
+      ? 34
+      : !authenticatedSessionToken
+        ? 52
+        : isFirstEntry
+          ? 66
+          : isRareRewardAccessActive
+            ? Math.min(98, 84 + Math.min(currentStreak, 7) * 2)
+            : Math.min(82, 62 + Math.min(currentStreak, 7) * 2);
+  const dropRadarStateLabel = !effectiveIsConnected
+    ? "Wallet offline"
+    : !isConnectedToBase
+      ? "Need Base network"
+      : !authenticatedSessionToken
+        ? "Auth lock active"
+        : isFirstEntry
+          ? "Onboarding required"
+          : isRareRewardAccessActive
+            ? "Rare lane detected"
+            : "XP lane detected";
+  const dropRadarHint = isRareRewardAccessActive
+    ? "Rare drops can appear in today's run."
+    : "Check-in and sessions increase drop chance.";
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
-    profileVaultLabel = "Connect wallet to unlock collection";
-    profileVaultHint = "Connect wallet first.";
-    profileVaultHref = null;
-    profileVaultHandler = onConnectWallet;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
@@ -1463,10 +1520,6 @@ export function BubbleDropShell() {
       isSwitchingChain || isSubmittingAction || isWalletFlowBusy;
     primaryActionHandler = onSwitchToBase;
     heroPortalCopy = "Base lane waiting";
-    profileVaultLabel = "Switch to Base to unlock collection";
-    profileVaultHint = "Base network required.";
-    profileVaultHref = null;
-    profileVaultHandler = onSwitchToBase;
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
     heroTitle = "Confirm this bubble so the app can trust your next move.";
@@ -1480,10 +1533,6 @@ export function BubbleDropShell() {
     primaryActionDisabled = isWalletFlowBusy || isSubmittingAction;
     primaryActionHandler = onSignInWithBase;
     heroPortalCopy = "Seal your glow";
-    profileVaultLabel = "Sign in to unlock collection";
-    profileVaultHint = "Sign-in required.";
-    profileVaultHref = null;
-    profileVaultHandler = onSignInWithBase;
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
     heroTitle = "Shape this bubble into your BubbleDrop identity.";
@@ -1494,11 +1543,6 @@ export function BubbleDropShell() {
     primaryActionDisabled = !canSyncProfile;
     primaryActionHandler = onBootstrapProfile;
     heroPortalCopy = "Home still forming";
-    profileVaultLabel = "Create profile to unlock collection";
-    profileVaultHint = "Available after profile sync.";
-    profileVaultHref = null;
-    profileVaultHandler = onBootstrapProfile;
-    profileVaultDisabled = !canSyncProfile;
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
     heroTitle = "Your bubble is almost ready to glow.";
@@ -1509,10 +1553,6 @@ export function BubbleDropShell() {
     primaryActionDisabled = isSubmittingAction;
     primaryActionHandler = onRefreshProfile;
     heroPortalCopy = "Glow calibrating";
-    profileVaultLabel = "Refresh profile to open collection";
-    profileVaultHint = "Unlocks after refresh.";
-    profileVaultHref = null;
-    profileVaultHandler = onRefreshProfile;
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
     heroTitle = "Your glow is still alive, but premium drops are resting.";
@@ -1523,7 +1563,7 @@ export function BubbleDropShell() {
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Premium lane resting";
@@ -1537,7 +1577,7 @@ export function BubbleDropShell() {
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Rare lane live";
@@ -1551,7 +1591,7 @@ export function BubbleDropShell() {
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "XP lane open";
@@ -1565,7 +1605,7 @@ export function BubbleDropShell() {
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Lock today's streak";
+    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Play portal ready";
@@ -1779,9 +1819,11 @@ export function BubbleDropShell() {
                   onPointerCancel={() => setIsProfileBubblePressed(false)}
                 >
                   <span className="avatar-bubble-liquid" />
-                  <span className="profile-bubble-core relative z-10" />
-                  <span className="profile-bubble-ring profile-bubble-ring-a" />
-                  <span className="profile-bubble-ring profile-bubble-ring-b" />
+                  <span className="profile-bubble-sheen profile-bubble-sheen-a" />
+                  <span className="profile-bubble-sheen profile-bubble-sheen-b" />
+                  <span className="profile-bubble-swell" />
+                  <span className="profile-bubble-orbit profile-bubble-orbit-a" />
+                  <span className="profile-bubble-orbit profile-bubble-orbit-b" />
                   <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-white/80" />
                   <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
                 </div>
@@ -1789,7 +1831,7 @@ export function BubbleDropShell() {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#7085b0]">
                     Player profile
                   </p>
-                  <h1 className="mt-1 truncate text-[1.7rem] font-black tracking-[-0.04em] text-[#20365d]">
+                  <h1 className="mt-1 break-words text-[1.45rem] font-black leading-[1.05] tracking-[-0.035em] text-[#20365d]">
                     {nicknameDisplay}
                   </h1>
                   <p className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-[#526ca0]">
@@ -1874,7 +1916,11 @@ export function BubbleDropShell() {
                   </div>
                   <button
                     type="button"
-                    onClick={onDailyCheckIn}
+                    onClick={
+                      dailyCheckInCompletedToday && !isFirstEntry
+                        ? () => window.location.assign(quickSessionHref)
+                        : onDailyCheckIn
+                    }
                     disabled={!canAttemptDailyCheckIn}
                     className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                   >
@@ -1882,45 +1928,58 @@ export function BubbleDropShell() {
                   </button>
                 </div>
 
-                {profileVaultHref ? (
-                  <Link
-                    href={profileVaultHref}
-                    className="action-card rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-sm font-semibold text-[#433763]"
-                  >
-                    <span className="block">
-                      <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
-                        Collection vault
-                      </span>
-                      <span className="mt-2 block text-base font-black tracking-[-0.03em] text-[#3f3163]">
-                        {hasUnlockedCollection ? "Open NFT & cosmetics" : profileVaultLabel}
-                      </span>
-                      <span className="mt-2 block text-sm leading-5 text-[#6e6490]">
-                        {hasUnlockedCollection
-                          ? "See the NFTs, cosmetics, and bubble rewards you have already unlocked."
-                          : profileVaultHint}
-                      </span>
+                <div className="rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-sm font-semibold text-[#433763] shadow-[0_16px_36px_rgba(109,145,219,0.14)]">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
+                      Drop radar
                     </span>
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={profileVaultHandler ?? primaryActionHandler}
-                    disabled={profileVaultDisabled || primaryActionDisabled}
-                    className="action-card rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-left text-sm font-semibold text-[#433763] disabled:opacity-60"
-                  >
-                    <span className="block">
-                      <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
-                        Collection vault
-                      </span>
-                      <span className="mt-2 block text-base font-black tracking-[-0.03em] text-[#3f3163]">
-                        {profileVaultLabel}
-                      </span>
-                      <span className="mt-2 block text-sm leading-5 text-[#6e6490]">
-                        {profileVaultHint}
-                      </span>
+                    <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#674f95]">
+                      {dropRadarPercent}%
                     </span>
-                  </button>
-                )}
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div
+                      className="drop-radar-dial relative h-12 w-12 shrink-0 rounded-full"
+                      style={
+                        {
+                          background: `conic-gradient(from 210deg, rgba(96,208,255,0.95) ${dropRadarPercent}%, rgba(255,255,255,0.55) ${dropRadarPercent}% 100%)`,
+                        } as CSSProperties
+                      }
+                    >
+                      <span className="drop-radar-sweep" />
+                      <span className="drop-radar-ping" />
+                      <span className="absolute inset-[4px] grid place-items-center rounded-full bg-white/82 text-[9px] font-black text-[#5a4a83]">
+                        RAD
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-black leading-4 text-[#3f3163]">{dropRadarStateLabel}</p>
+                      <p className="mt-1 text-[11px] leading-4 text-[#6e6490]">{dropRadarHint}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
+                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">Streak</p>
+                      <p className="text-xs font-black text-[#4d3f74]">{currentStreak}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">XP</p>
+                      <p className="text-xs font-black text-[#4d3f74]">{totalXp}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">Rare</p>
+                      <p className="text-xs font-black text-[#4d3f74]">{isRareRewardAccessActive ? "ON" : "OFF"}</p>
+                    </div>
+                  </div>
+                  {hasUnlockedCollection && rewardsInventoryHref ? (
+                    <Link
+                      href={rewardsInventoryHref}
+                      className="gloss-pill mt-3 block rounded-xl bg-white/78 px-3 py-2 text-center text-xs font-semibold text-[#4a3b74]"
+                    >
+                      Open NFT & cosmetics
+                    </Link>
+                  ) : null}
+                </div>
               </div>
             </section>
 

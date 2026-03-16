@@ -369,6 +369,38 @@ button.gloss-pill:disabled {
   transform: none;
 }
 
+.drop-radar-dial {
+  overflow: hidden;
+  box-shadow:
+    0 8px 18px rgba(108, 132, 201, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.drop-radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 255, 255, 0) 320deg,
+    rgba(255, 255, 255, 0.9) 348deg,
+    rgba(255, 255, 255, 0.08) 360deg
+  );
+  mix-blend-mode: screen;
+  animation: radarSweep 2.8s linear infinite;
+  pointer-events: none;
+}
+
+.drop-radar-ping {
+  position: absolute;
+  inset: 1px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  animation: radarPing 1.9s ease-out infinite;
+  pointer-events: none;
+}
+
 .avatar-bubble-preview {
   --avatar-base: #d4f3ff;
   --avatar-highlight: #e8ddff;
@@ -456,38 +488,80 @@ button.gloss-pill:disabled {
     avatarBob 3.2s ease-in-out infinite;
 }
 
-.profile-bubble-core {
-  width: 1.75rem;
-  height: 1.75rem;
+.profile-bubble-sheen {
+  position: absolute;
   border-radius: 999px;
-  background: radial-gradient(
-    circle at 30% 30%,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(255, 255, 255, 0.25) 40%,
-    rgba(125, 176, 255, 0.62) 100%
+  pointer-events: none;
+}
+
+.profile-bubble-sheen-a {
+  width: 2.55rem;
+  height: 1.08rem;
+  top: 22%;
+  left: 20%;
+  transform: rotate(-16deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.0),
+    rgba(255, 255, 255, 0.78),
+    rgba(255, 255, 255, 0.1)
   );
-  box-shadow:
-    0 0 22px rgba(145, 186, 255, 0.68),
-    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  filter: blur(0.4px);
+  opacity: 0.86;
+}
+
+.profile-bubble-sheen-b {
+  width: 1.6rem;
+  height: 0.75rem;
+  top: 44%;
+  left: 56%;
+  transform: rotate(22deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.62),
+    rgba(255, 255, 255, 0.06)
+  );
+  opacity: 0.74;
+}
+
+.profile-bubble-swell {
+  position: absolute;
+  width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 999px;
+  right: 14%;
+  bottom: 10%;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(255, 255, 255, 0.52) 0%,
+    rgba(255, 255, 255, 0.1) 42%,
+    rgba(130, 182, 255, 0.26) 100%
+  );
+  filter: blur(0.6px);
   animation: coreBreath 4.8s ease-in-out infinite;
 }
 
-.profile-bubble-ring {
+.profile-bubble-orbit {
   position: absolute;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   pointer-events: none;
   animation: portalRing 5.8s ease-out infinite;
 }
 
-.profile-bubble-ring-a {
-  width: 2.6rem;
-  height: 2.6rem;
+.profile-bubble-orbit-a {
+  width: 2.5rem;
+  height: 2.5rem;
+  top: 35%;
+  left: 34%;
 }
 
-.profile-bubble-ring-b {
-  width: 3.1rem;
-  height: 3.1rem;
+.profile-bubble-orbit-b {
+  width: 3.05rem;
+  height: 3.05rem;
+  top: 26%;
+  left: 22%;
   opacity: 0.75;
   animation-delay: 1.3s;
 }
@@ -626,6 +700,30 @@ button.gloss-pill:disabled {
   }
 }
 
+@keyframes radarSweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes radarPing {
+  0% {
+    transform: scale(0.84);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.06);
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(1.16);
+    opacity: 0;
+  }
+}
+
 @media (max-width: 640px) {
   body {
     --mobile-glass-top: 0.56;
@@ -745,7 +843,9 @@ body.glass-strong .bubble {
   .avatar-bubble-preview,
   .avatar-bubble-liquid,
   .avatar-bubble-touch,
-  .avatar-bubble-touch .avatar-bubble-liquid {
+  .avatar-bubble-touch .avatar-bubble-liquid,
+  .drop-radar-sweep,
+  .drop-radar-ping {
     animation: none !important;
     transition: none !important;
   }
