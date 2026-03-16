@@ -86,12 +86,6 @@ type OnboardingCompletionResponse = {
   totalXp: number;
 };
 
-type AvatarSelectionResponse = {
-  profileId: string;
-  avatarId: string;
-  avatarLabel: string;
-};
-
 type OnboardingCard = {
   id: string;
   title: string;
@@ -488,6 +482,7 @@ export function BubbleDropShell() {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
+  const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
   const { address, chainId, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -570,6 +565,11 @@ export function BubbleDropShell() {
     profileSummary?.avatarState.currentAvatar?.label ??
     (profileId ? "Starter bubble" : "Wake BubbleDrop");
   const avatarGlyph = getAvatarGlyph(nicknameDisplay, avatarLabel);
+  const profileBubbleTone = createAvatarBubbleTone(
+    profileSummary?.avatarState.currentAvatar?.id ??
+      profileSummary?.avatarState.currentAvatar?.key ??
+      "bubble-default",
+  );
   const walletDisplay = shortenWalletAddress(
     activeWalletAddress ?? connectedWalletAddress,
   );
@@ -1375,54 +1375,6 @@ export function BubbleDropShell() {
     }
   };
 
-  const onSelectStarterAvatar = async (avatarId: string) => {
-    if (!profileId) {
-      setActionMessage("Сначала синхронизируй профиль, затем меняй аватар.");
-      return;
-    }
-    if (!authenticatedSessionToken) {
-      setActionMessage("Подпиши вход через Base, чтобы сменить аватар.");
-      return;
-    }
-    if (profileSummary?.onboardingState.needsOnboarding) {
-      setActionMessage("Заверши онбординг, после этого аватары можно менять свободно.");
-      return;
-    }
-    if (profileSummary?.avatarState.currentAvatar?.id === avatarId) {
-      return;
-    }
-
-    setIsSubmittingAction(true);
-    setActionMessage(null);
-    try {
-      const response = await fetch(`${backendUrl}/profile/avatar/select`, {
-        method: "POST",
-        headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
-        body: JSON.stringify({
-          profileId,
-          avatarId,
-        }),
-      });
-      if (!response.ok) {
-        setActionMessage("Не получилось сменить аватар прямо сейчас.");
-        return;
-      }
-
-      const payload = (await response.json()) as AvatarSelectionResponse;
-      await refreshProfileSummary(profileId);
-      captureAnalyticsEvent("bubbledrop_avatar_switched", {
-        profile_id: payload.profileId,
-        avatar_id: payload.avatarId,
-        avatar_label: payload.avatarLabel,
-      });
-      setActionMessage(`Аватар обновлён: ${payload.avatarLabel}.`);
-    } catch {
-      setActionMessage("Смена аватара временно недоступна. Попробуй ещё раз.");
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
-
   const homeStatusPills = [
     effectiveIsConnected
       ? isConnectedToBase
@@ -1787,7 +1739,23 @@ export function BubbleDropShell() {
               <div className="absolute -right-10 top-0 h-28 w-28 rounded-full bg-[#ffdff0]/50 blur-3xl" />
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
               <div className="relative flex items-start gap-3">
-                <div className="profile-emblem relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] bg-[radial-gradient(circle_at_30%_25%,rgba(255,255,255,0.96),rgba(255,255,255,0.42)_32%,rgba(163,221,255,0.96)_58%,rgba(230,217,255,0.98)_100%)] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70">
+                <div
+                  className={`profile-emblem profile-bubble-main relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
+                    isProfileBubblePressed ? "profile-bubble-touch" : ""
+                  }`}
+                  style={
+                    {
+                      "--avatar-base": profileBubbleTone.base,
+                      "--avatar-highlight": profileBubbleTone.highlight,
+                      "--avatar-glow": profileBubbleTone.glow,
+                    } as CSSProperties
+                  }
+                  onPointerDown={() => setIsProfileBubblePressed(true)}
+                  onPointerUp={() => setIsProfileBubblePressed(false)}
+                  onPointerLeave={() => setIsProfileBubblePressed(false)}
+                  onPointerCancel={() => setIsProfileBubblePressed(false)}
+                >
+                  <span className="avatar-bubble-liquid" />
                   <span className="relative z-10">{avatarGlyph}</span>
                   <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-white/80" />
                   <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
@@ -1916,89 +1884,6 @@ export function BubbleDropShell() {
                 )}
               </div>
             </section>
-
-            {!isFirstEntry ? (
-              <section className="bubble-card p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f84af]">
-                      Free starter avatars
-                    </p>
-                    <h3 className="mt-1 text-lg font-black tracking-[-0.02em] text-[#20365d]">
-                      Меняй пузырь в любой момент
-                    </h3>
-                    <p className="mt-1 text-sm text-[#5f749f]">
-                      Эти стартовые аватары всегда бесплатны и остаются открытыми для переключения.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-white/72 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#546d9c]">
-                    {starterAvatars.length} unlocked
-                  </span>
-                </div>
-
-                {isLoadingStarterAvatars ? (
-                  <p className="mt-3 text-sm text-[#6074a0]">Loading starter avatars...</p>
-                ) : starterAvatars.length === 0 ? (
-                  <p className="mt-3 text-sm text-[#7f3a53]">Starter avatars unavailable from backend.</p>
-                ) : (
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {starterAvatars.map((avatar) => {
-                      const isSelected =
-                        profileSummary?.avatarState.currentAvatar?.id === avatar.id;
-                      const avatarTone = createAvatarBubbleTone(avatar.id);
-                      const avatarGlyphPreview = getAvatarGlyph(null, avatar.label);
-                      return (
-                        <button
-                          key={avatar.id}
-                          type="button"
-                          onClick={() => void onSelectStarterAvatar(avatar.id)}
-                          onPointerDown={() => setPressedAvatarId(avatar.id)}
-                          onPointerUp={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                          onPointerLeave={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                          onPointerCancel={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                          disabled={
-                            isSubmittingAction ||
-                            !authenticatedSessionToken ||
-                            profileSummary?.onboardingState.needsOnboarding
-                          }
-                          className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all ${
-                            isSelected
-                              ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679] shadow-[0_10px_24px_rgba(120,167,241,0.25)]"
-                              : "border-[#dce6ff] bg-white/80 text-[#3c588b]"
-                          } disabled:opacity-60`}
-                        >
-                          <span className="flex items-center gap-3">
-                            <span
-                              className={`avatar-bubble-preview ${
-                                pressedAvatarId === avatar.id
-                                  ? "avatar-bubble-touch"
-                                  : ""
-                              }`}
-                              style={
-                                {
-                                  "--avatar-base": avatarTone.base,
-                                  "--avatar-highlight": avatarTone.highlight,
-                                  "--avatar-glow": avatarTone.glow,
-                                } as CSSProperties
-                              }
-                            >
-                              <span className="avatar-bubble-liquid" />
-                              <span className="avatar-bubble-glyph">{avatarGlyphPreview}</span>
-                            </span>
-                            <span className="block">
-                              <span className="block">{avatar.label}</span>
-                              <span className="mt-1 block text-[11px] uppercase tracking-[0.12em] text-[#6d82ad]">
-                                {isSelected ? "Equipped" : "Tap to equip"}
-                              </span>
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-            ) : null}
 
             <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
               <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />

@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   BUBBLEDROP_API_BASE,
   useBubbleDropRuntime,
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
+import {
+  createAuthenticatedJsonHeaders,
+  getSmokeSignInSessionFromCurrentUrl,
+  loadBubbleDropFrontendSignInSession,
+  type BubbleDropFrontendSignInSession,
+} from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import { UnifiedIcon } from "./unified-icons";
 
@@ -33,10 +39,22 @@ type RewardsInventoryView = {
   cosmetics: InventoryCosmetic[];
 };
 
+type StarterAvatar = {
+  id: string;
+  key: string;
+  label: string;
+};
+
+type AvatarSelectionResponse = {
+  profileId: string;
+  avatarId: string;
+  avatarLabel: string;
+};
+
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
-): Promise<{ needsOnboarding: boolean } | null> {
+): Promise<{ needsOnboarding: boolean; currentAvatarId: string | null } | null> {
   const payload = await fetchBackendProfileSummary(backendUrl, profileId);
   if (!payload) {
     return null;
@@ -44,6 +62,35 @@ async function fetchOnboardingStateForProfile(
 
   return {
     needsOnboarding: payload.onboardingState.needsOnboarding,
+    currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
+  };
+}
+
+function getAvatarGlyph(avatarLabel: string): string {
+  const source = avatarLabel.trim();
+  const cleaned = source.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return cleaned.slice(0, 2).toUpperCase() || "BD";
+}
+
+function createAvatarBubbleTone(seed: string): {
+  base: string;
+  highlight: string;
+  glow: string;
+} {
+  const hash = Array.from(seed).reduce((acc, char, index) => {
+    return (acc + char.charCodeAt(0) * (index + 13)) % 360;
+  }, 0);
+  const hue = 180 + (hash % 120);
+  return {
+    base: `hsl(${hue} 85% 84%)`,
+    highlight: `hsl(${(hue + 24) % 360} 90% 89%)`,
+    glow: `hsla(${hue} 85% 68% / 0.42)`,
   };
 }
 
@@ -55,8 +102,33 @@ export function RewardsInventoryScreen() {
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+  const [pressedAvatarId, setPressedAvatarId] = useState<string | null>(null);
+  const [isSwitchingAvatar, setIsSwitchingAvatar] = useState(false);
+  const [authSession, setAuthSession] =
+    useState<BubbleDropFrontendSignInSession | null>(null);
 
   const backendUrl = BUBBLEDROP_API_BASE;
+  const authSessionToken = authSession?.authSessionToken ?? null;
+
+  const loadStarterAvatars = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/profile/starter-avatars`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        setStarterAvatars([]);
+        return;
+      }
+      const payload = (await response.json()) as StarterAvatar[];
+      setStarterAvatars(payload);
+    } catch {
+      setStarterAvatars([]);
+    }
+  };
 
   const loadInventory = async (resolvedProfileId: string) => {
     setIsLoading(true);
@@ -88,6 +160,13 @@ export function RewardsInventoryScreen() {
   };
 
   useEffect(() => {
+    setAuthSession(
+      getSmokeSignInSessionFromCurrentUrl() ??
+        loadBubbleDropFrontendSignInSession(),
+    );
+  }, [walletAddress]);
+
+  useEffect(() => {
     const resolvedProfileId = profileId;
     if (!resolvedProfileId) {
       setIsResolvingOnboardingState(false);
@@ -108,7 +187,9 @@ export function RewardsInventoryScreen() {
       }
 
       setNeedsOnboarding(onboardingState.needsOnboarding);
+      setSelectedAvatarId(onboardingState.currentAvatarId);
       setIsResolvingOnboardingState(false);
+      await loadStarterAvatars();
 
       if (onboardingState.needsOnboarding) {
         setInventory(null);
@@ -120,6 +201,39 @@ export function RewardsInventoryScreen() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl, profileId]);
+
+  const onSelectAvatar = async (avatarId: string) => {
+    if (!profileId || !authSessionToken || needsOnboarding) {
+      return;
+    }
+    if (selectedAvatarId === avatarId) {
+      return;
+    }
+
+    setIsSwitchingAvatar(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch(`${backendUrl}/profile/avatar/select`, {
+        method: "POST",
+        headers: createAuthenticatedJsonHeaders(authSessionToken),
+        body: JSON.stringify({
+          profileId,
+          avatarId,
+        }),
+      });
+      if (!response.ok) {
+        setErrorMessage("We couldn't switch avatar right now.");
+        return;
+      }
+
+      const payload = (await response.json()) as AvatarSelectionResponse;
+      setSelectedAvatarId(payload.avatarId);
+    } catch {
+      setErrorMessage("We couldn't switch avatar right now.");
+    } finally {
+      setIsSwitchingAvatar(false);
+    }
+  };
 
   return (
     <div className="relative min-h-screen px-4 py-6 sm:px-6">
@@ -210,6 +324,76 @@ export function RewardsInventoryScreen() {
               <p className="mt-1 font-semibold">{inventory?.cosmeticCount ?? "—"}</p>
             </div>
           </div>
+        </section>
+
+        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="cosmetic" className="ui-icon text-[#48608f]" />
+            Avatar styles
+          </h2>
+          <p className="mt-2 text-xs text-[#6074a0]">
+            Starter avatars stay unlocked and can be switched anytime from this collection section.
+          </p>
+          {!needsOnboarding && starterAvatars.length > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {starterAvatars.map((avatar) => {
+                const isSelected = selectedAvatarId === avatar.id;
+                const avatarTone = createAvatarBubbleTone(avatar.id);
+                const avatarGlyphPreview = getAvatarGlyph(avatar.label);
+                return (
+                  <button
+                    key={avatar.id}
+                    type="button"
+                    onClick={() => void onSelectAvatar(avatar.id)}
+                    onPointerDown={() => setPressedAvatarId(avatar.id)}
+                    onPointerUp={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                    onPointerLeave={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                    onPointerCancel={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                    disabled={isSwitchingAvatar || !authSessionToken}
+                    className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all ${
+                      isSelected
+                        ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679] shadow-[0_10px_24px_rgba(120,167,241,0.25)]"
+                        : "border-[#dce6ff] bg-white/80 text-[#3c588b]"
+                    } disabled:opacity-60`}
+                  >
+                    <span className="flex items-center gap-3">
+                      <span
+                        className={`avatar-bubble-preview ${
+                          pressedAvatarId === avatar.id
+                            ? "avatar-bubble-touch"
+                            : ""
+                        }`}
+                        style={
+                          {
+                            "--avatar-base": avatarTone.base,
+                            "--avatar-highlight": avatarTone.highlight,
+                            "--avatar-glow": avatarTone.glow,
+                          } as CSSProperties
+                        }
+                      >
+                        <span className="avatar-bubble-liquid" />
+                        <span className="avatar-bubble-glyph">{avatarGlyphPreview}</span>
+                      </span>
+                      <span className="block">
+                        <span className="block">{avatar.label}</span>
+                        <span className="mt-1 block text-[11px] uppercase tracking-[0.12em] text-[#6d82ad]">
+                          {isSelected ? "Equipped" : "Tap to equip"}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : !needsOnboarding ? (
+            <p className="mt-3 text-sm text-[#6074a0]">
+              Starter avatars unavailable right now.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-[#6074a0]">
+              Finish onboarding first to unlock avatar switching.
+            </p>
+          )}
         </section>
 
         <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
