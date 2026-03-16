@@ -1103,6 +1103,19 @@ export function BubbleDropShell() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!welcomeIntroVisible) {
+      return;
+    }
+    if (introBubblesRemaining > 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWelcomeIntroVisible(false);
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [introBubblesRemaining, welcomeIntroVisible]);
+
   const onConnectWallet = async () => {
     if (!preferredConnector) {
       setWalletFlowState({
@@ -1877,14 +1890,6 @@ export function BubbleDropShell() {
               />
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setWelcomeIntroVisible(false)}
-            disabled={introBubblesRemaining > 0}
-            className="gloss-pill intro-welcome-continue"
-          >
-            {introBubblesRemaining > 0 ? "Pop TAP bubbles" : "Enter BubbleDrop"}
-          </button>
         </section>
       ) : null}
 

@@ -421,11 +421,14 @@ button.gloss-pill:disabled {
   transform: translateX(-50%);
   width: min(calc(100% - 1rem), 24rem);
   border-radius: 1.15rem;
-  border: 1px solid rgba(255, 255, 255, 0.86);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(196, 222, 255, 0.62);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.48), rgba(231, 244, 255, 0.28)),
+    rgba(227, 239, 255, 0.2);
+  backdrop-filter: blur(20px) saturate(136%);
   box-shadow:
-    0 14px 30px rgba(78, 111, 190, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+    0 12px 28px rgba(60, 92, 163, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
   padding: 0.75rem 0.85rem;
   text-align: center;
   z-index: 2;
@@ -523,21 +526,6 @@ button.gloss-pill:disabled {
     0 1px 0 rgba(255, 255, 255, 0.84),
     0 0 9px rgba(145, 175, 245, 0.55);
   pointer-events: none;
-}
-
-.intro-welcome-continue {
-  position: absolute;
-  left: 50%;
-  bottom: max(0.9rem, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  width: min(calc(100% - 1rem), 24rem);
-  border-radius: 1rem;
-  background: linear-gradient(135deg, rgba(168, 239, 255, 0.95), rgba(201, 208, 255, 0.95));
-  color: #1f3561;
-  font-weight: 800;
-  font-size: 0.95rem;
-  padding: 0.8rem 1rem;
-  z-index: 2;
 }
 
 .intro-pop-burst {
