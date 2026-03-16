@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import type { Address } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import {
@@ -476,13 +476,14 @@ type IntroBubbleSpec = {
   alpha: number;
   hasTapSignal: boolean;
 };
+const REQUIRED_INTRO_POPS = 6;
 
 function seededUnit(seed: number): number {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return value - Math.floor(value);
 }
 
-function createIntroBubbles(count = 28): IntroBubbleSpec[] {
+function createIntroBubbles(count = 24): IntroBubbleSpec[] {
   return Array.from({ length: count }, (_, index) => {
     const idx = index + 1;
     const majorSeed = seededUnit(idx * 1.73);
@@ -557,6 +558,8 @@ export function BubbleDropShell() {
     Array<{ id: string; x: number; y: number }>
   >([]);
   const introBubbles = useMemo(() => createIntroBubbles(), []);
+  const introAudioContextRef = useRef<AudioContext | null>(null);
+  const introAudioUnavailableRef = useRef(false);
   const { address, chainId, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -1090,6 +1093,16 @@ export function BubbleDropShell() {
     setDailyCheckInCompletedToday(storedDate === today);
   }, [profileId]);
 
+  useEffect(() => {
+    return () => {
+      const currentAudioContext = introAudioContextRef.current;
+      if (currentAudioContext) {
+        void currentAudioContext.close();
+      }
+      introAudioContextRef.current = null;
+    };
+  }, []);
+
   const onConnectWallet = async () => {
     if (!preferredConnector) {
       setWalletFlowState({
@@ -1570,9 +1583,18 @@ export function BubbleDropShell() {
   const dropRadarHint = isRareRewardAccessActive
     ? "Rare drops can appear in today's run."
     : "Check-in and sessions increase drop chance.";
-  const introTargetBubbleIds = useMemo(
-    () => introBubbles.filter((bubble) => bubble.hasTapSignal).map((bubble) => bubble.id),
-    [introBubbles],
+  const introTargetBubbleIds = useMemo(() => {
+    const bubbleIds = introBubbles
+      .filter((bubble) => bubble.hasTapSignal)
+      .map((bubble) => bubble.id);
+    if (bubbleIds.length >= REQUIRED_INTRO_POPS) {
+      return bubbleIds.slice(0, REQUIRED_INTRO_POPS);
+    }
+    return bubbleIds;
+  }, [introBubbles]);
+  const introTargetBubbleSet = useMemo(
+    () => new Set(introTargetBubbleIds),
+    [introTargetBubbleIds],
   );
   const introBubblesRemaining = introTargetBubbleIds.filter(
     (id) => !introPoppedBubbleIds.includes(id),
@@ -1700,36 +1722,49 @@ export function BubbleDropShell() {
     if (typeof window === "undefined") {
       return;
     }
+    if (introAudioUnavailableRef.current) {
+      return;
+    }
     try {
-      const AudioContextCtor =
-        window.AudioContext ||
-        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const contextCandidate = window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const AudioContextCtor = window.AudioContext || contextCandidate.webkitAudioContext;
       if (!AudioContextCtor) {
+        introAudioUnavailableRef.current = true;
         return;
       }
-      const audioContext = new AudioContextCtor();
+      let audioContext = introAudioContextRef.current;
+      if (!audioContext) {
+        audioContext = new AudioContextCtor();
+        introAudioContextRef.current = audioContext;
+      }
+      if (audioContext.state === "suspended") {
+        void audioContext.resume();
+      }
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(520, audioContext.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(180, audioContext.currentTime + 0.08);
+      oscillator.type = "triangle";
+      oscillator.frequency.setValueAtTime(640, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(210, audioContext.currentTime + 0.06);
       gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.1);
+      gainNode.gain.exponentialRampToValueAtTime(0.06, audioContext.currentTime + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.08);
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
       oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.11);
-      window.setTimeout(() => {
-        void audioContext.close();
-      }, 150);
+      oscillator.stop(audioContext.currentTime + 0.09);
     } catch {
       // Sound is optional: keep interaction smooth even if audio fails.
+      introAudioUnavailableRef.current = true;
     }
   };
 
   const onPopIntroBubble = (bubbleId: string, event: MouseEvent<HTMLButtonElement>) => {
     if (!welcomeIntroVisible) {
+      return;
+    }
+    if (!introTargetBubbleSet.has(bubbleId)) {
       return;
     }
     setIntroPoppedBubbleIds((current) => {
@@ -1792,9 +1827,6 @@ export function BubbleDropShell() {
             <p className="intro-welcome-subtitle">
               Pop only bubbles marked with TAP to continue.
             </p>
-            <p className="intro-welcome-progress">
-              Bubbles left: <strong>{introBubblesRemaining}</strong>
-            </p>
           </div>
           <div className="intro-welcome-playfield" aria-hidden="false">
             {introBubbles.map((bubble) => {
@@ -1828,7 +1860,9 @@ export function BubbleDropShell() {
                     } as CSSProperties
                   }
                 >
-                  {bubble.hasTapSignal ? <span className="intro-bubble-signal">TAP</span> : null}
+                  {introTargetBubbleSet.has(bubble.id) ? (
+                    <span className="intro-bubble-signal">TAP</span>
+                  ) : null}
                 </button>
               );
             })}
@@ -1849,7 +1883,7 @@ export function BubbleDropShell() {
             disabled={introBubblesRemaining > 0}
             className="gloss-pill intro-welcome-continue"
           >
-            {introBubblesRemaining > 0 ? `Pop ${introBubblesRemaining} more` : "Enter BubbleDrop"}
+            {introBubblesRemaining > 0 ? "Pop TAP bubbles" : "Enter BubbleDrop"}
           </button>
         </section>
       ) : null}
