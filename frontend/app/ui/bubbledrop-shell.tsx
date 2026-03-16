@@ -1103,19 +1103,6 @@ export function BubbleDropShell() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!welcomeIntroVisible) {
-      return;
-    }
-    if (introBubblesRemaining > 0) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      setWelcomeIntroVisible(false);
-    }, 320);
-    return () => window.clearTimeout(timer);
-  }, [introBubblesRemaining, welcomeIntroVisible]);
-
   const onConnectWallet = async () => {
     if (!preferredConnector) {
       setWalletFlowState({
@@ -1612,6 +1599,18 @@ export function BubbleDropShell() {
   const introBubblesRemaining = introTargetBubbleIds.filter(
     (id) => !introPoppedBubbleIds.includes(id),
   ).length;
+  useEffect(() => {
+    if (!welcomeIntroVisible) {
+      return;
+    }
+    if (introBubblesRemaining > 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWelcomeIntroVisible(false);
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [introBubblesRemaining, welcomeIntroVisible]);
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
