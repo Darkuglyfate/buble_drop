@@ -570,7 +570,7 @@ export function BubbleDropShell() {
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
-  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
+  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(false);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -1128,6 +1128,11 @@ export function BubbleDropShell() {
   useEffect(() => {
     const nextSeed = Math.floor(Math.random() * 1_000_000);
     setIntroPatternSeed(nextSeed);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const introSeen = window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
+    setWelcomeIntroVisible(!introSeen);
   }, []);
 
   const onConnectWallet = async () => {
