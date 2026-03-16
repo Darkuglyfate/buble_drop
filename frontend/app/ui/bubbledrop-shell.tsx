@@ -483,17 +483,18 @@ function seededUnit(seed: number): number {
   return value - Math.floor(value);
 }
 
-function createIntroBubbles(count = 24): IntroBubbleSpec[] {
+function createIntroBubbles(count = 24, patternSeed = 0): IntroBubbleSpec[] {
   return Array.from({ length: count }, (_, index) => {
     const idx = index + 1;
-    const majorSeed = seededUnit(idx * 1.73);
-    const speedSeed = seededUnit(idx * 2.31);
-    const directionSeed = seededUnit(idx * 3.17);
-    const toneSeed = seededUnit(idx * 4.09);
-    const signalSeed = seededUnit(idx * 5.67);
-    const pathSeedA = seededUnit(idx * 10.11);
-    const pathSeedB = seededUnit(idx * 11.17);
-    const pathSeedC = seededUnit(idx * 12.23);
+    const seedOffset = patternSeed * 0.61803398875;
+    const majorSeed = seededUnit(idx * 1.73 + seedOffset);
+    const speedSeed = seededUnit(idx * 2.31 + seedOffset);
+    const directionSeed = seededUnit(idx * 3.17 + seedOffset);
+    const toneSeed = seededUnit(idx * 4.09 + seedOffset);
+    const signalSeed = seededUnit(idx * 5.67 + seedOffset);
+    const pathSeedA = seededUnit(idx * 10.11 + seedOffset);
+    const pathSeedB = seededUnit(idx * 11.17 + seedOffset);
+    const pathSeedC = seededUnit(idx * 12.23 + seedOffset);
 
     const hue = toneSeed > 0.86 ? 276 : toneSeed > 0.94 ? 328 : 206 + Math.round(toneSeed * 34);
     const hasTapSignal = signalSeed > 0.76 || idx % 9 === 0;
@@ -501,22 +502,37 @@ function createIntroBubbles(count = 24): IntroBubbleSpec[] {
     return {
       id: `intro-${idx}`,
       top: `${6 + Math.round(majorSeed * 86)}%`,
-      left: `${4 + Math.round(seededUnit(idx * 9.13) * 92)}%`,
+      left: `${4 + Math.round(seededUnit(idx * 9.13 + seedOffset) * 92)}%`,
       sizeRem: 1.9 + majorSeed * 4.1,
       delayMs: Math.round(speedSeed * 1600),
       roamDurationMs: 14000 + Math.round(speedSeed * 16000),
-      wobbleDurationMs: 2200 + Math.round(seededUnit(idx * 6.71) * 3200),
+      wobbleDurationMs: 2200 + Math.round(seededUnit(idx * 6.71 + seedOffset) * 3200),
       roamX1: `${Math.round((pathSeedA - 0.5) * 120)}vw`,
       roamY1: `${Math.round((pathSeedB - 0.5) * 120)}vh`,
       roamX2: `${Math.round((pathSeedB - 0.5) * 120)}vw`,
       roamY2: `${Math.round((pathSeedC - 0.5) * 120)}vh`,
       roamX3: `${Math.round((directionSeed - 0.5) * 120)}vw`,
-      roamY3: `${Math.round((seededUnit(idx * 7.49) - 0.5) * 120)}vh`,
+      roamY3: `${Math.round((seededUnit(idx * 7.49 + seedOffset) - 0.5) * 120)}vh`,
       hue,
-      alpha: 0.38 + seededUnit(idx * 8.21) * 0.28,
+      alpha: 0.38 + seededUnit(idx * 8.21 + seedOffset) * 0.28,
       hasTapSignal,
     };
   });
+}
+
+function pickIntroTapTargets(
+  bubbleIds: string[],
+  patternSeed: number,
+  requiredCount: number,
+): string[] {
+  const shuffled = [...bubbleIds].sort((leftId, rightId) => {
+    const leftScore = seededUnit(leftId.length * 17.31 + patternSeed * 1.17 + Number(leftId.slice(6)));
+    const rightScore = seededUnit(
+      rightId.length * 17.31 + patternSeed * 1.17 + Number(rightId.slice(6)),
+    );
+    return leftScore - rightScore;
+  });
+  return shuffled.slice(0, Math.min(requiredCount, shuffled.length));
 }
 
 export function BubbleDropShell() {
@@ -557,7 +573,11 @@ export function BubbleDropShell() {
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
   >([]);
-  const introBubbles = useMemo(() => createIntroBubbles(), []);
+  const [introPatternSeed, setIntroPatternSeed] = useState(0);
+  const introBubbles = useMemo(
+    () => createIntroBubbles(24, introPatternSeed),
+    [introPatternSeed],
+  );
   const introAudioContextRef = useRef<AudioContext | null>(null);
   const introAudioUnavailableRef = useRef(false);
   const { address, chainId, isConnected } = useAccount();
@@ -1103,6 +1123,10 @@ export function BubbleDropShell() {
     };
   }, []);
 
+  useEffect(() => {
+    setIntroPatternSeed(Math.floor(Math.random() * 1_000_000));
+  }, []);
+
   const onConnectWallet = async () => {
     if (!preferredConnector) {
       setWalletFlowState({
@@ -1583,15 +1607,10 @@ export function BubbleDropShell() {
   const dropRadarHint = isRareRewardAccessActive
     ? "Rare drops can appear in today's run."
     : "Check-in and sessions increase drop chance.";
-  const introTargetBubbleIds = useMemo(() => {
-    const bubbleIds = introBubbles
-      .filter((bubble) => bubble.hasTapSignal)
-      .map((bubble) => bubble.id);
-    if (bubbleIds.length >= REQUIRED_INTRO_POPS) {
-      return bubbleIds.slice(0, REQUIRED_INTRO_POPS);
-    }
-    return bubbleIds;
-  }, [introBubbles]);
+  const introTargetBubbleIds = useMemo(
+    () => pickIntroTapTargets(introBubbles.map((bubble) => bubble.id), introPatternSeed, REQUIRED_INTRO_POPS),
+    [introBubbles, introPatternSeed],
+  );
   const introTargetBubbleSet = useMemo(
     () => new Set(introTargetBubbleIds),
     [introTargetBubbleIds],
