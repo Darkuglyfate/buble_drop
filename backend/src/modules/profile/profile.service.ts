@@ -44,6 +44,12 @@ export interface OnboardingCompletionResult {
   needsOnboarding: false;
 }
 
+export interface AvatarSelectionResult {
+  profileId: string;
+  avatarId: string;
+  avatarLabel: string;
+}
+
 const DEFAULT_ONBOARDING_XP_AMOUNT = 20;
 
 export interface ProfileSummary {
@@ -235,9 +241,12 @@ export class ProfileService {
       );
     }
 
-    const starterAvatar = await this.avatarRepository.findOne({
-      where: { id: avatarId, isStarter: true },
+    const starterAvatars = await this.avatarRepository.find({
+      where: { isStarter: true },
+      order: { createdAt: 'ASC' },
     });
+    const starterAvatar =
+      starterAvatars.find((avatar) => avatar.id === avatarId) ?? null;
     if (!starterAvatar) {
       throw new BadRequestException(
         'Avatar must be one of approved starter avatars',
@@ -248,20 +257,10 @@ export class ProfileService {
     profile.currentAvatarId = starterAvatar.id;
     profile.onboardingCompletedAt = new Date();
 
-    const existingStarterUnlock =
-      await this.profileAvatarUnlockRepository.findOne({
-        where: {
-          profileId: profile.id,
-          avatarId: starterAvatar.id,
-        },
-      });
-    if (!existingStarterUnlock) {
-      const starterUnlock = this.profileAvatarUnlockRepository.create({
-        profileId: profile.id,
-        avatarId: starterAvatar.id,
-      });
-      await this.profileAvatarUnlockRepository.save(starterUnlock);
-    }
+    await this.ensureStarterAvatarsUnlocked(
+      profile.id,
+      starterAvatars.map((avatar) => avatar.id),
+    );
 
     let onboardingXpGranted = 0;
     const onboardingXpAmount = this.getConfiguredNonNegativeInteger(
@@ -324,6 +323,43 @@ export class ProfileService {
       );
       throw error;
     }
+  }
+
+  async selectAvatar(
+    profileId: string,
+    avatarId: string,
+  ): Promise<AvatarSelectionResult> {
+    this.assertUuid(profileId, 'Invalid profileId format');
+    this.assertUuid(avatarId, 'Invalid avatarId format');
+
+    const profile = await this.profileRepository.findOne({
+      where: { id: profileId },
+    });
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    this.assertOnboardingCompleted(
+      profile,
+      'Onboarding must be completed before avatar switch is allowed',
+    );
+
+    const avatar = await this.avatarRepository.findOne({
+      where: { id: avatarId, isStarter: true },
+    });
+    if (!avatar) {
+      throw new BadRequestException(
+        'Avatar must be one of approved starter avatars',
+      );
+    }
+
+    profile.currentAvatarId = avatar.id;
+    const savedProfile = await this.profileRepository.save(profile);
+
+    return {
+      profileId: savedProfile.id,
+      avatarId: avatar.id,
+      avatarLabel: avatar.label,
+    };
   }
 
   async getProfileSummary(profileId: string): Promise<ProfileSummary> {
@@ -601,6 +637,30 @@ export class ProfileService {
   private assertOnboardingCompleted(profile: Profile, message: string): void {
     if (this.profileNeedsOnboarding(profile)) {
       throw new ForbiddenException(message);
+    }
+  }
+
+  private async ensureStarterAvatarsUnlocked(
+    profileId: string,
+    starterAvatarIds: string[],
+  ): Promise<void> {
+    for (const starterAvatarId of starterAvatarIds) {
+      const existingUnlock = await this.profileAvatarUnlockRepository.findOne({
+        where: {
+          profileId,
+          avatarId: starterAvatarId,
+        },
+      });
+
+      if (existingUnlock) {
+        continue;
+      }
+
+      const starterUnlock = this.profileAvatarUnlockRepository.create({
+        profileId,
+        avatarId: starterAvatarId,
+      });
+      await this.profileAvatarUnlockRepository.save(starterUnlock);
     }
   }
 }

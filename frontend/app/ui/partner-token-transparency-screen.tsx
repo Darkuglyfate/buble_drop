@@ -8,6 +8,7 @@ import {
   useBubbleDropRuntime,
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
+import { UnifiedIcon } from "./unified-icons";
 
 type PartnerTokenView = {
   id: string;
@@ -94,8 +95,9 @@ export function PartnerTokenTransparencyScreen() {
                 profileId: runtimeContext.profileId,
                 walletAddress: runtimeContext.walletAddress,
               })}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
+              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
               Back
             </Link>
           </div>
@@ -105,7 +107,10 @@ export function PartnerTokenTransparencyScreen() {
         </section>
 
         <section className="bubble-card p-4">
-          <h2 className="text-sm font-semibold text-[#30466f]">Season token overview</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+            Season token overview
+          </h2>
           <div className="mt-3 rounded-xl bg-white/80 p-3">
             <p className="text-xs text-[#6074a0]">Loaded tokens</p>
             <p className="mt-1 text-lg font-semibold text-[#2f4a7f]">{tokenCount}</p>
@@ -113,7 +118,10 @@ export function PartnerTokenTransparencyScreen() {
         </section>
 
         <section className="bubble-card p-4">
-          <h2 className="text-sm font-semibold text-[#30466f]">Token list</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+            Token list
+          </h2>
 
           {isLoading ? (
             <p className="mt-3 text-sm text-[#6074a0]">Loading featured partner tokens...</p>
@@ -142,8 +150,9 @@ export function PartnerTokenTransparencyScreen() {
                         href={token.twitterUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block rounded-lg bg-[#eef4ff] p-2 font-semibold text-[#36568d]"
+                        className="inline-flex w-full items-center gap-2 rounded-lg bg-[#eef4ff] p-2 font-semibold text-[#36568d]"
                       >
+                        <UnifiedIcon kind="twitter" className="ui-icon ui-icon-active text-[#36568d]" />
                         Open X / Twitter
                       </a>
                       {marketUrl ? (
@@ -161,8 +170,9 @@ export function PartnerTokenTransparencyScreen() {
                               },
                             )
                           }
-                          className="block rounded-lg bg-gradient-to-r from-[#d8f2ff] to-[#e5dbff] p-2 font-semibold text-[#3b4e85]"
+                          className="inline-flex w-full items-center gap-2 rounded-lg bg-gradient-to-r from-[#d8f2ff] to-[#e5dbff] p-2 font-semibold text-[#3b4e85]"
                         >
+                          <UnifiedIcon kind="chart" className="ui-icon ui-icon-active text-[#3b4e85]" />
                           Open chart / DexScreener
                         </a>
                       ) : (

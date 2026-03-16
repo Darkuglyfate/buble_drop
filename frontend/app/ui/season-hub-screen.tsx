@@ -8,6 +8,7 @@ import {
   useBubbleDropRuntime,
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
+import { UnifiedIcon } from "./unified-icons";
 
 type SeasonHubView = {
   season: {
@@ -82,8 +83,9 @@ export function SeasonHubScreen() {
             </div>
             <Link
               href={withBubbleDropContext("/", { profileId, walletAddress })}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
+              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
               Back
             </Link>
           </div>
@@ -94,13 +96,17 @@ export function SeasonHubScreen() {
 
         <section className="bubble-card p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#30466f]">Season snapshot</h2>
+            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+              <UnifiedIcon kind="season" className="ui-icon text-[#48608f]" />
+              Season snapshot
+            </h2>
             <button
               type="button"
               onClick={() => void loadSeasonHub()}
               disabled={isLoading}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
+              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
               {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
@@ -132,7 +138,10 @@ export function SeasonHubScreen() {
         </section>
 
         <section className="bubble-card p-4">
-          <h2 className="text-sm font-semibold text-[#30466f]">Season tokens</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+            Season tokens
+          </h2>
           {isLoading ? (
             <p className="mt-3 text-sm text-[#6074a0]">Loading the current token lineup...</p>
           ) : null}

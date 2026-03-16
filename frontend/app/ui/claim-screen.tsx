@@ -19,6 +19,7 @@ import {
   type BackendProfileSummary,
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
+import { UnifiedIcon } from "./unified-icons";
 
 type ClaimableBalance = {
   tokenSymbol: string;
@@ -301,8 +302,9 @@ export function ClaimScreen() {
                 profileId,
                 walletAddress: connectedWalletAddress ?? walletAddress,
               })}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
+              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
               Back
             </Link>
           </div>
@@ -403,14 +405,23 @@ export function ClaimScreen() {
         </section>
 
         <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="text-sm font-semibold text-[#30466f]">Claimable balance summary</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="claim" className="ui-icon text-[#48608f]" />
+            Claimable balance summary
+          </h2>
           <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div className="gloss-pill rounded-xl bg-white/80 p-3">
-              <p className="text-xs text-[#6074a0]">Tokens</p>
+              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
+                <UnifiedIcon kind="tokens" className="ui-icon text-[#6074a0]" />
+                Tokens
+              </p>
               <p className="mt-1 font-semibold">{canUseBackend ? balances.length : "—"}</p>
             </div>
             <div className="gloss-pill rounded-xl bg-white/80 p-3">
-              <p className="text-xs text-[#6074a0]">Total claimable</p>
+              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
+                <UnifiedIcon kind="vault" className="ui-icon text-[#6074a0]" />
+                Total claimable
+              </p>
               <p className="mt-1 font-semibold">{canUseBackend ? totalClaimable : "—"}</p>
             </div>
           </div>
@@ -425,8 +436,9 @@ export function ClaimScreen() {
                 void loadBalances(profileId);
               }}
               disabled={isLoadingBalances}
-              className="mt-3 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
+              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
               {isLoadingBalances ? "Refreshing..." : "Refresh balances"}
             </button>
           ) : null}
@@ -439,7 +451,10 @@ export function ClaimScreen() {
               : ""
           }`}
         >
-          <h2 className="text-sm font-semibold text-[#30466f]">Claimable meme-token balances</h2>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+            Claimable meme-token balances
+          </h2>
 
           {isResolvingOnboardingState ? (
             <p className="mt-3 text-sm text-[#6074a0]">Loading backend onboarding state...</p>

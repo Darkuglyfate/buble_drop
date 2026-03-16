@@ -8,6 +8,7 @@ import {
   useBubbleDropRuntime,
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
+import { UnifiedIcon } from "./unified-icons";
 
 type PartnerTokenDetailView = {
   id: string;
@@ -96,8 +97,9 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
                 profileId: runtimeContext.profileId,
                 walletAddress: runtimeContext.walletAddress,
               })}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
+              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
               Back
             </Link>
           </div>
@@ -108,13 +110,17 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
 
         <section className="bubble-card p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#30466f]">Token info</h2>
+            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+              <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+              Token info
+            </h2>
             <button
               type="button"
               onClick={() => void loadToken()}
               disabled={isLoading}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
+              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
               {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
@@ -134,8 +140,9 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
                 href={token.twitterUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 block rounded-lg bg-[#eef4ff] p-2 text-center text-xs font-semibold text-[#36568d]"
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#eef4ff] p-2 text-center text-xs font-semibold text-[#36568d]"
               >
+                <UnifiedIcon kind="twitter" className="ui-icon ui-icon-active text-[#36568d]" />
                 Open X / Twitter
               </a>
               {marketUrl ? (
@@ -150,8 +157,9 @@ export function TokenDetailScreen({ tokenId }: { tokenId: string }) {
                       token_symbol: token.symbol,
                     })
                   }
-                  className="mt-2 block rounded-lg bg-gradient-to-r from-[#d8f2ff] to-[#e5dbff] p-2 text-center text-xs font-semibold text-[#3b4e85]"
+                  className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#d8f2ff] to-[#e5dbff] p-2 text-center text-xs font-semibold text-[#3b4e85]"
                 >
+                  <UnifiedIcon kind="chart" className="ui-icon ui-icon-active text-[#3b4e85]" />
                   Open chart / DexScreener
                 </a>
               ) : (

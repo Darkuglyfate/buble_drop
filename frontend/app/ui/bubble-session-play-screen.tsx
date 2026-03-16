@@ -25,6 +25,8 @@ const SESSION_REWARD_BUBBLES_XP = 30;
 const SESSION_COMPLETION_BONUS_XP = 20;
 const SESSION_ACTIVE_PLAY_XP_MAX = 20;
 const SESSION_ACTIVE_SECONDS_XP_CAP = 10 * 60;
+const COMBO_WINDOW_MS = 1500;
+const FEATURED_COMBO_TARGET = 5;
 const PLAYFIELD_BUBBLE_POSITIONS = [
   { top: "20%", left: "18%" },
   { top: "32%", left: "68%" },
@@ -151,6 +153,9 @@ export function BubbleSessionPlayScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [lastTapFeedbackAtMs, setLastTapFeedbackAtMs] = useState<number | null>(null);
+  const [lastTapAtMs, setLastTapAtMs] = useState<number | null>(null);
+  const [tapCombo, setTapCombo] = useState(0);
+  const [bestTapCombo, setBestTapCombo] = useState(0);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
@@ -255,6 +260,32 @@ export function BubbleSessionPlayScreen() {
     : 0;
   const projectedXpAwarded =
     projectedActivePlayXp + projectedCompletionBonusXp + projectedRewardBubblesXp;
+  const huntReadinessPercent = Math.min(
+    100,
+    Math.round(
+      (Math.min(backendCountableActiveSeconds, ACTIVE_SECONDS_FOR_COMPLETION_BONUS) /
+        ACTIVE_SECONDS_FOR_COMPLETION_BONUS) *
+        100,
+    ),
+  );
+  const runObjectives = [
+    {
+      id: "survive",
+      label: `Stay in session for ${Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min`,
+      done: elapsedSeconds >= MIN_SESSION_SECONDS_FOR_COMPLETION,
+    },
+    {
+      id: "active",
+      label: `Accumulate ${Math.round(ACTIVE_SECONDS_FOR_COMPLETION_BONUS / 60)} min active play`,
+      done: backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS,
+    },
+    {
+      id: "combo",
+      label: `Reach combo x${FEATURED_COMBO_TARGET}`,
+      done: bestTapCombo >= FEATURED_COMBO_TARGET,
+    },
+  ] as const;
+  const runObjectiveCompletedCount = runObjectives.filter((objective) => objective.done).length;
   const elapsedSecondsRemaining = Math.max(0, MIN_SESSION_SECONDS_FOR_COMPLETION - elapsedSeconds);
   const activeSecondsRemaining = Math.max(0, ACTIVE_SECONDS_FOR_COMPLETION_BONUS - backendCountableActiveSeconds);
   const playfieldBubblePosition =
@@ -344,6 +375,9 @@ export function BubbleSessionPlayScreen() {
         setNowMs(Date.now());
         setIsActive(true);
         setActiveTapCount(0);
+        setTapCombo(0);
+        setBestTapCombo(0);
+        setLastTapAtMs(null);
         setLastTapFeedbackAtMs(null);
         setSessionCompleted(false);
         setCompletionResult(null);
@@ -365,8 +399,20 @@ export function BubbleSessionPlayScreen() {
       return;
     }
 
+    const now = Date.now();
     setActiveTapCount((prev) => prev + 1);
-    setLastTapFeedbackAtMs(Date.now());
+    setLastTapFeedbackAtMs(now);
+    setTapCombo((prevCombo) => {
+      const nextCombo =
+        lastTapAtMs !== null && now - lastTapAtMs <= COMBO_WINDOW_MS ? prevCombo + 1 : 1;
+      setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
+      return nextCombo;
+    });
+    setLastTapAtMs(now);
+
+    if ("vibrate" in navigator) {
+      navigator.vibrate(10);
+    }
 
     if (!profileId || !backendSessionId || !authSessionToken) {
       return;
@@ -496,6 +542,20 @@ export function BubbleSessionPlayScreen() {
                     />
                   </div>
                 </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
+                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Combo</p>
+                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">x{tapCombo}</p>
+                  </div>
+                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
+                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Best</p>
+                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">x{bestTapCombo}</p>
+                  </div>
+                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
+                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Hunt</p>
+                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">{huntReadinessPercent}%</p>
+                  </div>
+                </div>
               </div>
             </div>
           </header>
@@ -590,7 +650,9 @@ export function BubbleSessionPlayScreen() {
                       className="gloss-pill absolute flex h-40 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/85 bg-gradient-to-br from-[#fff4c2] via-[#ffd9ef] to-[#e6deff] text-center text-sm font-bold text-[#684114] shadow-[0_20px_44px_rgba(255,192,133,0.54)]"
                       style={activeBubbleStyle}
                     >
-                      <span className="rounded-full bg-white/58 px-5 py-2.5">Tap bubble</span>
+                      <span className="rounded-full bg-white/58 px-5 py-2.5">
+                        {tapCombo >= 2 ? `Chain x${tapCombo}` : "Tap bubble"}
+                      </span>
                     </button>
                     {showTapFeedback ? (
                       <div
@@ -621,7 +683,7 @@ export function BubbleSessionPlayScreen() {
                   {isResolvingOnboardingState ? (
                     <p className="text-xs text-[#5f739b]">Loading session access…</p>
                   ) : (
-                    <div className="flex flex-col gap-1 text-xs text-[#6178a7]">
+                    <div className="flex flex-col gap-2 text-xs text-[#6178a7]">
                       <div className="flex items-center justify-between">
                         <span>Projected XP: {projectedXpAwarded}</span>
                         <span>
@@ -631,8 +693,37 @@ export function BubbleSessionPlayScreen() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                      <span>Active taps: {activeTapCount}</span>
-                      <span>{readinessCopy}</span>
+                        <span>Active taps: {activeTapCount}</span>
+                        <span>{readinessCopy}</span>
+                      </div>
+                      <div className="rounded-xl border border-white/75 bg-white/62 px-3 py-2">
+                        <div className="mb-1 flex items-center justify-between">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#50689a]">
+                            Run objectives
+                          </p>
+                          <p className="text-[11px] font-semibold text-[#415b90]">
+                            {runObjectiveCompletedCount}/{runObjectives.length}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          {runObjectives.map((objective) => (
+                            <div
+                              key={objective.id}
+                              className="flex items-center justify-between gap-2 text-[11px]"
+                            >
+                              <span>{objective.label}</span>
+                              <span
+                                className={
+                                  objective.done
+                                    ? "rounded-md bg-[#dbffe9] px-2 py-0.5 font-semibold text-[#2e7f57]"
+                                    : "rounded-md bg-[#edf2ff] px-2 py-0.5 font-semibold text-[#5c6f99]"
+                                }
+                              >
+                                {objective.done ? "Done" : "In run"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}

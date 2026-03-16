@@ -301,6 +301,16 @@ describe('ProfileService', () => {
       id: 'avatar-starter',
       isStarter: true,
     });
+    avatarRepository.find!.mockResolvedValue([
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        isStarter: true,
+      },
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        isStarter: true,
+      },
+    ]);
     profileAvatarUnlockRepository.findOne!.mockResolvedValue(null);
     profileAvatarUnlockRepository.create!.mockImplementation(
       (value: { profileId: string; avatarId: string }) => value,
@@ -344,6 +354,16 @@ describe('ProfileService', () => {
       id: 'avatar-starter',
       isStarter: true,
     });
+    avatarRepository.find!.mockResolvedValue([
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        isStarter: true,
+      },
+      {
+        id: '33333333-3333-4333-8333-333333333333',
+        isStarter: true,
+      },
+    ]);
     profileAvatarUnlockRepository.findOne!.mockResolvedValue(null);
     profileAvatarUnlockRepository.create!.mockImplementation(
       (value: { profileId: string; avatarId: string }) => value,
@@ -431,6 +451,50 @@ describe('ProfileService', () => {
         label: 'Starter Bubble Lilac',
       },
     ]);
+  });
+
+  it('allows switching to another free starter avatar after onboarding', async () => {
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'bubbler',
+      currentAvatarId: '22222222-2222-4222-8222-222222222222',
+      onboardingCompletedAt: new Date('2026-03-14T12:00:00.000Z'),
+    });
+    avatarRepository.findOne!.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      isStarter: true,
+      label: 'Starter Bubble Lilac',
+    });
+    profileRepository.save!.mockImplementation((profile: Profile) =>
+      Promise.resolve(profile),
+    );
+
+    const result = await service.selectAvatar(
+      '11111111-1111-4111-8111-111111111111',
+      '33333333-3333-4333-8333-333333333333',
+    );
+
+    expect(result).toEqual({
+      profileId: '11111111-1111-4111-8111-111111111111',
+      avatarId: '33333333-3333-4333-8333-333333333333',
+      avatarLabel: 'Starter Bubble Lilac',
+    });
+  });
+
+  it('blocks avatar switching before onboarding completion', async () => {
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: null,
+      currentAvatarId: null,
+      onboardingCompletedAt: null,
+    });
+
+    await expect(
+      service.selectAvatar(
+        '11111111-1111-4111-8111-111111111111',
+        '33333333-3333-4333-8333-333333333333',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('rejects rewards inventory when onboarding is incomplete', async () => {

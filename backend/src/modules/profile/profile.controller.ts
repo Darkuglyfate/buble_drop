@@ -10,12 +10,14 @@ import {
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { ConnectWalletDto } from './dto/connect-wallet.dto';
 import { GetProfileSummaryDto } from './dto/get-profile-summary.dto';
+import { SelectAvatarDto } from './dto/select-avatar.dto';
 import {
   AUTH_SESSION_HEADER,
   AuthSessionService,
 } from '../auth-session/auth-session.service';
 import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 import {
+  AvatarSelectionResult,
   OnboardingCompletionResult,
   LeaderboardEntry,
   ProfileService,
@@ -74,6 +76,19 @@ export class ProfileController {
       dto.nickname,
       dto.avatarId,
     );
+  }
+
+  @Post('avatar/select')
+  async selectAvatar(
+    @Body() dto: SelectAvatarDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
+  ): Promise<AvatarSelectionResult> {
+    await this.walletBindingService.assertProfileAccess(
+      dto.profileId,
+      authSessionHeader,
+    );
+
+    return this.profileService.selectAvatar(dto.profileId, dto.avatarId);
   }
 
   @Get('starter-avatars')

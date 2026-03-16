@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { Address } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import {
@@ -84,6 +84,12 @@ type OnboardingCompletionResponse = {
   avatarId: string;
   onboardingXpGranted: number;
   totalXp: number;
+};
+
+type AvatarSelectionResponse = {
+  profileId: string;
+  avatarId: string;
+  avatarLabel: string;
 };
 
 type OnboardingCard = {
@@ -206,6 +212,152 @@ function getAvatarGlyph(
   return cleaned.slice(0, 2).toUpperCase() || "BD";
 }
 
+function createAvatarBubbleTone(seed: string): {
+  base: string;
+  highlight: string;
+  glow: string;
+} {
+  const hash = Array.from(seed).reduce((acc, char, index) => {
+    return (acc + char.charCodeAt(0) * (index + 13)) % 360;
+  }, 0);
+  const hue = 180 + (hash % 120);
+  return {
+    base: `hsl(${hue} 85% 84%)`,
+    highlight: `hsl(${(hue + 24) % 360} 90% 89%)`,
+    glow: `hsla(${hue} 85% 68% / 0.42)`,
+  };
+}
+
+type WorldIconKind =
+  | "season"
+  | "hunt"
+  | "style"
+  | "board"
+  | "referrals"
+  | "tokens"
+  | "refresh"
+  | "sync"
+  | "disconnect"
+  | "vault"
+  | "claim"
+  | "auth";
+
+function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: string }) {
+  const iconClassName = "h-3.5 w-3.5 text-[#4f6796]";
+  const mergedClassName = className
+    ? `${iconClassName} ${className}`
+    : iconClassName;
+  if (kind === "season") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M8 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M16 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M7 10.5H17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "hunt") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="11" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M15.8 15.8L20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "style") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path
+          d="M12 3.5L13.8 8.2L18.5 10L13.8 11.8L12 16.5L10.2 11.8L5.5 10L10.2 8.2L12 3.5Z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (kind === "board") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M12 4.5L14.3 9.2L19.5 9.9L15.7 13.5L16.6 18.7L12 16.2L7.4 18.7L8.3 13.5L4.5 9.9L9.7 9.2L12 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "referrals") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <circle cx="9" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="16.5" cy="10.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M4.8 17.8C5.5 15.7 7.1 14.6 9 14.6C10.9 14.6 12.5 15.7 13.2 17.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M14.6 17.5C15.1 16.2 16.1 15.4 17.3 15.4C18.1 15.4 18.8 15.7 19.4 16.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (kind === "refresh") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M19 9.5A7.2 7.2 0 1 0 20 13.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M19.8 5.5V10H15.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "sync") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M8 7H16V17H8V7Z" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M10 4.8H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M11.2 10.5L14.3 12L11.2 13.5V10.5Z" fill="currentColor" />
+      </svg>
+    );
+  }
+  if (kind === "disconnect") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M9 8.2V6.8C9 5.8 9.8 5 10.8 5H17.2C18.2 5 19 5.8 19 6.8V17.2C19 18.2 18.2 19 17.2 19H10.8C9.8 19 9 18.2 9 17.2V15.8" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M14 12H3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M6.4 9.4L3.8 12L6.4 14.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "vault") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <rect x="4" y="6" width="16" height="12" rx="2.6" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M13 12H16.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="10" cy="12" r="1.6" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === "claim") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M7 12.2L10.3 15.5L17.2 8.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (kind === "auth") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+        <path d="M7.2 10V7.8C7.2 5.6 9 3.8 11.2 3.8H12.8C15 3.8 16.8 5.6 16.8 7.8V10" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="5.2" y="10" width="13.6" height="10.2" rx="2.2" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="12" cy="15.1" r="1.2" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
+      <ellipse cx="12" cy="13.6" rx="7" ry="5.8" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8.2 11.7C9.1 10.7 10.5 10 12 10C13.5 10 14.9 10.7 15.8 11.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="9.2" cy="13.2" r="0.8" fill="currentColor" />
+      <circle cx="14.8" cy="13.2" r="0.8" fill="currentColor" />
+    </svg>
+  );
+}
+
 const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
 const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
@@ -320,6 +472,7 @@ export function BubbleDropShell() {
   const [nicknameInput, setNicknameInput] = useState("");
   const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
   const [selectedStarterAvatarId, setSelectedStarterAvatarId] = useState<string | null>(null);
+  const [pressedAvatarId, setPressedAvatarId] = useState<string | null>(null);
   const [isLoadingStarterAvatars, setIsLoadingStarterAvatars] = useState(false);
   const [isResolvingFirstEntry, setIsResolvingFirstEntry] = useState(true);
   const [isFirstEntry, setIsFirstEntry] = useState(true);
@@ -600,6 +753,9 @@ export function BubbleDropShell() {
     setIsFirstEntry(needsOnboarding);
     setBootstrappedWalletAddress(summary.profileIdentity.walletAddress);
     setNicknameInput(summary.profileIdentity.nickname ?? "");
+    setSelectedStarterAvatarId(
+      summary.avatarState.currentAvatar?.id ?? null,
+    );
     runtimeContext.setAppContext({
       profileId: summary.profileIdentity.profileId,
       walletAddress: summary.profileIdentity.walletAddress,
@@ -607,9 +763,7 @@ export function BubbleDropShell() {
     identifyAnalyticsUser(summary.profileIdentity.profileId, {
       wallet_address: summary.profileIdentity.walletAddress,
     });
-    if (needsOnboarding) {
-      await loadStarterAvatarOptions();
-    }
+    await loadStarterAvatarOptions();
     return summary;
   };
 
@@ -1221,6 +1375,54 @@ export function BubbleDropShell() {
     }
   };
 
+  const onSelectStarterAvatar = async (avatarId: string) => {
+    if (!profileId) {
+      setActionMessage("Сначала синхронизируй профиль, затем меняй аватар.");
+      return;
+    }
+    if (!authenticatedSessionToken) {
+      setActionMessage("Подпиши вход через Base, чтобы сменить аватар.");
+      return;
+    }
+    if (profileSummary?.onboardingState.needsOnboarding) {
+      setActionMessage("Заверши онбординг, после этого аватары можно менять свободно.");
+      return;
+    }
+    if (profileSummary?.avatarState.currentAvatar?.id === avatarId) {
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    setActionMessage(null);
+    try {
+      const response = await fetch(`${backendUrl}/profile/avatar/select`, {
+        method: "POST",
+        headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
+        body: JSON.stringify({
+          profileId,
+          avatarId,
+        }),
+      });
+      if (!response.ok) {
+        setActionMessage("Не получилось сменить аватар прямо сейчас.");
+        return;
+      }
+
+      const payload = (await response.json()) as AvatarSelectionResponse;
+      await refreshProfileSummary(profileId);
+      captureAnalyticsEvent("bubbledrop_avatar_switched", {
+        profile_id: payload.profileId,
+        avatar_id: payload.avatarId,
+        avatar_label: payload.avatarLabel,
+      });
+      setActionMessage(`Аватар обновлён: ${payload.avatarLabel}.`);
+    } catch {
+      setActionMessage("Смена аватара временно недоступна. Попробуй ещё раз.");
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
   const homeStatusPills = [
     effectiveIsConnected
       ? isConnectedToBase
@@ -1237,8 +1439,7 @@ export function BubbleDropShell() {
     isConnectedToBase;
   let heroStatusLabel = "Arrival";
   let heroTitle = "Wake your bubble and step into today's drop.";
-  let heroBody =
-    "Connect first, then BubbleDrop turns your profile, streak, and reward path back on.";
+  let heroBody = "Connect -> Sign -> Play.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
   let primaryActionLabel = "Connect in BubbleDrop";
@@ -1257,20 +1458,19 @@ export function BubbleDropShell() {
   let profileVaultDisabled = false;
   const avatarSpotlightTitle = avatarLabel;
   let avatarSpotlightBody = hasProfile
-    ? "Your player profile is live. XP growth keeps changing how this bubble identity feels."
-    : "This is the player profile shell. Choose your starter avatar during onboarding to wake it up.";
+    ? "XP, frame and style are linked."
+    : "Choose starter avatar to unlock profile.";
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
     profileVaultLabel = "Connect wallet to unlock collection";
-    profileVaultHint = "First connect a wallet, then BubbleDrop can open your player collection.";
+    profileVaultHint = "Connect wallet first.";
     profileVaultHref = null;
     profileVaultHandler = onConnectWallet;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
-    heroBody =
-      "Switch chains to unlock daily check-in, onboarding completion, and the live reward path.";
+    heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
     primaryActionLabel = isSwitchingChain
@@ -1281,14 +1481,13 @@ export function BubbleDropShell() {
     primaryActionHandler = onSwitchToBase;
     heroPortalCopy = "Base lane waiting";
     profileVaultLabel = "Switch to Base to unlock collection";
-    profileVaultHint = "Collection access opens after your wallet is on Base.";
+    profileVaultHint = "Base network required.";
     profileVaultHref = null;
     profileVaultHandler = onSwitchToBase;
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
     heroTitle = "Confirm this bubble so the app can trust your next move.";
-    heroBody =
-      "One quick Base signature unlocks profile sync, onboarding, daily check-in, and session actions.";
+    heroBody = "One signature to unlock app actions.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
     primaryActionLabel =
@@ -1299,14 +1498,13 @@ export function BubbleDropShell() {
     primaryActionHandler = onSignInWithBase;
     heroPortalCopy = "Seal your glow";
     profileVaultLabel = "Sign in to unlock collection";
-    profileVaultHint = "Secure sign-in is required before BubbleDrop can load NFTs and cosmetics.";
+    profileVaultHint = "Sign-in required.";
     profileVaultHref = null;
     profileVaultHandler = onSignInWithBase;
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
     heroTitle = "Shape this bubble into your BubbleDrop identity.";
-    heroBody =
-      "Bring your wallet into BubbleDrop so your profile, onboarding state, and daily progression can wake up.";
+    heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
     primaryActionLabel = "Open my BubbleDrop home";
@@ -1314,15 +1512,14 @@ export function BubbleDropShell() {
     primaryActionHandler = onBootstrapProfile;
     heroPortalCopy = "Home still forming";
     profileVaultLabel = "Create profile to unlock collection";
-    profileVaultHint = "Your NFT and cosmetic vault appears after BubbleDrop creates your player profile.";
+    profileVaultHint = "Available after profile sync.";
     profileVaultHref = null;
     profileVaultHandler = onBootstrapProfile;
     profileVaultDisabled = !canSyncProfile;
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
     heroTitle = "Your bubble is almost ready to glow.";
-    heroBody =
-      "Pull in your latest profile state so the home screen can show today's rewards, streak, and next move.";
+    heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
     primaryActionLabel = "Refresh my home";
@@ -1330,14 +1527,13 @@ export function BubbleDropShell() {
     primaryActionHandler = onRefreshProfile;
     heroPortalCopy = "Glow calibrating";
     profileVaultLabel = "Refresh profile to open collection";
-    profileVaultHint = "Your vault appears as soon as the latest player state finishes loading.";
+    profileVaultHint = "Unlocks after refresh.";
     profileVaultHref = null;
     profileVaultHandler = onRefreshProfile;
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
     heroTitle = "Your glow is still alive, but premium drops are resting.";
-    heroBody =
-      "Step into a bubble run to keep progression alive, then touch in to warm rare reward access back up.";
+    heroBody = "Play session + check-in to restore rare.";
     heroAccentClass =
       "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
     primaryActionLabel = "Enter a warm-up run";
@@ -1349,12 +1545,11 @@ export function BubbleDropShell() {
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Premium lane resting";
     avatarSpotlightBody =
-      "Your current avatar is equipped. Keep growing XP and cosmetics to make the profile feel richer over time.";
+      "Current avatar equipped.";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
     heroTitle = "Your rare reward lane is glowing today.";
-    heroBody =
-      "The lounge is lit. Dive into bubble play while your premium reward path is bright and alive.";
+    heroBody = "Rare rewards are active today.";
     heroAccentClass =
       "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
     primaryActionLabel = "Enter today's bubble run";
@@ -1366,12 +1561,11 @@ export function BubbleDropShell() {
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Rare lane live";
     avatarSpotlightBody =
-      "This profile is in full glow mode. XP, frame growth, cosmetics, and drops now read as one player identity.";
+      "Full glow mode.";
   } else if (!isRareRewardAccessActive) {
     heroStatusLabel = "XP-only mode";
     heroTitle = "Today still moves your bubble forward.";
-    heroBody =
-      "Rare drops can wait. Slip into bubble play, build momentum, and let the glow come back naturally.";
+    heroBody = "XP mode is active.";
     heroAccentClass =
       "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
     primaryActionLabel = "Enter an XP run";
@@ -1383,12 +1577,11 @@ export function BubbleDropShell() {
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "XP lane open";
     avatarSpotlightBody =
-      "Your avatar is still part of progression even on XP-only days. Cosmetics and NFT drops remain visible in the vault.";
+      "Progress keeps going.";
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
     heroTitle = "Your bubble board is awake and ready for today's run.";
-    heroBody =
-      "Everything is warmed up. Enter bubble play and let your progression lounge turn into motion.";
+    heroBody = "All systems ready.";
     heroAccentClass =
       "from-[#b7f0ff]/95 via-[#d8dcff]/92 to-[#ffe0f0]/92 text-[#173056]";
     primaryActionLabel = "Enter bubble play";
@@ -1400,7 +1593,7 @@ export function BubbleDropShell() {
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Play portal ready";
     avatarSpotlightBody =
-      "This is your player profile core. As XP grows, frame, cosmetics, and avatar presence should feel more premium.";
+      "Profile core online.";
   }
 
   const onAnswer = (index: number) => {
@@ -1526,18 +1719,43 @@ export function BubbleDropShell() {
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {starterAvatars.map((avatar) => {
                     const isSelected = selectedStarterAvatarId === avatar.id;
+                    const avatarTone = createAvatarBubbleTone(avatar.id);
+                    const avatarGlyphPreview = getAvatarGlyph(null, avatar.label);
                     return (
                       <button
                         key={avatar.id}
                         type="button"
                         onClick={() => setSelectedStarterAvatarId(avatar.id)}
+                        onPointerDown={() => setPressedAvatarId(avatar.id)}
+                        onPointerUp={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                        onPointerLeave={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                        onPointerCancel={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
                         className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${
                           isSelected
                             ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679]"
                             : "border-[#dce6ff] bg-white/80 text-[#3c588b]"
                         }`}
                       >
-                        {avatar.label}
+                        <span className="flex items-center gap-3">
+                          <span
+                            className={`avatar-bubble-preview ${
+                              pressedAvatarId === avatar.id
+                                ? "avatar-bubble-touch"
+                                : ""
+                            }`}
+                            style={
+                              {
+                                "--avatar-base": avatarTone.base,
+                                "--avatar-highlight": avatarTone.highlight,
+                                "--avatar-glow": avatarTone.glow,
+                              } as CSSProperties
+                            }
+                          >
+                            <span className="avatar-bubble-liquid" />
+                            <span className="avatar-bubble-glyph">{avatarGlyphPreview}</span>
+                          </span>
+                          <span>{avatar.label}</span>
+                        </span>
                       </button>
                     );
                   })}
@@ -1699,6 +1917,89 @@ export function BubbleDropShell() {
               </div>
             </section>
 
+            {!isFirstEntry ? (
+              <section className="bubble-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6f84af]">
+                      Free starter avatars
+                    </p>
+                    <h3 className="mt-1 text-lg font-black tracking-[-0.02em] text-[#20365d]">
+                      Меняй пузырь в любой момент
+                    </h3>
+                    <p className="mt-1 text-sm text-[#5f749f]">
+                      Эти стартовые аватары всегда бесплатны и остаются открытыми для переключения.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white/72 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#546d9c]">
+                    {starterAvatars.length} unlocked
+                  </span>
+                </div>
+
+                {isLoadingStarterAvatars ? (
+                  <p className="mt-3 text-sm text-[#6074a0]">Loading starter avatars...</p>
+                ) : starterAvatars.length === 0 ? (
+                  <p className="mt-3 text-sm text-[#7f3a53]">Starter avatars unavailable from backend.</p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {starterAvatars.map((avatar) => {
+                      const isSelected =
+                        profileSummary?.avatarState.currentAvatar?.id === avatar.id;
+                      const avatarTone = createAvatarBubbleTone(avatar.id);
+                      const avatarGlyphPreview = getAvatarGlyph(null, avatar.label);
+                      return (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          onClick={() => void onSelectStarterAvatar(avatar.id)}
+                          onPointerDown={() => setPressedAvatarId(avatar.id)}
+                          onPointerUp={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                          onPointerLeave={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                          onPointerCancel={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
+                          disabled={
+                            isSubmittingAction ||
+                            !authenticatedSessionToken ||
+                            profileSummary?.onboardingState.needsOnboarding
+                          }
+                          className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold transition-all ${
+                            isSelected
+                              ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679] shadow-[0_10px_24px_rgba(120,167,241,0.25)]"
+                              : "border-[#dce6ff] bg-white/80 text-[#3c588b]"
+                          } disabled:opacity-60`}
+                        >
+                          <span className="flex items-center gap-3">
+                            <span
+                              className={`avatar-bubble-preview ${
+                                pressedAvatarId === avatar.id
+                                  ? "avatar-bubble-touch"
+                                  : ""
+                              }`}
+                              style={
+                                {
+                                  "--avatar-base": avatarTone.base,
+                                  "--avatar-highlight": avatarTone.highlight,
+                                  "--avatar-glow": avatarTone.glow,
+                                } as CSSProperties
+                              }
+                            >
+                              <span className="avatar-bubble-liquid" />
+                              <span className="avatar-bubble-glyph">{avatarGlyphPreview}</span>
+                            </span>
+                            <span className="block">
+                              <span className="block">{avatar.label}</span>
+                              <span className="mt-1 block text-[11px] uppercase tracking-[0.12em] text-[#6d82ad]">
+                                {isSelected ? "Equipped" : "Tap to equip"}
+                              </span>
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
+
             <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
               <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
               <div className="absolute -bottom-12 left-0 h-32 w-32 rounded-full bg-white/20 blur-3xl" />
@@ -1752,7 +2053,7 @@ export function BubbleDropShell() {
                     </span>
                     <span className="mt-1 block">{primaryActionLabel}</span>
                     <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Let the lounge turn into motion.
+                      Tap to continue.
                     </span>
                   </Link>
                 ) : (
@@ -1767,7 +2068,7 @@ export function BubbleDropShell() {
                     </span>
                     <span className="mt-1 block">{primaryActionLabel}</span>
                     <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Take the cleanest path from lounge into play.
+                      Tap to continue.
                     </span>
                   </button>
                 )}
@@ -1891,14 +2192,20 @@ export function BubbleDropShell() {
                     href={claimsHref}
                     className="action-chip gloss-pill rounded-[1.1rem] bg-gradient-to-r from-[#ffe4b4] to-[#ffd6ed] px-4 py-3 text-sm font-semibold text-[#5b3920]"
                   >
-                    Open reward claims
+                    <span className="inline-flex items-center gap-2">
+                      <WorldIcon kind="claim" className="ui-icon ui-icon-active" />
+                      <span>Open claims</span>
+                    </span>
                   </Link>
                 ) : null}
                 <Link
                   href={rewardsInventoryHref}
                   className="action-chip rounded-[1.1rem] bg-white/82 px-4 py-3 text-sm font-semibold text-[#355889]"
                 >
-                  Open reward vault
+                  <span className="inline-flex items-center gap-2">
+                    <WorldIcon kind="vault" className="ui-icon ui-icon-active" />
+                    <span>Open vault</span>
+                  </span>
                 </Link>
               </div>
               <div className="mt-3 rounded-2xl bg-white/72 px-3 py-3 text-xs font-semibold text-[#4f648f]">
@@ -1907,33 +2214,17 @@ export function BubbleDropShell() {
             </section>
 
             <section className="bubble-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                    Play lane
-                  </p>
-                  <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
-                    Bubble time
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-[#6278a3]">
-                    Sessions are where the app feels alive. Tap in, stay active, and turn the day into progression.
-                  </p>
-                </div>
-                <div className="rounded-[1.15rem] bg-gradient-to-br from-[#d7f3ff] via-[#e4e1ff] to-[#ffe0f1] px-3 py-2 text-right shadow-[0_16px_36px_rgba(109,145,219,0.14)]">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                  System
+                </p>
+                <div className="rounded-[1rem] bg-gradient-to-br from-[#d7f3ff] via-[#e4e1ff] to-[#ffe0f1] px-3 py-2 text-right shadow-[0_12px_28px_rgba(109,145,219,0.12)]">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6f7fb0]">
-                    Session
+                    Lane
                   </p>
-                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#3d4574]">Ready</p>
+                  <p className="mt-1 text-sm font-black tracking-[-0.02em] text-[#3d4574]">Home</p>
                 </div>
               </div>
-
-              <Link
-                href={quickSessionHref}
-                className="action-chip gloss-pill mt-4 block rounded-[1.3rem] bg-gradient-to-r from-[#ffdbe9] via-[#ebe1ff] to-[#d4f1ff] px-4 py-4 text-base font-black tracking-[-0.02em] text-[#382f63]"
-              >
-                Enter bubble session
-              </Link>
-
               <div className="mt-3 flex flex-wrap gap-2">
                 {canSyncProfile ? (
                   <button
@@ -1941,7 +2232,10 @@ export function BubbleDropShell() {
                     onClick={onBootstrapProfile}
                     className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f]"
                   >
-                    Sync profile
+                    <span className="inline-flex items-center gap-1.5">
+                      <WorldIcon kind="sync" className="ui-icon ui-icon-active" />
+                      <span>Sync</span>
+                    </span>
                   </button>
                 ) : null}
                 <button
@@ -1950,7 +2244,10 @@ export function BubbleDropShell() {
                   disabled={isSubmittingAction}
                   className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
                 >
-                  Refresh home
+                  <span className="inline-flex items-center gap-1.5">
+                    <WorldIcon kind="refresh" className="ui-icon ui-icon-active" />
+                    <span>Refresh</span>
+                  </span>
                 </button>
                 {effectiveIsConnected && isConnectedToBase && isSignedInWithBase && !smokeWalletOverride ? (
                   <button
@@ -1959,7 +2256,10 @@ export function BubbleDropShell() {
                     disabled={isSubmittingAction || isWalletFlowBusy}
                     className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
                   >
-                    Clear sign-in
+                    <span className="inline-flex items-center gap-1.5">
+                      <WorldIcon kind="auth" className="ui-icon ui-icon-active" />
+                      <span>Reset sign-in</span>
+                    </span>
                   </button>
                 ) : null}
                 {effectiveIsConnected && !smokeWalletOverride ? (
@@ -1969,44 +2269,63 @@ export function BubbleDropShell() {
                     disabled={isSubmittingAction || isWalletFlowBusy}
                     className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
                   >
-                    Disconnect
+                    <span className="inline-flex items-center gap-1.5">
+                      <WorldIcon kind="disconnect" className="ui-icon ui-icon-active" />
+                      <span>Disconnect</span>
+                    </span>
                   </button>
                 ) : null}
               </div>
             </section>
 
             <section className="bubble-card p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                Bubble world
-              </p>
-              <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
-                Keep the world feeling alive
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-[#6278a3]">
-                Drift through the compact surfaces that shape the season around your profile, rewards, and social pulse.
-              </p>
-              <p className="mt-2 rounded-xl bg-white/78 px-3 py-2 text-xs font-semibold text-[#4f648f]">
-                Long-loop goal: push streak + sessions daily, then check partner token pulse and cosmetics vault for fresh upgrades.
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                  Bubble world
+                </p>
+                <div className="flex items-center gap-1">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="season" className="ui-icon" />
+                    <span>Season</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="hunt" className="ui-icon" />
+                    <span>Hunt</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="style" className="ui-icon" />
+                    <span>Style</span>
+                  </span>
+                </div>
+              </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <Link
                   href={seasonHref}
-                  className="action-card rounded-[1.2rem] bg-gradient-to-br from-[#dff3ff] to-[#ede3ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
+                  className="action-card icon-card rounded-[1.2rem] bg-gradient-to-br from-[#dff3ff] to-[#ede3ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open season spotlight
+                  <span className="inline-flex items-center gap-2">
+                    <WorldIcon kind="season" className="ui-icon ui-icon-active" />
+                    <span>Season</span>
+                  </span>
                 </Link>
                 <Link
                   href={leaderboardHref}
-                  className="action-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
+                  className="action-card icon-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open signal board
+                  <span className="inline-flex items-center gap-2">
+                    <WorldIcon kind="board" className="ui-icon ui-icon-active" />
+                    <span>Board</span>
+                  </span>
                 </Link>
                 <Link
                   href={referralsHref}
-                  className="action-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
+                  className="action-card icon-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open referral bloom
+                  <span className="inline-flex items-center gap-2">
+                    <WorldIcon kind="referrals" className="ui-icon ui-icon-active" />
+                    <span>Referrals</span>
+                  </span>
                 </Link>
                 <Link
                   href={partnerTokensHref}
@@ -2015,9 +2334,12 @@ export function BubbleDropShell() {
                       profile_id: profileId,
                     })
                   }
-                  className="action-card rounded-[1.2rem] bg-gradient-to-br from-[#ffe7f0] to-[#e7e6ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
+                  className="action-card icon-card rounded-[1.2rem] bg-gradient-to-br from-[#ffe7f0] to-[#e7e6ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
                 >
-                  Open token pulse
+                  <span className="inline-flex items-center gap-2">
+                    <WorldIcon kind="tokens" className="ui-icon ui-icon-active" />
+                    <span>Tokens</span>
+                  </span>
                 </Link>
               </div>
             </section>
