@@ -1602,20 +1602,19 @@ export function BubbleDropShell() {
             : dailyCheckInCompletedToday
               ? "Open session"
               : "Claim daily check-in";
-  const dailyMissionActionHandler =
-    dailyCheckInCompletedToday && !isFirstEntry
-      ? () => window.location.assign(quickSessionHref)
-      : !effectiveIsConnected
-        ? onConnectWallet
-        : !isConnectedToBase
-          ? onSwitchToBase
-          : !authenticatedSessionToken
-            ? onSignInWithBase
-            : !profileId && connectedWalletAddress
-              ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
-              : isFirstEntry
-                ? onCompleteOnboarding
-                : onDailyCheckIn;
+  const dailyMissionActionHandler = !effectiveIsConnected
+    ? onConnectWallet
+    : !isConnectedToBase
+      ? onSwitchToBase
+      : !authenticatedSessionToken
+        ? onSignInWithBase
+        : !profileId && connectedWalletAddress
+          ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
+          : isFirstEntry
+            ? onCompleteOnboarding
+            : dailyCheckInCompletedToday
+              ? () => window.location.assign(quickSessionHref)
+              : onDailyCheckIn;
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
