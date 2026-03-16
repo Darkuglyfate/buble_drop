@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type MouseEvent } from "react";
 import type { Address } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import {
@@ -458,6 +458,66 @@ async function fetchStarterAvatars(backendUrl: string): Promise<StarterAvatar[]>
   return (await response.json()) as StarterAvatar[];
 }
 
+type IntroBubbleSpec = {
+  id: string;
+  top: string;
+  left: string;
+  sizeRem: number;
+  delayMs: number;
+  roamDurationMs: number;
+  wobbleDurationMs: number;
+  roamX1: string;
+  roamY1: string;
+  roamX2: string;
+  roamY2: string;
+  roamX3: string;
+  roamY3: string;
+  hue: number;
+  alpha: number;
+  hasTapSignal: boolean;
+};
+
+function seededUnit(seed: number): number {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function createIntroBubbles(count = 28): IntroBubbleSpec[] {
+  return Array.from({ length: count }, (_, index) => {
+    const idx = index + 1;
+    const majorSeed = seededUnit(idx * 1.73);
+    const speedSeed = seededUnit(idx * 2.31);
+    const directionSeed = seededUnit(idx * 3.17);
+    const toneSeed = seededUnit(idx * 4.09);
+    const signalSeed = seededUnit(idx * 5.67);
+    const pathSeedA = seededUnit(idx * 10.11);
+    const pathSeedB = seededUnit(idx * 11.17);
+    const pathSeedC = seededUnit(idx * 12.23);
+
+    const hue = toneSeed > 0.86 ? 276 : toneSeed > 0.94 ? 328 : 206 + Math.round(toneSeed * 34);
+    const hasTapSignal = signalSeed > 0.76 || idx % 9 === 0;
+
+    return {
+      id: `intro-${idx}`,
+      top: `${6 + Math.round(majorSeed * 86)}%`,
+      left: `${4 + Math.round(seededUnit(idx * 9.13) * 92)}%`,
+      sizeRem: 1.9 + majorSeed * 4.1,
+      delayMs: Math.round(speedSeed * 1600),
+      roamDurationMs: 14000 + Math.round(speedSeed * 16000),
+      wobbleDurationMs: 2200 + Math.round(seededUnit(idx * 6.71) * 3200),
+      roamX1: `${Math.round((pathSeedA - 0.5) * 120)}vw`,
+      roamY1: `${Math.round((pathSeedB - 0.5) * 120)}vh`,
+      roamX2: `${Math.round((pathSeedB - 0.5) * 120)}vw`,
+      roamY2: `${Math.round((pathSeedC - 0.5) * 120)}vh`,
+      roamX3: `${Math.round((directionSeed - 0.5) * 120)}vw`,
+      roamY3: `${Math.round((seededUnit(idx * 7.49) - 0.5) * 120)}vh`,
+      hue,
+      alpha: 0.38 + seededUnit(idx * 8.21) * 0.28,
+      hasTapSignal,
+    };
+  });
+}
+
 export function BubbleDropShell() {
   const backendUrl = BUBBLEDROP_API_BASE;
   const runtimeContext = useBubbleDropRuntime();
@@ -491,6 +551,12 @@ export function BubbleDropShell() {
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
+  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
+  const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
+  const [introPopBursts, setIntroPopBursts] = useState<
+    Array<{ id: string; x: number; y: number }>
+  >([]);
+  const introBubbles = useMemo(() => createIntroBubbles(), []);
   const { address, chainId, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -1504,6 +1570,13 @@ export function BubbleDropShell() {
   const dropRadarHint = isRareRewardAccessActive
     ? "Rare drops can appear in today's run."
     : "Check-in and sessions increase drop chance.";
+  const introTargetBubbleIds = useMemo(
+    () => introBubbles.filter((bubble) => bubble.hasTapSignal).map((bubble) => bubble.id),
+    [introBubbles],
+  );
+  const introBubblesRemaining = introTargetBubbleIds.filter(
+    (id) => !introPoppedBubbleIds.includes(id),
+  ).length;
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
@@ -1623,6 +1696,67 @@ export function BubbleDropShell() {
     setShowWrongExplanation(true);
   };
 
+  const playIntroPopSound = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) {
+        return;
+      }
+      const audioContext = new AudioContextCtor();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(520, audioContext.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(180, audioContext.currentTime + 0.08);
+      gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.1);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.11);
+      window.setTimeout(() => {
+        void audioContext.close();
+      }, 150);
+    } catch {
+      // Sound is optional: keep interaction smooth even if audio fails.
+    }
+  };
+
+  const onPopIntroBubble = (bubbleId: string, event: MouseEvent<HTMLButtonElement>) => {
+    if (!welcomeIntroVisible) {
+      return;
+    }
+    setIntroPoppedBubbleIds((current) => {
+      if (current.includes(bubbleId)) {
+        return current;
+      }
+      return [...current, bubbleId];
+    });
+    if ("vibrate" in navigator) {
+      navigator.vibrate(12);
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const playfieldRect = event.currentTarget.parentElement?.getBoundingClientRect();
+    const burstX = playfieldRect
+      ? rect.left - playfieldRect.left + rect.width / 2
+      : rect.width / 2;
+    const burstY = playfieldRect
+      ? rect.top - playfieldRect.top + rect.height / 2
+      : rect.height / 2;
+    const burstId = `${bubbleId}-${Date.now()}`;
+    setIntroPopBursts((current) => [...current, { id: burstId, x: burstX, y: burstY }]);
+    window.setTimeout(() => {
+      setIntroPopBursts((current) => current.filter((burst) => burst.id !== burstId));
+    }, 550);
+    playIntroPopSound();
+  };
+
   const goNextCard = () => {
     setSelectedOption(null);
     setShowWrongExplanation(false);
@@ -1650,6 +1784,75 @@ export function BubbleDropShell() {
         <span className="bubble b5" />
         <span className="bubble b6" />
       </div>
+      {welcomeIntroVisible ? (
+        <section className="intro-welcome-overlay">
+          <div className="intro-welcome-card">
+            <p className="intro-welcome-kicker">BubbleDrop</p>
+            <h1 className="intro-welcome-title">Hi, welcome to the Bubble World</h1>
+            <p className="intro-welcome-subtitle">
+              Pop only bubbles marked with TAP to continue.
+            </p>
+            <p className="intro-welcome-progress">
+              Bubbles left: <strong>{introBubblesRemaining}</strong>
+            </p>
+          </div>
+          <div className="intro-welcome-playfield" aria-hidden="false">
+            {introBubbles.map((bubble) => {
+              const popped = introPoppedBubbleIds.includes(bubble.id);
+              if (popped) {
+                return null;
+              }
+              return (
+                <button
+                  key={bubble.id}
+                  type="button"
+                  onClick={(event) => onPopIntroBubble(bubble.id, event)}
+                  className="intro-bubble"
+                  style={
+                    {
+                      top: bubble.top,
+                      left: bubble.left,
+                      width: `${bubble.sizeRem}rem`,
+                      height: `${bubble.sizeRem}rem`,
+                      "--intro-delay": `${bubble.delayMs}ms`,
+                      "--intro-roam-duration": `${bubble.roamDurationMs}ms`,
+                      "--intro-wobble-duration": `${bubble.wobbleDurationMs}ms`,
+                      "--intro-roam-x1": bubble.roamX1,
+                      "--intro-roam-y1": bubble.roamY1,
+                      "--intro-roam-x2": bubble.roamX2,
+                      "--intro-roam-y2": bubble.roamY2,
+                      "--intro-roam-x3": bubble.roamX3,
+                      "--intro-roam-y3": bubble.roamY3,
+                      "--intro-bubble-hue": `${bubble.hue}`,
+                      "--intro-bubble-alpha": `${bubble.alpha}`,
+                    } as CSSProperties
+                  }
+                >
+                  {bubble.hasTapSignal ? <span className="intro-bubble-signal">TAP</span> : null}
+                </button>
+              );
+            })}
+            {introPopBursts.map((burst) => (
+              <span
+                key={burst.id}
+                className="intro-pop-burst"
+                style={{
+                  left: `${burst.x}px`,
+                  top: `${burst.y}px`,
+                }}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setWelcomeIntroVisible(false)}
+            disabled={introBubblesRemaining > 0}
+            className="gloss-pill intro-welcome-continue"
+          >
+            {introBubblesRemaining > 0 ? `Pop ${introBubblesRemaining} more` : "Enter BubbleDrop"}
+          </button>
+        </section>
+      ) : null}
 
       <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
         {onboardingVisible ? (
