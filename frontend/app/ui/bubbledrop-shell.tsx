@@ -582,9 +582,6 @@ export function BubbleDropShell() {
   const nextFrame = profileSummary?.rankFrameState.nextFrame;
   const currentFrameFloorXp =
     profileSummary?.rankFrameState.currentFrame?.minLifetimeXp ?? 0;
-  const equippedAvatarKey = profileSummary?.avatarState.currentAvatar?.key ?? null;
-  const unlockedAvatarCount = profileSummary?.avatarState.unlockedAvatarCount ?? 0;
-  const hasProfile = Boolean(profileId);
   const hasUnlockedCollection =
     Boolean(profileId) && !profileSummary?.onboardingState.needsOnboarding;
   const progressToNextFramePercent = nextFrame
@@ -606,9 +603,6 @@ export function BubbleDropShell() {
     profileSummary?.claimableTokenBalanceSummary.tokenCount ?? 0;
   const claimableTokenAmount =
     profileSummary?.claimableTokenBalanceSummary.totalClaimableAmount ?? "0";
-  const nextAvatarMilestone =
-    unlockedAvatarCount < 3 ? 3 : unlockedAvatarCount < 6 ? 6 : 10;
-  const avatarsToMilestone = Math.max(0, nextAvatarMilestone - unlockedAvatarCount);
   const tokenHuntHint = isRareRewardAccessActive
     ? "Complete one more bubble session now to roll partner token drops."
     : "Lock today's streak first to warm premium partner-token drop odds.";
@@ -1432,10 +1426,23 @@ export function BubbleDropShell() {
   let profileVaultHref: string | null = rewardsInventoryHref;
   let profileVaultHandler: (() => void) | null = null;
   let profileVaultDisabled = false;
-  const avatarSpotlightTitle = avatarLabel;
-  let avatarSpotlightBody = hasProfile
-    ? "XP, frame and style are linked."
-    : "Choose starter avatar to unlock profile.";
+  const canAttemptDailyCheckIn = !isSubmittingAction;
+  const dailyMissionActionLabel = !effectiveIsConnected
+    ? "Connect wallet"
+    : !isConnectedToBase
+      ? "Switch to Base"
+      : !authenticatedSessionToken
+        ? "Sign in with Base"
+        : !profileId
+          ? "Sync profile"
+          : isFirstEntry
+            ? "Finish onboarding"
+            : "Claim daily check-in";
+  const dailyMissionHint = isFirstEntry
+    ? "Finish onboarding first."
+    : isRareRewardAccessActive
+      ? "Rare access is warm."
+      : "Rare access needs check-in.";
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
@@ -1520,8 +1527,6 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Premium lane resting";
-    avatarSpotlightBody =
-      "Current avatar equipped.";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
     heroTitle = "Your rare reward lane is glowing today.";
@@ -1536,8 +1541,6 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Rare lane live";
-    avatarSpotlightBody =
-      "Full glow mode.";
   } else if (!isRareRewardAccessActive) {
     heroStatusLabel = "XP-only mode";
     heroTitle = "Today still moves your bubble forward.";
@@ -1552,8 +1555,6 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "XP lane open";
-    avatarSpotlightBody =
-      "Progress keeps going.";
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
     heroTitle = "Your bubble board is awake and ready for today's run.";
@@ -1568,8 +1569,6 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Play portal ready";
-    avatarSpotlightBody =
-      "Profile core online.";
   }
 
   const onAnswer = (index: number) => {
@@ -1853,20 +1852,34 @@ export function BubbleDropShell() {
               <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-2">
                 <div className="rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
-                    Avatar spotlight
+                    Daily mission
                   </p>
-                  <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">
-                    {avatarSpotlightTitle}
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-[#5f749f]">{avatarSpotlightBody}</p>
-                  <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7d8fb7]">
-                    {equippedAvatarKey ? `Avatar key: ${equippedAvatarKey}` : "Starter avatar unlocks during onboarding"}
-                  </p>
-                  <p className="mt-2 text-xs font-semibold text-[#5f739b]">
-                    {avatarsToMilestone > 0
-                      ? `${avatarsToMilestone} more avatar unlocks to reach your next cosmetic milestone (${nextAvatarMilestone}).`
-                      : "Cosmetic milestone reached. Keep collecting to tier up your style set."}
-                  </p>
+                  <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">Today</h3>
+                  <p className="mt-2 text-sm text-[#5f749f]">{dailyMissionHint}</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">Streak</p>
+                      <p className="mt-1 text-sm font-black text-[#233b67]">{currentStreak}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">XP</p>
+                      <p className="mt-1 text-sm font-black text-[#233b67]">{totalXp}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">Rare</p>
+                      <p className="mt-1 text-sm font-black text-[#233b67]">
+                        {isRareRewardAccessActive ? "On" : "Off"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onDailyCheckIn}
+                    disabled={!canAttemptDailyCheckIn}
+                    className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                  >
+                    {isSubmittingAction ? "Processing..." : dailyMissionActionLabel}
+                  </button>
                 </div>
 
                 {profileVaultHref ? (

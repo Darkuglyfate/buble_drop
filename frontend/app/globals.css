@@ -696,6 +696,51 @@ button.gloss-pill:disabled {
   }
 }
 
+body.glass-soft .bubble-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.78),
+      rgba(255, 255, 255, 0.58)
+    ),
+    rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(15px) saturate(118%);
+}
+
+body.glass-medium .bubble-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.64),
+      rgba(255, 255, 255, 0.42)
+    ),
+    rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+body.glass-strong .bubble-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.52),
+      rgba(255, 255, 255, 0.3)
+    ),
+    rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(21px) saturate(142%);
+}
+
+body.glass-soft .bubble {
+  opacity: 0.58;
+}
+
+body.glass-medium .bubble {
+  opacity: 0.72;
+}
+
+body.glass-strong .bubble {
+  opacity: 0.9;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .avatar-bubble-preview,
   .avatar-bubble-liquid,

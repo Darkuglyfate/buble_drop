@@ -136,6 +136,11 @@ function clampBubblePosition(value: number): string {
   return `${Math.max(10, Math.min(82, value))}%`;
 }
 
+function normalizeWalletAddress(value: string | null | undefined): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
 export function BubbleSessionPlayScreen() {
   const runtimeContext = useBubbleDropRuntime();
   const { address } = useAccount();
@@ -162,11 +167,17 @@ export function BubbleSessionPlayScreen() {
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const connectedWalletAddress = address?.trim().toLowerCase() ?? null;
+  const connectedWalletAddress = normalizeWalletAddress(address);
+  const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
+  const normalizedAuthSessionAddress = normalizeWalletAddress(authSession?.address);
+  const authSessionMatchesRuntimeWallet =
+    !normalizedWalletAddress || normalizedAuthSessionAddress === normalizedWalletAddress;
+  const authSessionMatchesConnectedWallet =
+    !connectedWalletAddress || normalizedAuthSessionAddress === connectedWalletAddress;
   const authSessionToken =
     authSession &&
-    (!walletAddress || authSession.address === walletAddress) &&
-    (!connectedWalletAddress || authSession.address === connectedWalletAddress)
+    authSessionMatchesRuntimeWallet &&
+    authSessionMatchesConnectedWallet
       ? authSession.authSessionToken
       : null;
 
@@ -320,15 +331,11 @@ export function BubbleSessionPlayScreen() {
     !isActive &&
     !sessionCompleted &&
     !isSubmitting &&
-    !!authSessionToken &&
-    !needsOnboarding &&
     !isResolvingOnboardingState;
   const canCompleteSession =
     isActive &&
     !sessionCompleted &&
     !isSubmitting &&
-    !!authSessionToken &&
-    !needsOnboarding &&
     !isResolvingOnboardingState;
   const gameplayToastMessage =
     actionMessage && !sessionCompleted ? actionMessage : null;

@@ -74,11 +74,11 @@ export function getBubbleDropWalletConnectors(connectors: readonly Connector[]) 
     coinbaseWalletConnector,
     preferredConnector: injectedCoinbaseProviderAvailable
       ? coinbaseInjectedConnector ??
-        baseAccountConnector ??
-        coinbaseWalletConnector
-      : baseAccountConnector ??
+        coinbaseWalletConnector ??
+        baseAccountConnector
+      : coinbaseWalletConnector ??
         coinbaseInjectedConnector ??
-        coinbaseWalletConnector,
+        baseAccountConnector,
   };
 }
 
