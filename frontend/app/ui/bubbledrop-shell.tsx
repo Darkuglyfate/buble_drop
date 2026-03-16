@@ -106,6 +106,7 @@ type WalletFlowStage =
   | "timed_out";
 
 type WalletFlowPhase = "connect" | "sign_in" | null;
+type GlassMode = "soft" | "medium" | "strong";
 
 type WalletFlowState = {
   stage: WalletFlowStage;
@@ -354,6 +355,7 @@ function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: strin
 
 const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
+const GLASS_MODE_STORAGE_KEY = "bubbledrop.glass-mode";
 const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
   stage: "idle",
   phase: null,
@@ -478,6 +480,7 @@ export function BubbleDropShell() {
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [glassMode, setGlassMode] = useState<GlassMode>("medium");
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
@@ -564,7 +567,6 @@ export function BubbleDropShell() {
   const avatarLabel =
     profileSummary?.avatarState.currentAvatar?.label ??
     (profileId ? "Starter bubble" : "Wake BubbleDrop");
-  const avatarGlyph = getAvatarGlyph(nicknameDisplay, avatarLabel);
   const profileBubbleTone = createAvatarBubbleTone(
     profileSummary?.avatarState.currentAvatar?.id ??
       profileSummary?.avatarState.currentAvatar?.key ??
@@ -773,6 +775,28 @@ export function BubbleDropShell() {
       has_profile_context: !!runtimeContext.profileId,
     });
   }, [runtimeContext.profileId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedMode = window.localStorage.getItem(GLASS_MODE_STORAGE_KEY);
+    if (storedMode === "soft" || storedMode === "medium" || storedMode === "strong") {
+      setGlassMode(storedMode);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const body = window.document.body;
+    body.classList.remove("glass-soft", "glass-medium", "glass-strong");
+    body.classList.add(`glass-${glassMode}`);
+    window.localStorage.setItem(GLASS_MODE_STORAGE_KEY, glassMode);
+  }, [glassMode]);
 
   useEffect(() => {
     setProfileId(runtimeContext.profileId);
@@ -1756,7 +1780,9 @@ export function BubbleDropShell() {
                   onPointerCancel={() => setIsProfileBubblePressed(false)}
                 >
                   <span className="avatar-bubble-liquid" />
-                  <span className="relative z-10">{avatarGlyph}</span>
+                  <span className="profile-bubble-core relative z-10" />
+                  <span className="profile-bubble-ring profile-bubble-ring-a" />
+                  <span className="profile-bubble-ring profile-bubble-ring-b" />
                   <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-white/80" />
                   <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
                 </div>
@@ -2160,6 +2186,27 @@ export function BubbleDropShell() {
                     </span>
                   </button>
                 ) : null}
+              </div>
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-white/70 px-3 py-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6076a3]">
+                  Glass
+                </p>
+                <div className="flex items-center gap-1">
+                  {(["soft", "medium", "strong"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setGlassMode(mode)}
+                      className={`rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                        glassMode === mode
+                          ? "bg-[#dce9ff] text-[#2f4f84]"
+                          : "bg-white/80 text-[#5f739b]"
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
               </div>
             </section>
 

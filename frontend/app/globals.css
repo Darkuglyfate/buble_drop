@@ -456,6 +456,42 @@ button.gloss-pill:disabled {
     avatarBob 3.2s ease-in-out infinite;
 }
 
+.profile-bubble-core {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.25) 40%,
+    rgba(125, 176, 255, 0.62) 100%
+  );
+  box-shadow:
+    0 0 22px rgba(145, 186, 255, 0.68),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  animation: coreBreath 4.8s ease-in-out infinite;
+}
+
+.profile-bubble-ring {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  pointer-events: none;
+  animation: portalRing 5.8s ease-out infinite;
+}
+
+.profile-bubble-ring-a {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.profile-bubble-ring-b {
+  width: 3.1rem;
+  height: 3.1rem;
+  opacity: 0.75;
+  animation-delay: 1.3s;
+}
+
 .ui-icon {
   transition:
     transform 180ms ease,
@@ -587,6 +623,76 @@ button.gloss-pill:disabled {
   }
   50% {
     background-position: 100% 50%;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    --mobile-glass-top: 0.56;
+    --mobile-glass-bottom: 0.34;
+    --mobile-glass-layer: 0.24;
+    --mobile-glass-blur: 18px;
+    --mobile-glass-saturate: 130%;
+    --mobile-bubble-opacity: 0.72;
+  }
+
+  body.glass-soft {
+    --mobile-glass-top: 0.72;
+    --mobile-glass-bottom: 0.5;
+    --mobile-glass-layer: 0.3;
+    --mobile-glass-blur: 16px;
+    --mobile-glass-saturate: 120%;
+    --mobile-bubble-opacity: 0.6;
+  }
+
+  body.glass-medium {
+    --mobile-glass-top: 0.56;
+    --mobile-glass-bottom: 0.34;
+    --mobile-glass-layer: 0.24;
+    --mobile-glass-blur: 18px;
+    --mobile-glass-saturate: 130%;
+    --mobile-bubble-opacity: 0.72;
+  }
+
+  body.glass-strong {
+    --mobile-glass-top: 0.44;
+    --mobile-glass-bottom: 0.24;
+    --mobile-glass-layer: 0.16;
+    --mobile-glass-blur: 20px;
+    --mobile-glass-saturate: 140%;
+    --mobile-bubble-opacity: 0.84;
+  }
+
+  .bubble-card {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, var(--mobile-glass-top)),
+        rgba(255, 255, 255, var(--mobile-glass-bottom))
+      ),
+      rgba(255, 255, 255, var(--mobile-glass-layer));
+    border-color: rgba(205, 221, 255, 0.72);
+    box-shadow:
+      0 14px 30px rgba(96, 132, 203, 0.14),
+      0 2px 10px rgba(255, 255, 255, 0.5) inset,
+      inset 0 1px 0 rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturate));
+  }
+
+  .player-profile-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(240, 248, 255, 0.48)),
+      rgba(255, 255, 255, 0.22);
+    border-color: rgba(190, 211, 255, 0.78);
+  }
+
+  .floating-bubbles {
+    opacity: 0.96;
+  }
+
+  .bubble {
+    opacity: var(--mobile-bubble-opacity);
+    filter: blur(0.1px);
   }
 }
 
