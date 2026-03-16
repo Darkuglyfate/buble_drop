@@ -1620,6 +1620,7 @@ export function BubbleDropShell() {
     : isRareRewardAccessActive
       ? "Rare access is warm."
       : "Rare access needs check-in.";
+  const showDropRadar = Boolean(authenticatedSessionToken && profileId);
   const dropRadarPercent = !effectiveIsConnected
     ? 16
     : !isConnectedToBase
@@ -2198,7 +2199,11 @@ export function BubbleDropShell() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-[1.2fr_0.8fr] gap-2">
+              <div
+                className={`mt-4 grid gap-2 ${
+                  showDropRadar ? "grid-cols-[1.2fr_0.8fr]" : "grid-cols-1"
+                }`}
+              >
                 <div className="rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
                     Daily mission
@@ -2206,20 +2211,20 @@ export function BubbleDropShell() {
                   <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">Today</h3>
                   <p className="mt-2 text-sm text-[#5f749f]">{dailyMissionHint}</p>
                   <div className="mt-3 grid grid-cols-3 gap-2">
-                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
                         Streak
                       </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">{currentStreak}</p>
                     </div>
-                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
                         XP
                       </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">{totalXp}</p>
                     </div>
-                    <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
                         Rare
                       </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">
@@ -2237,7 +2242,8 @@ export function BubbleDropShell() {
                   </button>
                 </div>
 
-                <div className="rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-sm font-semibold text-[#433763] shadow-[0_16px_36px_rgba(109,145,219,0.14)]">
+                {showDropRadar ? (
+                  <div className="rounded-[1.35rem] bg-gradient-to-br from-[#ffeab8] via-[#ffdced] to-[#dde6ff] px-4 py-4 text-sm font-semibold text-[#433763] shadow-[0_16px_36px_rgba(109,145,219,0.14)]">
                   <div className="flex items-start justify-between gap-2">
                     <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7c6f98]">
                       Drop radar
@@ -2267,20 +2273,20 @@ export function BubbleDropShell() {
                     </div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
-                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                    <div className="min-w-0 rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="block truncate text-[7px] leading-none uppercase tracking-[0.02em] text-[#7c6f98]">
                         Streak
                       </p>
                       <p className="text-xs font-black text-[#4d3f74]">{currentStreak}</p>
                     </div>
-                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                    <div className="min-w-0 rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="block truncate text-[7px] leading-none uppercase tracking-[0.02em] text-[#7c6f98]">
                         XP
                       </p>
                       <p className="text-xs font-black text-[#4d3f74]">{totalXp}</p>
                     </div>
-                    <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                    <div className="min-w-0 rounded-lg bg-white/64 px-1 py-1.5">
+                      <p className="block truncate text-[7px] leading-none uppercase tracking-[0.02em] text-[#7c6f98]">
                         Rare
                       </p>
                       <p className="text-xs font-black text-[#4d3f74]">{isRareRewardAccessActive ? "ON" : "OFF"}</p>
@@ -2294,7 +2300,8 @@ export function BubbleDropShell() {
                       Open vault
                     </Link>
                   ) : null}
-                </div>
+                  </div>
+                ) : null}
               </div>
             </section>
 

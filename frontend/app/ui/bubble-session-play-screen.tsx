@@ -340,6 +340,18 @@ export function BubbleSessionPlayScreen() {
     !sessionCompleted &&
     !isSubmitting &&
     !isResolvingOnboardingState;
+  const startSessionBlockReason =
+    isActive || sessionCompleted
+      ? null
+      : isResolvingOnboardingState
+        ? "Checking your session access..."
+        : isSubmitting
+          ? "Starting session..."
+          : !profileId || needsOnboarding
+            ? "Finish wallet setup on Home before starting a run."
+            : !authSessionToken
+              ? "Use Sign in with Base on Home before starting a run."
+              : null;
   const gameplayToastMessage =
     actionMessage && !sessionCompleted ? actionMessage : null;
   const resultToastMessage = actionMessage && sessionCompleted ? actionMessage : null;
@@ -755,6 +767,11 @@ export function BubbleSessionPlayScreen() {
                       {isSubmitting && isActive ? "Submitting..." : "Complete session"}
                     </button>
                   </div>
+                  {startSessionBlockReason ? (
+                    <p className="mt-2 text-center text-[11px] font-medium text-[#5c6f99]">
+                      {startSessionBlockReason}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </section>
