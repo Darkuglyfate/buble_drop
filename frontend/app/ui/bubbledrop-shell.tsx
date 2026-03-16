@@ -570,7 +570,7 @@ export function BubbleDropShell() {
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
-  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(false);
+  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -1128,11 +1128,6 @@ export function BubbleDropShell() {
   useEffect(() => {
     const nextSeed = Math.floor(Math.random() * 1_000_000);
     setIntroPatternSeed(nextSeed);
-    if (typeof window === "undefined") {
-      return;
-    }
-    const introSeen = window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
-    setWelcomeIntroVisible(!introSeen);
   }, []);
 
   const onConnectWallet = async () => {
@@ -1401,6 +1396,23 @@ export function BubbleDropShell() {
     } finally {
       setIsSubmittingAction(false);
     }
+  };
+
+  const onReplayIntro = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(INTRO_SEEN_STORAGE_KEY);
+    }
+    setIntroPoppedBubbleIds([]);
+    setIntroPopBursts([]);
+    setIntroPatternSeed(Math.floor(Math.random() * 1_000_000));
+    setWelcomeIntroVisible(true);
+  };
+
+  const onSkipIntro = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
+    }
+    setWelcomeIntroVisible(false);
   };
 
   const onDailyCheckIn = async () => {
@@ -1895,6 +1907,13 @@ export function BubbleDropShell() {
             <p className="intro-welcome-subtitle">
               Pop only bubbles marked with TAP to continue.
             </p>
+            <button
+              type="button"
+              onClick={onSkipIntro}
+              className="pointer-events-auto mt-2 rounded-lg bg-white/60 px-3 py-1.5 text-xs font-semibold text-[#4f668f] hover:bg-white/80"
+            >
+              Skip
+            </button>
           </div>
           <div className="intro-welcome-playfield" aria-hidden="false">
             {introBubbles.map((bubble) => {
@@ -2502,6 +2521,15 @@ export function BubbleDropShell() {
                 </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onReplayIntro}
+                  className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f]"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>Replay intro</span>
+                  </span>
+                </button>
                 {canSyncProfile ? (
                   <button
                     type="button"
