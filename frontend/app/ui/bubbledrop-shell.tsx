@@ -1571,7 +1571,7 @@ export function BubbleDropShell() {
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
-  const canAttemptDailyCheckIn = !isSubmittingAction;
+  const canAttemptDailyCheckIn = !isSubmittingAction && !isWalletFlowBusy;
   const dailyMissionActionLabel = !effectiveIsConnected
     ? "Connect wallet"
     : !isConnectedToBase
@@ -1585,6 +1585,20 @@ export function BubbleDropShell() {
             : dailyCheckInCompletedToday
               ? "Open session"
               : "Claim daily check-in";
+  const dailyMissionActionHandler =
+    dailyCheckInCompletedToday && !isFirstEntry
+      ? () => window.location.assign(quickSessionHref)
+      : !effectiveIsConnected
+        ? onConnectWallet
+        : !isConnectedToBase
+          ? onSwitchToBase
+          : !authenticatedSessionToken
+            ? onSignInWithBase
+            : !profileId && connectedWalletAddress
+              ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
+              : isFirstEntry
+                ? onCompleteOnboarding
+                : onDailyCheckIn;
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
@@ -2199,11 +2213,7 @@ export function BubbleDropShell() {
                   </div>
                   <button
                     type="button"
-                    onClick={
-                      dailyCheckInCompletedToday && !isFirstEntry
-                        ? () => window.location.assign(quickSessionHref)
-                        : onDailyCheckIn
-                    }
+                    onClick={dailyMissionActionHandler}
                     disabled={!canAttemptDailyCheckIn}
                     className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                   >
