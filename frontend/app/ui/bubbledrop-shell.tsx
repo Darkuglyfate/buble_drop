@@ -477,13 +477,15 @@ type IntroBubbleSpec = {
   hasTapSignal: boolean;
 };
 const REQUIRED_INTRO_POPS = 6;
+const INTRO_TAP_LABEL_COUNT = 12;
+const INTRO_SEEN_STORAGE_KEY = "bubbledrop:intro-seen:v1";
 
 function seededUnit(seed: number): number {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return value - Math.floor(value);
 }
 
-function createIntroBubbles(count = 24, patternSeed = 0): IntroBubbleSpec[] {
+function createIntroBubbles(count = 34, patternSeed = 0): IntroBubbleSpec[] {
   return Array.from({ length: count }, (_, index) => {
     const idx = index + 1;
     const seedOffset = patternSeed * 0.61803398875;
@@ -568,14 +570,14 @@ export function BubbleDropShell() {
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
-  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
+  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(false);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
   >([]);
   const [introPatternSeed, setIntroPatternSeed] = useState(0);
   const introBubbles = useMemo(
-    () => createIntroBubbles(24, introPatternSeed),
+    () => createIntroBubbles(34, introPatternSeed),
     [introPatternSeed],
   );
   const introAudioContextRef = useRef<AudioContext | null>(null);
@@ -1124,7 +1126,13 @@ export function BubbleDropShell() {
   }, []);
 
   useEffect(() => {
-    setIntroPatternSeed(Math.floor(Math.random() * 1_000_000));
+    const nextSeed = Math.floor(Math.random() * 1_000_000);
+    setIntroPatternSeed(nextSeed);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const introSeen = window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
+    setWelcomeIntroVisible(!introSeen);
   }, []);
 
   const onConnectWallet = async () => {
@@ -1554,11 +1562,11 @@ export function BubbleDropShell() {
   let heroBody = "Connect -> Sign -> Play.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
-  let primaryActionLabel = "Connect in BubbleDrop";
-  let primaryActionDisabled = isWalletFlowBusy || isSubmittingAction;
+  let primaryActionLabel = "Open session";
+  let primaryActionDisabled = false;
   let primaryActionHandler: () => void = onConnectWallet;
-  let primaryActionHref: string | null = null;
-  let primaryActionKind: "button" | "link" = "button";
+  let primaryActionHref: string | null = quickSessionHref;
+  let primaryActionKind: "button" | "link" = "link";
   let secondaryHeroActionLabel: string | null = null;
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
@@ -1607,15 +1615,24 @@ export function BubbleDropShell() {
   const dropRadarHint = isRareRewardAccessActive
     ? "Rare drops can appear in today's run."
     : "Check-in and sessions increase drop chance.";
-  const introTargetBubbleIds = useMemo(
-    () => pickIntroTapTargets(introBubbles.map((bubble) => bubble.id), introPatternSeed, REQUIRED_INTRO_POPS),
+  const introTapBubbleIds = useMemo(
+    () =>
+      pickIntroTapTargets(
+        introBubbles.map((bubble) => bubble.id),
+        introPatternSeed,
+        INTRO_TAP_LABEL_COUNT,
+      ),
     [introBubbles, introPatternSeed],
   );
-  const introTargetBubbleSet = useMemo(
-    () => new Set(introTargetBubbleIds),
-    [introTargetBubbleIds],
+  const introRequiredBubbleIds = useMemo(
+    () => introTapBubbleIds.slice(0, REQUIRED_INTRO_POPS),
+    [introTapBubbleIds],
   );
-  const introBubblesRemaining = introTargetBubbleIds.filter(
+  const introTapBubbleSet = useMemo(
+    () => new Set(introTapBubbleIds),
+    [introTapBubbleIds],
+  );
+  const introBubblesRemaining = introRequiredBubbleIds.filter(
     (id) => !introPoppedBubbleIds.includes(id),
   ).length;
   useEffect(() => {
@@ -1626,6 +1643,9 @@ export function BubbleDropShell() {
       return;
     }
     const timer = window.setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
+      }
       setWelcomeIntroVisible(false);
     }, 320);
     return () => window.clearTimeout(timer);
@@ -1633,18 +1653,21 @@ export function BubbleDropShell() {
 
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
+    heroBody = "Use Daily mission for wallet setup.";
+    primaryActionLabel = "Open session";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
-    primaryActionLabel = isSwitchingChain
-      ? "Switching to Base..."
-      : "Switch to Base";
-    primaryActionDisabled =
-      isSwitchingChain || isSubmittingAction || isWalletFlowBusy;
-    primaryActionHandler = onSwitchToBase;
+    primaryActionLabel = "Open session";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
@@ -1652,12 +1675,10 @@ export function BubbleDropShell() {
     heroBody = "One signature to unlock app actions.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
-    primaryActionLabel =
-      isWalletFlowBusy && walletFlowState.phase === "sign_in"
-        ? "Signing in..."
-        : "Sign in with Base";
-    primaryActionDisabled = isWalletFlowBusy || isSubmittingAction;
-    primaryActionHandler = onSignInWithBase;
+    primaryActionLabel = "Open session";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
@@ -1665,9 +1686,10 @@ export function BubbleDropShell() {
     heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
-    primaryActionLabel = "Open my BubbleDrop home";
-    primaryActionDisabled = !canSyncProfile;
-    primaryActionHandler = onBootstrapProfile;
+    primaryActionLabel = "Open session";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
@@ -1675,9 +1697,10 @@ export function BubbleDropShell() {
     heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
-    primaryActionLabel = "Refresh my home";
-    primaryActionDisabled = isSubmittingAction;
-    primaryActionHandler = onRefreshProfile;
+    primaryActionLabel = "Open session";
+    primaryActionKind = "link";
+    primaryActionHref = quickSessionHref;
+    primaryActionDisabled = false;
     heroPortalCopy = "Glow calibrating";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
@@ -1795,7 +1818,7 @@ export function BubbleDropShell() {
     if (!welcomeIntroVisible) {
       return;
     }
-    if (!introTargetBubbleSet.has(bubbleId)) {
+    if (!introTapBubbleSet.has(bubbleId)) {
       return;
     }
     setIntroPoppedBubbleIds((current) => {
@@ -1891,7 +1914,7 @@ export function BubbleDropShell() {
                     } as CSSProperties
                   }
                 >
-                  {introTargetBubbleSet.has(bubble.id) ? (
+                  {introTapBubbleSet.has(bubble.id) ? (
                     <span className="intro-bubble-signal">TAP</span>
                   ) : null}
                 </button>
