@@ -1582,8 +1582,8 @@ export function BubbleDropShell() {
   let primaryActionLabel = "Open session";
   let primaryActionDisabled = false;
   let primaryActionHandler: () => void = onConnectWallet;
-  let primaryActionHref: string | null = quickSessionHref;
-  let primaryActionKind: "button" | "link" = "link";
+  let primaryActionHref: string | null = null;
+  let primaryActionKind: "button" | "link" = "button";
   let secondaryHeroActionLabel: string | null = null;
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
@@ -1685,19 +1685,20 @@ export function BubbleDropShell() {
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
     heroBody = "Use Daily mission for wallet setup.";
-    primaryActionLabel = "Open session";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
+    primaryActionLabel = "Sign in with Base";
+    primaryActionHandler = onConnectWallet;
     primaryActionDisabled = false;
+    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
+    secondaryHeroActionDisabled = isSubmittingAction;
+    secondaryHeroActionHandler = onDailyCheckIn;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
-    primaryActionLabel = "Open session";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
+    primaryActionLabel = "Switch to Base";
+    primaryActionHandler = onSwitchToBase;
     primaryActionDisabled = false;
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
@@ -1706,9 +1707,8 @@ export function BubbleDropShell() {
     heroBody = "One signature to unlock app actions.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
-    primaryActionLabel = "Open session";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
+    primaryActionLabel = "Sign in with Base";
+    primaryActionHandler = onSignInWithBase;
     primaryActionDisabled = false;
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
@@ -1717,9 +1717,10 @@ export function BubbleDropShell() {
     heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
-    primaryActionLabel = "Open session";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
+    primaryActionLabel = "Sync profile";
+    primaryActionHandler = connectedWalletAddress
+      ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
+      : onConnectWallet;
     primaryActionDisabled = false;
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
@@ -1728,9 +1729,8 @@ export function BubbleDropShell() {
     heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
-    primaryActionLabel = "Open session";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
+    primaryActionLabel = "Refresh profile";
+    primaryActionHandler = onRefreshProfile;
     primaryActionDisabled = false;
     heroPortalCopy = "Glow calibrating";
   } else if (qualificationStatus === "paused") {
@@ -2293,7 +2293,7 @@ export function BubbleDropShell() {
                       href={rewardsInventoryHref}
                       className="gloss-pill mt-3 block rounded-xl bg-white/78 px-3 py-2 text-center text-xs font-semibold text-[#4a3b74]"
                     >
-                      Open NFT & cosmetics
+                      Open vault
                     </Link>
                   ) : null}
                 </div>
@@ -2435,81 +2435,6 @@ export function BubbleDropShell() {
                     </button>
                   </div>
                 ) : null}
-              </div>
-            </section>
-
-            <section className="bubble-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                    Rewards glow
-                  </p>
-                  <h3 className="mt-1 text-lg font-black tracking-[-0.03em] text-[#21385f]">
-                    {isRareRewardAccessActive
-                      ? "Premium rewards are live"
-                      : qualificationStatus === "paused"
-                        ? "Rare rewards are resting"
-                        : "XP-first day"}
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-[#6278a3]">
-                    {isRareRewardAccessActive
-                      ? "Your rare lane is open. Keep your streak bright and check what is waiting in the vault."
-                      : "Progress still feels alive through streaks, XP, and future unlocks even while rare access cools down."}
-                  </p>
-                </div>
-                <div className="rounded-[1.15rem] bg-gradient-to-br from-[#fff1b3] via-[#ffd7ee] to-[#e3dcff] px-3 py-2 text-right shadow-[0_16px_36px_rgba(133,119,189,0.16)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7d6390]">
-                    Vault
-                  </p>
-                  <p className="mt-1 text-lg font-black tracking-[-0.03em] text-[#553a63]">
-                    {rewardsTokenCount}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-2xl bg-white/78 px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">
-                    Claimable
-                  </p>
-                  <p className="mt-1 text-base font-black tracking-[-0.02em] text-[#20365d]">
-                    {claimableTokenAmount}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/78 px-3 py-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">
-                    State
-                  </p>
-                  <p className="mt-1 text-base font-black capitalize tracking-[-0.02em] text-[#20365d]">
-                    {qualificationBadge.label}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {isRareRewardAccessActive ? (
-                  <Link
-                    href={claimsHref}
-                    className="action-chip gloss-pill rounded-[1.1rem] bg-gradient-to-r from-[#ffe4b4] to-[#ffd6ed] px-4 py-3 text-sm font-semibold text-[#5b3920]"
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <WorldIcon kind="claim" className="ui-icon ui-icon-active" />
-                      <span>Open claims</span>
-                    </span>
-                  </Link>
-                ) : null}
-                <Link
-                  href={rewardsInventoryHref}
-                  className="action-chip rounded-[1.1rem] bg-white/82 px-4 py-3 text-sm font-semibold text-[#355889]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <WorldIcon kind="vault" className="ui-icon ui-icon-active" />
-                    <span>Open vault</span>
-                  </span>
-                </Link>
-              </div>
-              <div className="mt-3 rounded-2xl bg-white/72 px-3 py-3 text-xs font-semibold text-[#4f648f]">
-                Hunt tip: {tokenHuntHint}
               </div>
             </section>
 
