@@ -331,7 +331,10 @@ export function BubbleSessionPlayScreen() {
     !isActive &&
     !sessionCompleted &&
     !isSubmitting &&
-    !isResolvingOnboardingState;
+    !isResolvingOnboardingState &&
+    Boolean(profileId) &&
+    !needsOnboarding &&
+    Boolean(authSessionToken);
   const canCompleteSession =
     isActive &&
     !sessionCompleted &&

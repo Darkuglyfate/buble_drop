@@ -1579,18 +1579,18 @@ export function BubbleDropShell() {
   let heroBody = "Connect -> Sign -> Play.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
-  let primaryActionLabel = "Open session";
+  let primaryActionLabel = "Enter an XP run";
   let primaryActionDisabled = false;
   let primaryActionHandler: () => void = onConnectWallet;
-  let primaryActionHref: string | null = null;
-  let primaryActionKind: "button" | "link" = "button";
+  let primaryActionHref: string | null = quickSessionHref;
+  let primaryActionKind: "button" | "link" = "link";
   let secondaryHeroActionLabel: string | null = null;
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
   const canAttemptDailyCheckIn = !isSubmittingAction && !isWalletFlowBusy;
   const dailyMissionActionLabel = !effectiveIsConnected
-    ? "Connect wallet"
+    ? "Sign in with Base"
     : !isConnectedToBase
       ? "Switch to Base"
       : !authenticatedSessionToken
@@ -1682,24 +1682,19 @@ export function BubbleDropShell() {
     return () => window.clearTimeout(timer);
   }, [introBubblesRemaining, welcomeIntroVisible]);
 
+  const showHeroSecondaryAction = false;
+
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
     heroBody = "Use Daily mission for wallet setup.";
-    primaryActionLabel = "Sign in with Base";
-    primaryActionHandler = onConnectWallet;
-    primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
-    secondaryHeroActionDisabled = isSubmittingAction;
-    secondaryHeroActionHandler = onDailyCheckIn;
+    primaryActionLabel = "Enter an XP run";
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
-    primaryActionLabel = "Switch to Base";
-    primaryActionHandler = onSwitchToBase;
-    primaryActionDisabled = false;
+    primaryActionLabel = "Enter an XP run";
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
@@ -1707,9 +1702,7 @@ export function BubbleDropShell() {
     heroBody = "One signature to unlock app actions.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
-    primaryActionLabel = "Sign in with Base";
-    primaryActionHandler = onSignInWithBase;
-    primaryActionDisabled = false;
+    primaryActionLabel = "Enter an XP run";
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
@@ -1717,11 +1710,7 @@ export function BubbleDropShell() {
     heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
-    primaryActionLabel = "Sync profile";
-    primaryActionHandler = connectedWalletAddress
-      ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
-      : onConnectWallet;
-    primaryActionDisabled = false;
+    primaryActionLabel = "Enter an XP run";
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
@@ -1729,9 +1718,7 @@ export function BubbleDropShell() {
     heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
-    primaryActionLabel = "Refresh profile";
-    primaryActionHandler = onRefreshProfile;
-    primaryActionDisabled = false;
+    primaryActionLabel = "Enter an XP run";
     heroPortalCopy = "Glow calibrating";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
@@ -2221,15 +2208,21 @@ export function BubbleDropShell() {
                   <p className="mt-2 text-sm text-[#5f749f]">{dailyMissionHint}</p>
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">Streak</p>
+                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                        Streak
+                      </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">{currentStreak}</p>
                     </div>
                     <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">XP</p>
+                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                        XP
+                      </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">{totalXp}</p>
                     </div>
                     <div className="rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="text-[10px] uppercase tracking-[0.08em] text-[#7b8fb8]">Rare</p>
+                      <p className="text-[9px] uppercase tracking-[0.06em] text-[#7b8fb8] whitespace-nowrap">
+                        Rare
+                      </p>
                       <p className="mt-1 text-sm font-black text-[#233b67]">
                         {isRareRewardAccessActive ? "On" : "Off"}
                       </p>
@@ -2276,15 +2269,21 @@ export function BubbleDropShell() {
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
                     <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">Streak</p>
+                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                        Streak
+                      </p>
                       <p className="text-xs font-black text-[#4d3f74]">{currentStreak}</p>
                     </div>
                     <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">XP</p>
+                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                        XP
+                      </p>
                       <p className="text-xs font-black text-[#4d3f74]">{totalXp}</p>
                     </div>
                     <div className="rounded-lg bg-white/64 px-1 py-1.5">
-                      <p className="text-[9px] uppercase tracking-[0.1em] text-[#7c6f98]">Rare</p>
+                      <p className="text-[8px] uppercase tracking-[0.06em] text-[#7c6f98] whitespace-nowrap">
+                        Rare
+                      </p>
                       <p className="text-xs font-black text-[#4d3f74]">{isRareRewardAccessActive ? "ON" : "OFF"}</p>
                     </div>
                   </div>
@@ -2373,7 +2372,7 @@ export function BubbleDropShell() {
                   </button>
                 )}
 
-                {secondaryHeroActionLabel && secondaryHeroActionHandler ? (
+                {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button
                     type="button"
                     onClick={secondaryHeroActionHandler}
