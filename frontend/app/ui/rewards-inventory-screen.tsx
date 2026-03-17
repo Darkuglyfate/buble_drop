@@ -68,6 +68,69 @@ type InventoryCollectible = {
   obtainedAt: string;
 };
 
+const QA_FALLBACK_COLLECTIBLES: InventoryCollectible[] = [
+  {
+    id: "qa-bubble-neon-spectrum",
+    key: "qa.bubble.neon-spectrum",
+    label: "Neon Spectrum",
+    source: "cosmetic",
+    slot: "bubbleSkin",
+    rarity: "epic",
+    season: "core",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-bubble-gold-foil",
+    key: "qa.bubble.gold-foil",
+    label: "Gold Foil",
+    source: "nft",
+    slot: "bubbleSkin",
+    rarity: "legendary",
+    season: "genesis",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-trail-aurora-wave",
+    key: "qa.trail.aurora-wave",
+    label: "Aurora Wave",
+    source: "cosmetic",
+    slot: "trail",
+    rarity: "rare",
+    season: "core",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-trail-plasma-ribbon",
+    key: "qa.trail.plasma-ribbon",
+    label: "Plasma Ribbon",
+    source: "nft",
+    slot: "trail",
+    rarity: "epic",
+    season: "genesis",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-badge-orbit-star",
+    key: "qa.badge.orbit-star",
+    label: "Orbit Star",
+    source: "cosmetic",
+    slot: "badge",
+    rarity: "common",
+    season: "core",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-badge-crown-sigil",
+    key: "qa.badge.crown-sigil",
+    label: "Crown Sigil",
+    source: "nft",
+    slot: "badge",
+    rarity: "legendary",
+    season: "genesis",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
 type EquipStyleResponse = {
   profileId: string;
   equippedStyle: {
@@ -284,9 +347,16 @@ export function RewardsInventoryScreen() {
     return [...nfts, ...cosmetics];
   }, [inventory]);
 
+  const displayCollectibles = useMemo(() => {
+    if (testingOverrideActive && collectibles.length === 0) {
+      return QA_FALLBACK_COLLECTIBLES;
+    }
+    return collectibles;
+  }, [collectibles, testingOverrideActive]);
+
   const collectibleMap = useMemo(
-    () => new Map(collectibles.map((item) => [item.id, item])),
-    [collectibles],
+    () => new Map(displayCollectibles.map((item) => [item.id, item])),
+    [displayCollectibles],
   );
 
   const starterAvatarIdSet = useMemo(
@@ -303,7 +373,7 @@ export function RewardsInventoryScreen() {
   }, [equippedBySlot, selectedAvatarId]);
 
   const filteredCollectibles = useMemo(() => {
-    return collectibles.filter((item) => {
+    return displayCollectibles.filter((item) => {
       if (item.slot !== activeSlot) {
         return false;
       }
@@ -319,13 +389,21 @@ export function RewardsInventoryScreen() {
       return true;
     });
   }, [
-    collectibles,
+    displayCollectibles,
     activeSlot,
     rarityFilter,
     seasonFilter,
     ownershipFilter,
     effectiveEquipment,
   ]);
+
+  const displayCounts = useMemo(
+    () => ({
+      nfts: displayCollectibles.filter((item) => item.source === "nft").length,
+      cosmetics: displayCollectibles.filter((item) => item.source === "cosmetic").length,
+    }),
+    [displayCollectibles],
+  );
 
   const getItemById = (itemId: string | null): InventoryCollectible | null => {
     if (!itemId) {
@@ -582,14 +660,20 @@ export function RewardsInventoryScreen() {
                 <UnifiedIcon kind="nft" className="ui-icon text-[#6074a0]" />
                 NFTs
               </p>
-              <p className="mt-1 font-semibold">{inventory?.nftCount ?? "—"}</p>
+              <p className="mt-1 font-semibold">
+                {testingOverrideActive ? displayCounts.nfts : (inventory?.nftCount ?? "—")}
+              </p>
             </div>
             <div className="rounded-xl bg-white/80 p-3">
               <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
                 <UnifiedIcon kind="cosmetic" className="ui-icon text-[#6074a0]" />
                 Cosmetics
               </p>
-              <p className="mt-1 font-semibold">{inventory?.cosmeticCount ?? "—"}</p>
+              <p className="mt-1 font-semibold">
+                {testingOverrideActive
+                  ? displayCounts.cosmetics
+                  : (inventory?.cosmeticCount ?? "—")}
+              </p>
             </div>
           </div>
         </section>
@@ -778,7 +862,7 @@ export function RewardsInventoryScreen() {
             </div>
           ) : null}
 
-          {!needsOnboarding && !isLoading && !errorMessage && collectibles.length === 0 ? (
+          {!needsOnboarding && !isLoading && !errorMessage && displayCollectibles.length === 0 ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
               Your rewards vault is empty for now. New NFTs/cosmetics will appear after confirmed session rewards.
             </div>
