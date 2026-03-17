@@ -498,7 +498,7 @@ export class ProfileService {
         balances: positiveBalances,
       },
       styleState: {
-        equippedStyle: profile.equippedStyleSnapshot,
+        equippedStyle: await this.loadEquippedStyleSnapshot(profile.id),
       },
     };
   }
@@ -534,7 +534,7 @@ export class ProfileService {
       'Onboarding must be completed before style equip is allowed',
     );
 
-    profile.equippedStyleSnapshot = {
+    const equippedStyle: EquippedStyleResult['equippedStyle'] = {
       rewardId,
       rewardKey: normalizedRewardKey,
       rarity,
@@ -542,11 +542,24 @@ export class ProfileService {
       variant: normalizedVariant,
       appliedAt: new Date().toISOString(),
     };
-    const savedProfile = await this.profileRepository.save(profile);
+
+    try {
+      await this.profileRepository.query(
+        `UPDATE "profiles" SET "equippedStyleSnapshot" = $1, "updatedAt" = now() WHERE "id" = $2`,
+        [JSON.stringify(equippedStyle), profile.id],
+      );
+    } catch (error) {
+      if (this.isMissingEquippedStyleSnapshotColumnError(error)) {
+        throw new ConflictException(
+          'Style sync is temporarily unavailable. Apply profile migration and retry.',
+        );
+      }
+      throw error;
+    }
 
     return {
-      profileId: savedProfile.id,
-      equippedStyle: profile.equippedStyleSnapshot,
+      profileId: profile.id,
+      equippedStyle,
     };
   }
 
@@ -712,6 +725,32 @@ export class ProfileService {
     if (this.profileNeedsOnboarding(profile)) {
       throw new ForbiddenException(message);
     }
+  }
+
+  private async loadEquippedStyleSnapshot(
+    profileId: string,
+  ): Promise<ProfileSummary['styleState']['equippedStyle']> {
+    try {
+      const rows = (await this.profileRepository.query(
+        `SELECT "equippedStyleSnapshot" FROM "profiles" WHERE "id" = $1`,
+        [profileId],
+      )) as Array<{ equippedStyleSnapshot: ProfileSummary['styleState']['equippedStyle'] }>;
+      return rows[0]?.equippedStyleSnapshot ?? null;
+    } catch (error) {
+      if (this.isMissingEquippedStyleSnapshotColumnError(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private isMissingEquippedStyleSnapshotColumnError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === '42703'
+    );
   }
 
   private async ensureStarterAvatarsUnlocked(

@@ -54,7 +54,7 @@ export class Profile {
   @Column({ type: 'timestamptz', nullable: true })
   onboardingCompletedAt: Date | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: 'jsonb', nullable: true, select: false })
   equippedStyleSnapshot:
     | {
         rewardId: string;
