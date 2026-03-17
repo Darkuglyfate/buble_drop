@@ -1739,33 +1739,39 @@ export function BubbleDropShell() {
   let heroPortalCopy = "Bubble lane offline";
   let showHeroSection = true;
   let showDedicatedDailyCheckSection = false;
-  const canAttemptDailyCheckIn = !isSubmittingAction && !isWalletFlowBusy;
-  const dailyMissionActionLabel = !effectiveIsConnected
-    ? "Sign in with Base"
+  const awaitingProfileCreationOnly =
+    !profileId &&
+    effectiveIsConnected &&
+    isConnectedToBase &&
+    Boolean(authenticatedSessionToken);
+  const signInOnlyOnProfileCard =
+    effectiveIsConnected &&
+    isConnectedToBase &&
+    !authenticatedSessionToken;
+  const canRunDailyCheckInAction =
+    Boolean(profileId) &&
+    !isFirstEntry &&
+    Boolean(authenticatedSessionToken) &&
+    effectiveIsConnected &&
+    isConnectedToBase;
+  const dailyMissionCheckInLabel = !effectiveIsConnected
+    ? "Daily check-in — connect wallet first"
     : !isConnectedToBase
-      ? "Switch to Base"
+      ? "Daily check-in — switch to Base"
       : !authenticatedSessionToken
-        ? "Sign in with Base"
+        ? "Daily check-in — sign in on profile card"
         : !profileId
-          ? "Sync profile"
+          ? "Daily check-in — sync profile below"
           : isFirstEntry
-            ? "Finish onboarding"
+            ? "Daily check-in — finish onboarding first"
             : dailyCheckInCompletedToday
-              ? "Open session"
-              : "Claim daily check-in";
-  const dailyMissionActionHandler = !effectiveIsConnected
-    ? onConnectWallet
-    : !isConnectedToBase
-      ? onSwitchToBase
-      : !authenticatedSessionToken
-        ? onSignInWithBase
-        : !profileId && connectedWalletAddress
-          ? () => bootstrapProfileForWallet(connectedWalletAddress, { source: "manual" })
-          : isFirstEntry
-            ? onCompleteOnboarding
-            : dailyCheckInCompletedToday
-              ? () => window.location.assign(quickSessionHref)
-              : onDailyCheckIn;
+              ? "Daily check-in complete today"
+              : "Daily check-in (+20 XP)";
+  const dailyMissionCheckInDisabled =
+    isSubmittingAction ||
+    isWalletFlowBusy ||
+    !canRunDailyCheckInAction ||
+    dailyCheckInCompletedToday;
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
@@ -1856,7 +1862,8 @@ export function BubbleDropShell() {
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
     heroTitle = "Confirm this bubble so the app can trust your next move.";
-    heroBody = "One signature to unlock app actions.";
+    heroBody =
+      "Use the Sign in with Base button on your Player profile card above — only place to sign in.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
     primaryActionLabel = "Sign in with Base";
@@ -2281,17 +2288,10 @@ export function BubbleDropShell() {
                   </p>
                   <h2 className="mt-1 text-xl font-bold">Welcome to BubbleDrop</h2>
                   <p className="mt-2 text-sm text-[#425b8a]">
-                    One more step: tap Sync profile below to create your bubble identity.
+                    One more step: use the single <strong>Sync profile</strong> button in the
+                    Profile sync card below (Next move).
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={onBootstrapProfile}
-                  disabled={isSubmittingAction}
-                  className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                >
-                  {isSubmittingAction ? "Processing..." : "Sync profile"}
-                </button>
               </section>
             ) : null}
             <section
@@ -2408,6 +2408,17 @@ export function BubbleDropShell() {
                 </span>
               </div>
 
+              {signInOnlyOnProfileCard ? (
+                <button
+                  type="button"
+                  onClick={onSignInWithBase}
+                  disabled={isWalletFlowBusy || isSubmittingAction}
+                  className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
+                >
+                  {isSigningInWithBase ? "Signing in…" : "Sign in with Base"}
+                </button>
+              ) : null}
+
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <div className="rounded-2xl bg-white/72 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">XP</p>
@@ -2479,13 +2490,27 @@ export function BubbleDropShell() {
                       </p>
                     </div>
                   </div>
+                  {awaitingProfileCreationOnly ? (
+                    <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
+                      After <strong className="text-[#284679]">Sync profile</strong> below, this button
+                      runs daily check-in.
+                    </p>
+                  ) : null}
+                  {signInOnlyOnProfileCard ? (
+                    <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
+                      After <strong className="text-[#284679]">Sign in with Base</strong> on the
+                      profile card, daily check-in unlocks here.
+                    </p>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={dailyMissionActionHandler}
-                    disabled={!canAttemptDailyCheckIn}
-                    className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                    onClick={onDailyCheckIn}
+                    disabled={dailyMissionCheckInDisabled}
+                    className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2.5 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                   >
-                    {isSubmittingAction ? "Processing..." : dailyMissionActionLabel}
+                    {isSubmittingAction && canRunDailyCheckInAction && !dailyCheckInCompletedToday
+                      ? "Processing..."
+                      : dailyMissionCheckInLabel}
                   </button>
                 </div>
 
@@ -2596,7 +2621,12 @@ export function BubbleDropShell() {
                   ))}
                 </div>
 
-                {primaryActionKind === "link" && primaryActionHref ? (
+                {signInOnlyOnProfileCard ? (
+                  <p className="mt-5 rounded-[1.2rem] border border-white/45 bg-white/45 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
+                    <strong className="text-[#1f3561]">Sign in with Base</strong> is only on your{" "}
+                    <strong>Player profile</strong> card above — scroll up and tap it there.
+                  </p>
+                ) : primaryActionKind === "link" && primaryActionHref ? (
                   <Link
                     href={primaryActionHref}
                     className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"
