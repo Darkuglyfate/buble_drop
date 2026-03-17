@@ -721,6 +721,83 @@ button.gloss-pill:disabled {
   transform-origin: 50% 50%;
 }
 
+.inventory-slot-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.inventory-slot-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-height: 3rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(199, 215, 249, 0.9);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.55rem 0.65rem;
+  color: #3b578a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: left;
+  transition: transform 130ms ease, box-shadow 130ms ease, border-color 130ms ease;
+}
+
+.inventory-slot-tab:active {
+  transform: scale(0.98);
+}
+
+.inventory-slot-tab-active {
+  border-color: rgba(129, 181, 255, 0.95);
+  background: linear-gradient(160deg, rgba(224, 244, 255, 0.94), rgba(236, 231, 255, 0.88));
+  box-shadow: 0 8px 18px rgba(102, 143, 216, 0.2);
+}
+
+.inventory-slot-subtext {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7186ae;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.inventory-item-card {
+  border-color: #dce6ff;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.inventory-item-card.rarity-common {
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.94), rgba(244, 249, 255, 0.88)),
+    rgba(255, 255, 255, 0.88);
+}
+
+.inventory-item-card.rarity-rare {
+  background:
+    linear-gradient(165deg, rgba(232, 247, 255, 0.96), rgba(225, 236, 255, 0.9)),
+    rgba(255, 255, 255, 0.88);
+  border-color: rgba(156, 203, 255, 0.95);
+}
+
+.inventory-item-card.rarity-epic {
+  background:
+    linear-gradient(165deg, rgba(236, 233, 255, 0.96), rgba(233, 241, 255, 0.9)),
+    rgba(255, 255, 255, 0.88);
+  border-color: rgba(183, 165, 255, 0.95);
+  box-shadow: 0 8px 20px rgba(142, 129, 232, 0.18);
+}
+
+.inventory-item-card.rarity-legendary {
+  background:
+    linear-gradient(165deg, rgba(255, 247, 218, 0.98), rgba(255, 232, 203, 0.9)),
+    rgba(255, 255, 255, 0.88);
+  border-color: rgba(255, 206, 125, 0.95);
+  box-shadow: 0 10px 24px rgba(227, 168, 77, 0.2);
+}
+
 .action-chip:hover .ui-icon-active,
 .action-card:hover .ui-icon-active,
 .icon-card:hover .ui-icon-active {

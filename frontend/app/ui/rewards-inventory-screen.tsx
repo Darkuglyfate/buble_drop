@@ -33,7 +33,8 @@ type InventoryCosmetic = {
 
 type CosmeticSlot = "avatar" | "bubbleSkin" | "trail" | "badge";
 type OwnershipFilter = "all" | "obtained" | "equipped";
-type RarityFilter = "all" | "common" | "rare";
+type RarityLevel = "common" | "rare" | "epic" | "legendary";
+type RarityFilter = "all" | RarityLevel;
 type SeasonFilter = "all" | "core" | "genesis";
 
 type RewardsInventoryView = {
@@ -62,7 +63,7 @@ type InventoryCollectible = {
   label: string;
   source: "nft" | "cosmetic";
   slot: CosmeticSlot;
-  rarity: Exclude<RarityFilter, "all">;
+  rarity: RarityLevel;
   season: Exclude<SeasonFilter, "all">;
   obtainedAt: string;
 };
@@ -122,17 +123,28 @@ function inferRarity(
   key: string,
   label: string,
   tier?: string,
-): Exclude<RarityFilter, "all"> {
-  if (sourceType === "nft") {
-    return tier?.toLowerCase() === "rare" ? "rare" : "common";
+): RarityLevel {
+  const normalizedTier = tier?.toLowerCase();
+  if (normalizedTier === "legendary") {
+    return "legendary";
+  }
+  if (normalizedTier === "epic") {
+    return "epic";
+  }
+  if (normalizedTier === "rare") {
+    return "rare";
   }
   const source = `${key} ${label}`.toLowerCase();
-  if (
-    source.includes("rare") ||
-    source.includes("legendary") ||
-    source.includes("epic") ||
-    source.includes("glossy")
-  ) {
+  if (source.includes("legendary")) {
+    return "legendary";
+  }
+  if (source.includes("epic")) {
+    return "epic";
+  }
+  if (source.includes("rare") || source.includes("glossy")) {
+    return "rare";
+  }
+  if (sourceType === "nft" && source.includes("genesis")) {
     return "rare";
   }
   return "common";
@@ -161,6 +173,12 @@ function slotLabel(slot: CosmeticSlot): string {
   return slot[0].toUpperCase() + slot.slice(1);
 }
 
+function rarityLabel(rarity: RarityLevel): string {
+  return rarity[0].toUpperCase() + rarity.slice(1);
+}
+
+const SLOT_ORDER: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
+
 export function RewardsInventoryScreen() {
   const { profileId, walletAddress } = useBubbleDropRuntime();
   const [inventory, setInventory] = useState<RewardsInventoryView | null>(null);
@@ -176,15 +194,15 @@ export function RewardsInventoryScreen() {
   const [equippedStyleRewardId, setEquippedStyleRewardId] = useState<string | null>(null);
   const [rareAccessActive, setRareAccessActive] = useState(false);
   const [testingOverrideActive, setTestingOverrideActive] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<CosmeticSlot>("avatar");
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [equippedBySlot, setEquippedBySlot] = useState<Record<CosmeticSlot, string | null>>({
     avatar: null,
     bubbleSkin: null,
     trail: null,
     badge: null,
   });
-  const [previewItemId, setPreviewItemId] = useState<string | null>(null);
-  const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>("obtained");
-  const [slotFilter, setSlotFilter] = useState<CosmeticSlot | "all">("all");
+  const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>("all");
   const [rarityFilter, setRarityFilter] = useState<RarityFilter>("all");
   const [seasonFilter, setSeasonFilter] = useState<SeasonFilter>("all");
   const [authSession, setAuthSession] =
@@ -271,6 +289,11 @@ export function RewardsInventoryScreen() {
     [collectibles],
   );
 
+  const starterAvatarIdSet = useMemo(
+    () => new Set(starterAvatars.map((avatar) => avatar.id)),
+    [starterAvatars],
+  );
+
   const effectiveEquipment = useMemo<Record<CosmeticSlot, string | null>>(() => {
     const base = { ...equippedBySlot };
     if (selectedAvatarId) {
@@ -279,20 +302,9 @@ export function RewardsInventoryScreen() {
     return base;
   }, [equippedBySlot, selectedAvatarId]);
 
-  const previewItem = previewItemId ? collectibleMap.get(previewItemId) ?? null : null;
-  const previewEquipment = useMemo<Record<CosmeticSlot, string | null>>(() => {
-    if (!previewItem) {
-      return effectiveEquipment;
-    }
-    return {
-      ...effectiveEquipment,
-      [previewItem.slot]: previewItem.id,
-    };
-  }, [effectiveEquipment, previewItem]);
-
   const filteredCollectibles = useMemo(() => {
     return collectibles.filter((item) => {
-      if (slotFilter !== "all" && item.slot !== slotFilter) {
+      if (item.slot !== activeSlot) {
         return false;
       }
       if (rarityFilter !== "all" && item.rarity !== rarityFilter) {
@@ -308,7 +320,7 @@ export function RewardsInventoryScreen() {
     });
   }, [
     collectibles,
-    slotFilter,
+    activeSlot,
     rarityFilter,
     seasonFilter,
     ownershipFilter,
@@ -323,7 +335,7 @@ export function RewardsInventoryScreen() {
   };
 
   const equipCollectible = (item: InventoryCollectible) => {
-    if (item.slot === "avatar") {
+    if (item.slot === "avatar" && starterAvatarIdSet.has(item.id)) {
       void onSelectAvatar(item.id);
       return;
     }
@@ -464,6 +476,20 @@ export function RewardsInventoryScreen() {
     }
   };
 
+  const equippedSlotLabel = (slot: CosmeticSlot): string => {
+    const itemId = effectiveEquipment[slot];
+    if (!itemId) {
+      return "Not equipped";
+    }
+    if (slot === "avatar") {
+      const avatar = starterAvatars.find((entry) => entry.id === itemId);
+      if (avatar) {
+        return avatar.label;
+      }
+    }
+    return collectibleMap.get(itemId)?.label ?? "Equipped";
+  };
+
   return (
     <div className="relative min-h-screen px-4 py-6 sm:px-6">
       <div className="floating-bubbles">
@@ -489,7 +515,7 @@ export function RewardsInventoryScreen() {
             </Link>
           </div>
           <p className="mt-3 text-sm text-[#5d76a5]">
-            Manage unlocked collectibles by slot, apply filters, equip items, and compare before/after style preview.
+            Pick a slot, tap an item, apply instantly. Designed for quick mobile use.
           </p>
         </section>
 
@@ -517,7 +543,7 @@ export function RewardsInventoryScreen() {
           <div className="flex items-center justify-between">
             <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
               <UnifiedIcon kind="vault" className="ui-icon text-[#48608f]" />
-              Inventory summary
+              Slots
             </h2>
             <button
               type="button"
@@ -537,15 +563,28 @@ export function RewardsInventoryScreen() {
           {isResolvingOnboardingState ? (
             <p className="mt-3 text-sm text-[#6074a0]">Checking your collection access...</p>
           ) : null}
-          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div className="gloss-pill rounded-xl bg-white/80 p-3">
+          <div className="inventory-slot-tabs mt-3">
+            {SLOT_ORDER.map((slot) => (
+              <button
+                key={slot}
+                type="button"
+                onClick={() => setActiveSlot(slot)}
+                className={`inventory-slot-tab ${activeSlot === slot ? "inventory-slot-tab-active" : ""}`}
+              >
+                <span>{slotLabel(slot)}</span>
+                <span className="inventory-slot-subtext">{equippedSlotLabel(slot)}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl bg-white/80 p-3">
               <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
                 <UnifiedIcon kind="nft" className="ui-icon text-[#6074a0]" />
                 NFTs
               </p>
               <p className="mt-1 font-semibold">{inventory?.nftCount ?? "—"}</p>
             </div>
-            <div className="gloss-pill rounded-xl bg-white/80 p-3">
+            <div className="rounded-xl bg-white/80 p-3">
               <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
                 <UnifiedIcon kind="cosmetic" className="ui-icon text-[#6074a0]" />
                 Cosmetics
@@ -556,98 +595,77 @@ export function RewardsInventoryScreen() {
         </section>
 
         <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-            <UnifiedIcon kind="cosmetic" className="ui-icon text-[#48608f]" />
-            Inventory filters
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#445e8f]">
-            <label className="rounded-xl bg-white/80 p-2">
-              Ownership
-              <select
-                value={ownershipFilter}
-                onChange={(event) => setOwnershipFilter(event.target.value as OwnershipFilter)}
-                className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
-              >
-                <option value="all">All</option>
-                <option value="obtained">Obtained</option>
-                <option value="equipped">Equipped</option>
-              </select>
-            </label>
-            <label className="rounded-xl bg-white/80 p-2">
-              Slot
-              <select
-                value={slotFilter}
-                onChange={(event) => setSlotFilter(event.target.value as CosmeticSlot | "all")}
-                className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
-              >
-                <option value="all">All slots</option>
-                <option value="avatar">Avatar</option>
-                <option value="bubbleSkin">Bubble skin</option>
-                <option value="trail">Trail</option>
-                <option value="badge">Badge</option>
-              </select>
-            </label>
-            <label className="rounded-xl bg-white/80 p-2">
-              Rarity
-              <select
-                value={rarityFilter}
-                onChange={(event) => setRarityFilter(event.target.value as RarityFilter)}
-                className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
-              >
-                <option value="all">All rarity</option>
-                <option value="common">Common</option>
-                <option value="rare">Rare</option>
-              </select>
-            </label>
-            <label className="rounded-xl bg-white/80 p-2">
-              Season
-              <select
-                value={seasonFilter}
-                onChange={(event) => setSeasonFilter(event.target.value as SeasonFilter)}
-                className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
-              >
-                <option value="all">All seasons</option>
-                <option value="core">Core</option>
-                <option value="genesis">Genesis</option>
-              </select>
-            </label>
+          <div className="flex items-center justify-between">
+            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+              <UnifiedIcon kind="cosmetic" className="ui-icon text-[#48608f]" />
+              Equipped now
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsAdvancedFiltersOpen((current) => !current)}
+              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f]"
+            >
+              {isAdvancedFiltersOpen ? "Hide advanced" : "Advanced filters"}
+            </button>
           </div>
-          <p className="mt-2 text-xs text-[#6074a0]">
-            Tap-friendly controls are tuned for mobile and keep filter changes in one thumb zone.
-          </p>
-        </section>
-
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-            <UnifiedIcon kind="nft" className="ui-icon text-[#48608f]" />
-            Before / after preview
-          </h2>
-          <p className="mt-2 text-xs text-[#6074a0]">
-            Choose a collectible to preview. Apply confirms equipment to your active slot set.
-          </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            {(["avatar", "bubbleSkin", "trail", "badge"] as const).map((slot) => {
-              const beforeItem = getItemById(effectiveEquipment[slot]);
-              const afterItem = getItemById(previewEquipment[slot]);
-              return (
-                <article key={slot} className="rounded-xl border border-[#dce6ff] bg-white/80 p-3 text-xs">
-                  <p className="font-semibold text-[#2f4a7f]">{slotLabel(slot)}</p>
-                  <p className="mt-1 text-[#6074a0]">
-                    Before: {beforeItem ? beforeItem.label : "Not equipped"}
-                  </p>
-                  <p className="mt-1 text-[#445e8f]">
-                    After: {afterItem ? afterItem.label : "Not equipped"}
-                  </p>
-                </article>
-              );
-            })}
+            {SLOT_ORDER.map((slot) => (
+              <article key={slot} className="rounded-xl border border-[#dce6ff] bg-white/80 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5c75a4]">
+                  {slotLabel(slot)}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#2f4a7f]">{equippedSlotLabel(slot)}</p>
+              </article>
+            ))}
           </div>
+          {isAdvancedFiltersOpen ? (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#445e8f]">
+              <label className="rounded-xl bg-white/80 p-2">
+                Ownership
+                <select
+                  value={ownershipFilter}
+                  onChange={(event) => setOwnershipFilter(event.target.value as OwnershipFilter)}
+                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                >
+                  <option value="all">All</option>
+                  <option value="obtained">Obtained</option>
+                  <option value="equipped">Equipped</option>
+                </select>
+              </label>
+              <label className="rounded-xl bg-white/80 p-2">
+                Rarity
+                <select
+                  value={rarityFilter}
+                  onChange={(event) => setRarityFilter(event.target.value as RarityFilter)}
+                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                >
+                  <option value="all">All rarity</option>
+                  <option value="common">Common</option>
+                  <option value="rare">Rare</option>
+                  <option value="epic">Epic</option>
+                  <option value="legendary">Legendary</option>
+                </select>
+              </label>
+              <label className="col-span-2 rounded-xl bg-white/80 p-2">
+                Season
+                <select
+                  value={seasonFilter}
+                  onChange={(event) => setSeasonFilter(event.target.value as SeasonFilter)}
+                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                >
+                  <option value="all">All seasons</option>
+                  <option value="core">Core</option>
+                  <option value="genesis">Genesis</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
         </section>
 
         <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
             <UnifiedIcon kind="vault" className="ui-icon text-[#48608f]" />
-            Collectibles
+            {slotLabel(activeSlot)} collectibles
           </h2>
           {needsOnboarding ? (
             <p className="mt-3 text-sm text-[#6074a0]">
@@ -655,10 +673,10 @@ export function RewardsInventoryScreen() {
             </p>
           ) : null}
 
-          {!needsOnboarding && starterAvatars.length > 0 ? (
+          {!needsOnboarding && activeSlot === "avatar" && starterAvatars.length > 0 ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#6074a0]">
-                Avatar slot (backend synced)
+                Starter avatars
               </p>
               <div className="mt-2 grid grid-cols-1 gap-2">
                 {starterAvatars.map((avatar) => {
@@ -689,41 +707,25 @@ export function RewardsInventoryScreen() {
           {!needsOnboarding && filteredCollectibles.length > 0
             ? filteredCollectibles.map((item) => {
                 const isEquipped = Object.values(effectiveEquipment).some((id) => id === item.id);
-                const isPreviewed = previewItemId === item.id;
                 return (
                   <article
                     key={item.id}
-                    className="mt-3 rounded-xl border border-[#dce6ff] bg-white/85 p-3"
+                    className={`inventory-item-card rarity-${item.rarity} mt-3 rounded-xl border p-3`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-[#2f4a7f]">{item.label}</p>
-                        <p className="mt-1 text-xs text-[#6074a0]">{item.key}</p>
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#6074a0]">
+                          {rarityLabel(item.rarity)}
+                        </p>
                       </div>
-                      <span className="rounded-full bg-[#eef4ff] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#4b648f]">
-                        {item.source}
-                      </span>
+                      {isEquipped ? (
+                        <span className="rounded-full bg-[#ecf8ef] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2e7a46]">
+                          Equipped
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[#516a98]">
-                      <span className="rounded-full bg-[#f2f6ff] px-2 py-1">{slotLabel(item.slot)}</span>
-                      <span className="rounded-full bg-[#f2f6ff] px-2 py-1">{item.rarity}</span>
-                      <span className="rounded-full bg-[#f2f6ff] px-2 py-1">{item.season}</span>
-                      <span className="rounded-full bg-[#f2f6ff] px-2 py-1">
-                        {formatShortDate(item.obtainedAt)}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPreviewItemId(item.id)}
-                        className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold ${
-                          isPreviewed
-                            ? "bg-[#e7f2ff] text-[#2e4f84]"
-                            : "bg-white text-[#445e8f]"
-                        }`}
-                      >
-                        {isPreviewed ? "Previewing" : "Preview"}
-                      </button>
+                    <div className="mt-3 grid grid-cols-1 gap-2">
                       <button
                         type="button"
                         onClick={() => equipCollectible(item)}
@@ -749,7 +751,18 @@ export function RewardsInventoryScreen() {
 
           {!needsOnboarding && filteredCollectibles.length === 0 ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
-              No collectibles match current filters. Try clearing slot/rarity/season filters.
+              No items for this slot yet. Try clearing advanced filters.
+              <button
+                type="button"
+                onClick={() => {
+                  setOwnershipFilter("all");
+                  setRarityFilter("all");
+                  setSeasonFilter("all");
+                }}
+                className="mt-3 block rounded-lg bg-[#edf4ff] px-3 py-2 text-xs font-semibold text-[#3e5f93]"
+              >
+                Reset filters
+              </button>
             </div>
           ) : null}
 
