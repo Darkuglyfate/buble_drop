@@ -60,6 +60,7 @@ export type BackendProfileSummary = {
       variant: string;
       appliedAt: string;
     } | null;
+    testingOverrideActive: boolean;
   };
 };
 

@@ -67,10 +67,28 @@ type InventoryCollectible = {
   obtainedAt: string;
 };
 
+type EquipStyleResponse = {
+  profileId: string;
+  equippedStyle: {
+    rewardId: string;
+    rewardKey: string;
+    rarity: "common" | "rare" | "epic" | "legendary";
+    source: "nft" | "cosmetic";
+    variant: string;
+    appliedAt: string;
+  };
+};
+
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
-): Promise<{ needsOnboarding: boolean; currentAvatarId: string | null } | null> {
+): Promise<{
+  needsOnboarding: boolean;
+  currentAvatarId: string | null;
+  equippedStyleRewardId: string | null;
+  rareAccessActive: boolean;
+  testingOverrideActive: boolean;
+} | null> {
   const payload = await fetchBackendProfileSummary(backendUrl, profileId);
   if (!payload) {
     return null;
@@ -79,6 +97,9 @@ async function fetchOnboardingStateForProfile(
   return {
     needsOnboarding: payload.onboardingState.needsOnboarding,
     currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
+    equippedStyleRewardId: payload.styleState?.equippedStyle?.rewardId ?? null,
+    rareAccessActive: payload.rareRewardAccess.active,
+    testingOverrideActive: payload.styleState?.testingOverrideActive ?? false,
   };
 }
 
@@ -151,6 +172,10 @@ export function RewardsInventoryScreen() {
   const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [isSwitchingAvatar, setIsSwitchingAvatar] = useState(false);
+  const [isApplyingCollectibleId, setIsApplyingCollectibleId] = useState<string | null>(null);
+  const [equippedStyleRewardId, setEquippedStyleRewardId] = useState<string | null>(null);
+  const [rareAccessActive, setRareAccessActive] = useState(false);
+  const [testingOverrideActive, setTestingOverrideActive] = useState(false);
   const [equippedBySlot, setEquippedBySlot] = useState<Record<CosmeticSlot, string | null>>({
     avatar: null,
     bubbleSkin: null,
@@ -167,9 +192,6 @@ export function RewardsInventoryScreen() {
 
   const backendUrl = BUBBLEDROP_API_BASE;
   const authSessionToken = authSession?.authSessionToken ?? null;
-  const equipmentStorageKey = profileId
-    ? `bubbledrop.inventory.equipment.${profileId}`
-    : null;
 
   const loadStarterAvatars = async () => {
     try {
@@ -305,10 +327,48 @@ export function RewardsInventoryScreen() {
       void onSelectAvatar(item.id);
       return;
     }
-    setEquippedBySlot((current) => ({
-      ...current,
-      [item.slot]: item.id,
-    }));
+    if (!profileId || !authSessionToken || needsOnboarding) {
+      setErrorMessage("Sign in and finish onboarding before style apply.");
+      return;
+    }
+    if (!rareAccessActive && !testingOverrideActive) {
+      setErrorMessage(
+        "Style apply is locked. Reach qualification rules with daily streak and active bubble sessions.",
+      );
+      return;
+    }
+    setIsApplyingCollectibleId(item.id);
+    setErrorMessage(null);
+    void (async () => {
+      try {
+        const response = await fetch(`${backendUrl}/profile/style/equip`, {
+          method: "POST",
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
+          body: JSON.stringify({
+            profileId,
+            rewardId: item.id,
+            rewardKey: item.key,
+            rarity: item.rarity,
+            source: item.source,
+            variant: `${item.rarity.toUpperCase()} INVENTORY`,
+          }),
+        });
+        if (!response.ok) {
+          setErrorMessage("We couldn't apply this style right now.");
+          return;
+        }
+        const payload = (await response.json()) as EquipStyleResponse;
+        setEquippedStyleRewardId(payload.equippedStyle.rewardId);
+        setEquippedBySlot((current) => ({
+          ...current,
+          [item.slot]: item.id,
+        }));
+      } catch {
+        setErrorMessage("We couldn't apply this style right now.");
+      } finally {
+        setIsApplyingCollectibleId(null);
+      }
+    })();
   };
 
   useEffect(() => {
@@ -340,6 +400,9 @@ export function RewardsInventoryScreen() {
 
       setNeedsOnboarding(onboardingState.needsOnboarding);
       setSelectedAvatarId(onboardingState.currentAvatarId);
+      setEquippedStyleRewardId(onboardingState.equippedStyleRewardId);
+      setRareAccessActive(onboardingState.rareAccessActive);
+      setTestingOverrideActive(onboardingState.testingOverrideActive);
       setIsResolvingOnboardingState(false);
       await loadStarterAvatars();
 
@@ -355,40 +418,18 @@ export function RewardsInventoryScreen() {
   }, [backendUrl, profileId]);
 
   useEffect(() => {
-    if (!equipmentStorageKey) {
+    if (!equippedStyleRewardId) {
       return;
     }
-    try {
-      const rawValue = window.localStorage.getItem(equipmentStorageKey);
-      if (!rawValue) {
-        return;
-      }
-      const parsed = JSON.parse(rawValue) as Partial<Record<CosmeticSlot, string | null>>;
-      setEquippedBySlot({
-        avatar: parsed.avatar ?? null,
-        bubbleSkin: parsed.bubbleSkin ?? null,
-        trail: parsed.trail ?? null,
-        badge: parsed.badge ?? null,
-      });
-    } catch {
-      // Ignore corrupted local equipment data and keep defaults.
-    }
-  }, [equipmentStorageKey]);
-
-  useEffect(() => {
-    if (!equipmentStorageKey) {
+    const equippedItem = collectibleMap.get(equippedStyleRewardId);
+    if (!equippedItem || equippedItem.slot === "avatar") {
       return;
     }
-    window.localStorage.setItem(
-      equipmentStorageKey,
-      JSON.stringify({
-        avatar: selectedAvatarId,
-        bubbleSkin: equippedBySlot.bubbleSkin,
-        trail: equippedBySlot.trail,
-        badge: equippedBySlot.badge,
-      }),
-    );
-  }, [equipmentStorageKey, selectedAvatarId, equippedBySlot]);
+    setEquippedBySlot((current) => ({
+      ...current,
+      [equippedItem.slot]: equippedItem.id,
+    }));
+  }, [collectibleMap, equippedStyleRewardId]);
 
   const onSelectAvatar = async (avatarId: string) => {
     if (!profileId || !authSessionToken || needsOnboarding) {
@@ -686,10 +727,19 @@ export function RewardsInventoryScreen() {
                       <button
                         type="button"
                         onClick={() => equipCollectible(item)}
-                        disabled={item.slot === "avatar" && (!authSessionToken || isSwitchingAvatar)}
+                        disabled={
+                          (item.slot === "avatar" &&
+                            (!authSessionToken || isSwitchingAvatar)) ||
+                          (item.slot !== "avatar" && !rareAccessActive && !testingOverrideActive) ||
+                          (item.slot !== "avatar" && isApplyingCollectibleId !== null)
+                        }
                         className="min-h-11 rounded-lg bg-gradient-to-r from-[#c7efff] to-[#d6d8ff] px-3 py-2 text-xs font-semibold text-[#294578] disabled:opacity-60"
                       >
-                        {isEquipped ? "Equipped" : "Apply"}
+                        {isEquipped
+                          ? "Equipped"
+                          : isApplyingCollectibleId === item.id
+                            ? "Applying..."
+                            : "Apply"}
                       </button>
                     </div>
                   </article>
@@ -700,6 +750,18 @@ export function RewardsInventoryScreen() {
           {!needsOnboarding && filteredCollectibles.length === 0 ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
               No collectibles match current filters. Try clearing slot/rarity/season filters.
+            </div>
+          ) : null}
+
+          {!needsOnboarding && !rareAccessActive && !testingOverrideActive ? (
+            <div className="mt-3 rounded-xl border border-[#f0ddab] bg-[#fff6de] p-3 text-xs font-semibold text-[#6f5424]">
+              Cosmetic apply is visible but locked. Keep daily streak active and complete qualified bubble sessions to unlock apply.
+            </div>
+          ) : null}
+
+          {!needsOnboarding && testingOverrideActive ? (
+            <div className="mt-3 rounded-xl border border-[#cce7ff] bg-[#eaf6ff] p-3 text-xs font-semibold text-[#2e5f8c]">
+              Test override active: all skins are visible and apply is unlocked for QA.
             </div>
           ) : null}
 
@@ -717,6 +779,11 @@ export function RewardsInventoryScreen() {
                 ? errorMessage
                 : errorMessage === "We couldn't load your reward access right now."
                   ? errorMessage
+                  : errorMessage ===
+                      "Style apply is locked. Reach qualification rules with daily streak and active bubble sessions."
+                    ? errorMessage
+                    : errorMessage === "We couldn't apply this style right now."
+                      ? errorMessage
                   : "We couldn't open your rewards inventory right now."}
             </p>
           </section>

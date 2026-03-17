@@ -114,6 +114,7 @@ export interface ProfileSummary {
           appliedAt: string;
         }
       | null;
+    testingOverrideActive: boolean;
   };
 }
 
@@ -442,6 +443,7 @@ export class ProfileService {
       .reduce((sum, item) => sum + this.parseAmount(item.claimableAmount), 0n)
       .toString();
     const needsOnboarding = this.profileNeedsOnboarding(profile);
+    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
 
     return {
       onboardingState: {
@@ -499,6 +501,7 @@ export class ProfileService {
       },
       styleState: {
         equippedStyle: await this.loadEquippedStyleSnapshot(profile.id),
+        testingOverrideActive,
       },
     };
   }
@@ -533,6 +536,36 @@ export class ProfileService {
       profile,
       'Onboarding must be completed before style equip is allowed',
     );
+    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
+    if (!testingOverrideActive) {
+      const qualificationSnapshot =
+        await this.qualificationService.evaluateProgress(profileId);
+      if (!qualificationSnapshot.rareRewardAccessActive) {
+        throw new ForbiddenException(
+          'Style apply is locked until game progression rules are met',
+        );
+      }
+
+      if (source === 'nft') {
+        const ownership = await this.profileNftOwnershipRepository.findOne({
+          where: { profileId: profile.id, nftDefinitionId: rewardId },
+        });
+        if (!ownership) {
+          throw new ForbiddenException(
+            'This NFT style is not owned by the current profile',
+          );
+        }
+      } else {
+        const unlock = await this.profileCosmeticUnlockRepository.findOne({
+          where: { profileId: profile.id, cosmeticDefinitionId: rewardId },
+        });
+        if (!unlock) {
+          throw new ForbiddenException(
+            'This cosmetic style is not unlocked for the current profile',
+          );
+        }
+      }
+    }
 
     const equippedStyle: EquippedStyleResult['equippedStyle'] = {
       rewardId,
@@ -595,69 +628,68 @@ export class ProfileService {
       profile,
       'Onboarding must be completed before rewards inventory is available',
     );
+    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
 
     const nftOwnerships = await this.profileNftOwnershipRepository.find({
       where: { profileId },
       order: { acquiredAt: 'DESC' },
     });
-    const nftDefinitions = nftOwnerships.length
-      ? await this.nftDefinitionRepository.find({
-          where: {
-            id: In(nftOwnerships.map((item) => item.nftDefinitionId)),
-          },
-        })
-      : [];
+    const nftDefinitions = testingOverrideActive
+      ? await this.nftDefinitionRepository.find()
+      : nftOwnerships.length
+        ? await this.nftDefinitionRepository.find({
+            where: {
+              id: In(nftOwnerships.map((item) => item.nftDefinitionId)),
+            },
+          })
+        : [];
     const nftDefinitionMap = new Map(
       nftDefinitions.map((item) => [item.id, item]),
+    );
+    const nftOwnershipMap = new Map(
+      nftOwnerships.map((item) => [item.nftDefinitionId, item]),
     );
 
     const cosmeticUnlocks = await this.profileCosmeticUnlockRepository.find({
       where: { profileId },
       order: { unlockedAt: 'DESC' },
     });
-    const cosmeticDefinitions = cosmeticUnlocks.length
-      ? await this.cosmeticDefinitionRepository.find({
-          where: {
-            id: In(cosmeticUnlocks.map((item) => item.cosmeticDefinitionId)),
-          },
-        })
-      : [];
+    const cosmeticDefinitions = testingOverrideActive
+      ? await this.cosmeticDefinitionRepository.find()
+      : cosmeticUnlocks.length
+        ? await this.cosmeticDefinitionRepository.find({
+            where: {
+              id: In(cosmeticUnlocks.map((item) => item.cosmeticDefinitionId)),
+            },
+          })
+        : [];
     const cosmeticDefinitionMap = new Map(
       cosmeticDefinitions.map((item) => [item.id, item]),
     );
+    const cosmeticUnlockMap = new Map(
+      cosmeticUnlocks.map((item) => [item.cosmeticDefinitionId, item]),
+    );
 
-    const nfts = nftOwnerships
-      .map((ownership) => {
-        const definition = nftDefinitionMap.get(ownership.nftDefinitionId);
-        if (!definition) {
-          return null;
-        }
-        return {
-          id: definition.id,
-          key: definition.key,
-          label: definition.label,
-          tier: definition.tier,
-          acquiredAt: ownership.acquiredAt,
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+    const nfts = nftDefinitions.map((definition) => {
+      const ownership = nftOwnershipMap.get(definition.id);
+      return {
+        id: definition.id,
+        key: definition.key,
+        label: definition.label,
+        tier: definition.tier,
+        acquiredAt: ownership?.acquiredAt ?? new Date(0),
+      };
+    });
 
-    const cosmetics = cosmeticUnlocks
-      .map((unlock) => {
-        const definition = cosmeticDefinitionMap.get(
-          unlock.cosmeticDefinitionId,
-        );
-        if (!definition) {
-          return null;
-        }
-        return {
-          id: definition.id,
-          key: definition.key,
-          label: definition.label,
-          unlockedAt: unlock.unlockedAt,
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+    const cosmetics = cosmeticDefinitions.map((definition) => {
+      const unlock = cosmeticUnlockMap.get(definition.id);
+      return {
+        id: definition.id,
+        key: definition.key,
+        label: definition.label,
+        unlockedAt: unlock?.unlockedAt ?? new Date(0),
+      };
+    });
 
     return {
       profileId,
@@ -751,6 +783,20 @@ export class ProfileService {
       'code' in error &&
       (error as { code?: string }).code === '42703'
     );
+  }
+
+  private isAllSkinsTestingOverrideEnabled(): boolean {
+    const rawValue = this.configService.get<string | boolean | undefined>(
+      'BUBBLEDROP_TEST_UNLOCK_ALL_SKINS',
+    );
+    if (typeof rawValue === 'boolean') {
+      return rawValue;
+    }
+    if (typeof rawValue === 'string') {
+      const normalized = rawValue.trim().toLowerCase();
+      return normalized === '1' || normalized === 'true' || normalized === 'yes';
+    }
+    return false;
   }
 
   private async ensureStarterAvatarsUnlocked(
