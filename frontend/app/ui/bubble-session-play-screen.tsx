@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
@@ -28,16 +28,6 @@ const SESSION_ACTIVE_SECONDS_XP_CAP = 10 * 60;
 const COMBO_WINDOW_MS = 1500;
 const FEATURED_COMBO_TARGET = 5;
 const ACTIVE_PLAY_BUBBLE_COUNT = 14;
-const PLAYFIELD_BUBBLE_POSITIONS = [
-  { top: "20%", left: "18%" },
-  { top: "32%", left: "68%" },
-  { top: "54%", left: "24%" },
-  { top: "64%", left: "62%" },
-  { top: "40%", left: "48%" },
-  { top: "22%", left: "54%" },
-  { top: "58%", left: "72%" },
-  { top: "46%", left: "14%" },
-] as const;
 const DECORATIVE_STANDARD_BUBBLES = [
   { top: "18%", left: "14%", size: "3.25rem" },
   { top: "26%", left: "76%", size: "4.5rem" },
@@ -73,12 +63,14 @@ type ActivePlayBubble = {
   roundness: number;
   scale: number;
   isBonus: boolean;
+  nextShiftAtMs: number;
+  poppedUntilMs: number;
 };
 
 type PopBurst = {
   id: number;
-  x: number;
-  y: number;
+  xPercent: number;
+  yPercent: number;
   hue: number;
   sizeRem: number;
 };
@@ -170,15 +162,12 @@ function hasIssuedRareRewardOutcome(outcome: RareRewardOutcome): boolean {
   return !!outcome.tokenReward || outcome.nftRewards.length > 0 || outcome.cosmeticRewards.length > 0;
 }
 
-function clampBubblePosition(value: number): string {
-  return `${Math.max(10, Math.min(82, value))}%`;
-}
-
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
 function createActivePlayBubble(id: number): ActivePlayBubble {
+  const now = Date.now();
   return {
     id,
     top: randomBetween(16, 78),
@@ -191,6 +180,8 @@ function createActivePlayBubble(id: number): ActivePlayBubble {
     roundness: randomBetween(42, 58),
     scale: randomBetween(0.94, 1.08),
     isBonus: Math.random() < 0.16,
+    nextShiftAtMs: now + randomBetween(500, 2200),
+    poppedUntilMs: 0,
   };
 }
 
@@ -220,6 +211,10 @@ export function BubbleSessionPlayScreen() {
   const [tapCombo, setTapCombo] = useState(0);
   const [bestTapCombo, setBestTapCombo] = useState(0);
   const [lastTapGainSeconds, setLastTapGainSeconds] = useState(ACTIVE_SECONDS_PER_TAP);
+  const [tapFeedbackPoint, setTapFeedbackPoint] = useState<{
+    topPercent: number;
+    leftPercent: number;
+  } | null>(null);
   const [activePlayBubbles, setActivePlayBubbles] = useState<ActivePlayBubble[]>(
     () =>
       Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
@@ -228,6 +223,7 @@ export function BubbleSessionPlayScreen() {
   );
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
+  const playfieldRef = useRef<HTMLDivElement | null>(null);
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
@@ -306,19 +302,27 @@ export function BubbleSessionPlayScreen() {
     }
 
     const intervalId = window.setInterval(() => {
+      const now = Date.now();
       setActivePlayBubbles((current) =>
-        current.map((bubble) => ({
-          ...bubble,
-          top: randomBetween(14, 80),
-          left: randomBetween(8, 88),
-          driftMs: Math.round(randomBetween(900, 2800)),
-          wobbleDeg: randomBetween(-14, 14),
-          roundness: randomBetween(40, 62),
-          scale: randomBetween(0.9, 1.12),
-          isBonus: Math.random() < 0.16,
-        })),
+        current.map((bubble) => {
+          if (bubble.poppedUntilMs > now || bubble.nextShiftAtMs > now) {
+            return bubble;
+          }
+
+          return {
+            ...bubble,
+            top: randomBetween(14, 80),
+            left: randomBetween(8, 88),
+            driftMs: Math.round(randomBetween(900, 2800)),
+            wobbleDeg: randomBetween(-14, 14),
+            roundness: randomBetween(40, 62),
+            scale: randomBetween(0.9, 1.12),
+            isBonus: Math.random() < 0.16,
+            nextShiftAtMs: now + randomBetween(600, 2600),
+          };
+        }),
       );
-    }, 1400);
+    }, 240);
 
     return () => {
       window.clearInterval(intervalId);
@@ -391,18 +395,6 @@ export function BubbleSessionPlayScreen() {
   const runObjectiveCompletedCount = runObjectives.filter((objective) => objective.done).length;
   const elapsedSecondsRemaining = Math.max(0, MIN_SESSION_SECONDS_FOR_COMPLETION - elapsedSeconds);
   const activeSecondsRemaining = Math.max(0, ACTIVE_SECONDS_FOR_COMPLETION_BONUS - backendCountableActiveSeconds);
-  const playfieldBubblePosition =
-    PLAYFIELD_BUBBLE_POSITIONS[activeTapCount % PLAYFIELD_BUBBLE_POSITIONS.length];
-  const activeBubbleStyle = {
-    top: clampBubblePosition(
-      Number.parseFloat(playfieldBubblePosition.top) +
-        ((activeTapCount % 3) - 1) * 4,
-    ),
-    left: clampBubblePosition(
-      Number.parseFloat(playfieldBubblePosition.left) +
-        ((activeTapCount % 4) - 1.5) * 3,
-    ),
-  };
   const readinessLabel = sessionCompleted
     ? "Session finished"
     : isActive
@@ -511,6 +503,7 @@ export function BubbleSessionPlayScreen() {
         setTapCombo(0);
         setBestTapCombo(0);
         setLastTapGainSeconds(ACTIVE_SECONDS_PER_TAP);
+        setTapFeedbackPoint(null);
         setLastTapAtMs(null);
         setLastTapFeedbackAtMs(null);
         setPopBursts([]);
@@ -569,28 +562,36 @@ export function BubbleSessionPlayScreen() {
                 roundness: randomBetween(38, 64),
                 scale: randomBetween(0.88, 1.14),
                 isBonus: Math.random() < 0.16,
+                nextShiftAtMs: now + randomBetween(700, 2600),
+                poppedUntilMs: now + 130,
               }
             : bubble,
         ),
       );
 
       const rect = event?.currentTarget.getBoundingClientRect();
-      if (typeof window !== "undefined") {
+      const playfieldRect = playfieldRef.current?.getBoundingClientRect();
+      if (playfieldRect) {
         const burstId = Math.floor(Math.random() * 1_000_000_000);
         const burstX =
           rect
             ? rect.left + rect.width / 2
-            : ((tappedBubble?.left ?? 50) / 100) * window.innerWidth;
+            : playfieldRect.left +
+              (playfieldRect.width * (tappedBubble?.left ?? 50)) / 100;
         const burstY =
           rect
             ? rect.top + rect.height / 2
-            : ((tappedBubble?.top ?? 50) / 100) * window.innerHeight;
+            : playfieldRect.top +
+              (playfieldRect.height * (tappedBubble?.top ?? 50)) / 100;
+        const xPercent = ((burstX - playfieldRect.left) / playfieldRect.width) * 100;
+        const yPercent = ((burstY - playfieldRect.top) / playfieldRect.height) * 100;
+        setTapFeedbackPoint({ topPercent: yPercent, leftPercent: xPercent });
         setPopBursts((current) => [
           ...current,
           {
             id: burstId,
-            x: burstX,
-            y: burstY,
+            xPercent,
+            yPercent,
             hue: tappedBubble?.isBonus ? 44 : tappedBubble?.hue ?? 220,
             sizeRem: tappedBubble?.isBonus ? 0.7 : 0.52,
           },
@@ -697,13 +698,13 @@ export function BubbleSessionPlayScreen() {
               >
                 Back
               </Link>
-              <div className="pointer-events-auto min-w-0 rounded-[1.5rem] border border-white/75 bg-white/78 px-4 py-3 shadow-[0_12px_30px_rgba(96,132,203,0.14)] backdrop-blur-sm">
+              <div className="pointer-events-auto min-w-0 rounded-[1.3rem] border border-white/75 bg-white/78 px-3 py-2 shadow-[0_10px_24px_rgba(96,132,203,0.14)] backdrop-blur-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Bubble session
                     </p>
-                    <p className="mt-1 text-2xl font-bold leading-none text-[#2d477f]">
+                    <p className="mt-1 text-xl font-bold leading-none text-[#2d477f]">
                       {formatTime(displayElapsedSeconds)}
                     </p>
                   </div>
@@ -711,37 +712,37 @@ export function BubbleSessionPlayScreen() {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Status
                     </p>
-                    <p className="mt-1 text-sm font-semibold text-[#3a4f86]">
+                    <p className="mt-1 text-xs font-semibold text-[#3a4f86]">
                       {readinessLabel}
                     </p>
                   </div>
                 </div>
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-2 flex items-center gap-2">
                   <div className="h-2 flex-1 rounded-full bg-[#e4ecff]">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
                       style={{ width: `${elapsedProgressPercent}%` }}
                     />
                   </div>
-                  <div className="h-2 w-24 rounded-full bg-[#f3e7ff]">
+                  <div className="h-2 w-20 rounded-full bg-[#f3e7ff]">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-[#ffe1a6] to-[#ffc7ef] transition-all"
                       style={{ width: `${activeSignalProgressPercent}%` }}
                     />
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
                   <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
                     <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Combo</p>
-                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">x{tapCombo}</p>
+                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{tapCombo}</p>
                   </div>
                   <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
                     <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Best</p>
-                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">x{bestTapCombo}</p>
+                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{bestTapCombo}</p>
                   </div>
                   <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
                     <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Hunt</p>
-                    <p className="mt-1 text-sm font-bold text-[#2f4a81]">{huntReadinessPercent}%</p>
+                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">{huntReadinessPercent}%</p>
                   </div>
                 </div>
               </div>
@@ -815,7 +816,10 @@ export function BubbleSessionPlayScreen() {
                 <span className="absolute left-[48%] top-[70%] h-2.5 w-2.5 rounded-full bg-white/75" />
               </div>
 
-              <div className="relative flex min-h-screen items-center justify-center px-4 pb-44 pt-28 sm:px-6 sm:pt-32">
+              <div
+                ref={playfieldRef}
+                className="relative flex min-h-screen items-center justify-center px-4 pb-44 pt-24 sm:px-6 sm:pt-28"
+              >
                 {!isActive ? (
                   <div className="max-w-[17rem] rounded-[2.25rem] border border-white/80 bg-white/74 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.16)] backdrop-blur-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
@@ -850,6 +854,12 @@ export function BubbleSessionPlayScreen() {
                           }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
                           transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg}deg) scale(${bubble.scale})`,
                           transitionDuration: `${bubble.driftMs}ms`,
+                          opacity:
+                            bubble.poppedUntilMs > Date.now()
+                              ? 0.08
+                              : bubble.isBonus
+                                ? 0.92
+                                : 0.82,
                           background: bubble.isBonus
                             ? "radial-gradient(circle at 30% 22%, rgba(255,255,255,0.68), rgba(255,255,255,0.14) 36%, transparent 56%), radial-gradient(circle at 70% 72%, rgba(255,221,128,0.62), transparent 62%), radial-gradient(circle at 50% 50%, rgba(255,243,176,0.9), rgba(255,215,150,0.62))"
                             : `radial-gradient(circle at 32% 24%, rgba(255,255,255,0.62), rgba(255,255,255,0.1) 35%, transparent 56%), radial-gradient(circle at 68% 72%, hsla(${
@@ -863,25 +873,36 @@ export function BubbleSessionPlayScreen() {
                       />
                     ))}
                     {popBursts.map((burst) => (
-                      <span
-                        key={burst.id}
-                        className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full"
-                        style={{
-                          left: `${burst.x}px`,
-                          top: `${burst.y}px`,
-                          width: `${burst.sizeRem}rem`,
-                          height: `${burst.sizeRem}rem`,
-                          background: `hsla(${burst.hue}, 95%, 78%, 0.82)`,
-                          boxShadow: `0 0 0 10px hsla(${burst.hue}, 92%, 76%, 0.22), 0 0 0 20px hsla(${burst.hue}, 92%, 76%, 0.14)`,
-                        }}
-                      />
+                      <span key={burst.id}>
+                        <span
+                          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full"
+                          style={{
+                            left: `${burst.xPercent}%`,
+                            top: `${burst.yPercent}%`,
+                            width: `${burst.sizeRem}rem`,
+                            height: `${burst.sizeRem}rem`,
+                            background: `hsla(${burst.hue}, 95%, 78%, 0.88)`,
+                            boxShadow: `0 0 0 10px hsla(${burst.hue}, 92%, 76%, 0.28), 0 0 0 20px hsla(${burst.hue}, 92%, 76%, 0.18)`,
+                          }}
+                        />
+                        <span
+                          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full"
+                          style={{
+                            left: `${burst.xPercent}%`,
+                            top: `${burst.yPercent}%`,
+                            width: `${burst.sizeRem * 0.45}rem`,
+                            height: `${burst.sizeRem * 0.45}rem`,
+                            background: "rgba(255,255,255,0.92)",
+                          }}
+                        />
+                      </span>
                     ))}
-                    {showTapFeedback ? (
+                    {showTapFeedback && tapFeedbackPoint ? (
                       <div
                         className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-sm font-black text-[#3e4f82]"
                         style={{
-                          top: activeBubbleStyle.top,
-                          left: activeBubbleStyle.left,
+                          top: `${tapFeedbackPoint.topPercent}%`,
+                          left: `${tapFeedbackPoint.leftPercent}%`,
                           marginTop: "-5.4rem",
                         }}
                       >
@@ -1106,6 +1127,7 @@ export function BubbleSessionPlayScreen() {
                   setCompletionResult(null);
                   setSessionStartedAtMs(null);
                   setActiveTapCount(0);
+                  setTapFeedbackPoint(null);
                   setPopBursts([]);
                   setActivePlayBubbles(
                     Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
