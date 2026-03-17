@@ -269,6 +269,24 @@ function rarityLabel(rarity: RarityLevel): string {
 
 const SLOT_ORDER: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
 const QA_FALLBACK_ID_PREFIX = "qa-";
+const STYLE_APPLY_TIMEOUT_MS = 12_000;
+
+async function postWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = STYLE_APPLY_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
 export function RewardsInventoryScreen() {
   const { profileId, walletAddress } = useBubbleDropRuntime();
@@ -479,11 +497,22 @@ export function RewardsInventoryScreen() {
       );
       return;
     }
+    const previousEquippedBySlot = { ...equippedBySlot };
+    const previousEquippedStyleRewardId = equippedStyleRewardId;
+    const previousSelectedAvatarId = selectedAvatarId;
+    setEquippedStyleRewardId(item.id);
+    setEquippedBySlot((current) => ({
+      ...current,
+      [item.slot]: item.id,
+    }));
+    if (item.slot === "avatar") {
+      setSelectedAvatarId(item.id);
+    }
     setIsApplyingCollectibleId(item.id);
     setErrorMessage(null);
     void (async () => {
       try {
-        const response = await fetch(`${backendUrl}/profile/style/equip`, {
+        const response = await postWithTimeout(`${backendUrl}/profile/style/equip`, {
           method: "POST",
           headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({
@@ -496,6 +525,9 @@ export function RewardsInventoryScreen() {
           }),
         });
         if (!response.ok) {
+          setEquippedBySlot(previousEquippedBySlot);
+          setEquippedStyleRewardId(previousEquippedStyleRewardId);
+          setSelectedAvatarId(previousSelectedAvatarId);
           setErrorMessage("We couldn't apply this style right now.");
           return;
         }
@@ -506,7 +538,16 @@ export function RewardsInventoryScreen() {
           [item.slot]: item.id,
         }));
         savePersistedEquippedStyle(profileId, payload.equippedStyle);
-      } catch {
+      } catch (error) {
+        setEquippedBySlot(previousEquippedBySlot);
+        setEquippedStyleRewardId(previousEquippedStyleRewardId);
+        setSelectedAvatarId(previousSelectedAvatarId);
+        const isTimeoutAbort =
+          error instanceof DOMException && error.name === "AbortError";
+        if (isTimeoutAbort) {
+          setErrorMessage("Style apply timed out. Please tap Apply again.");
+          return;
+        }
         setErrorMessage("We couldn't apply this style right now.");
       } finally {
         setIsApplyingCollectibleId(null);
@@ -934,6 +975,8 @@ export function RewardsInventoryScreen() {
                   : errorMessage ===
                       "Style apply is locked. Reach qualification rules with daily streak and active bubble sessions."
                     ? errorMessage
+                    : errorMessage === "Style apply timed out. Please tap Apply again."
+                      ? errorMessage
                     : errorMessage === "We couldn't apply this style right now."
                       ? errorMessage
                   : "We couldn't open your rewards inventory right now."}

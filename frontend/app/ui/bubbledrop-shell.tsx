@@ -743,6 +743,15 @@ export function BubbleDropShell() {
         : equippedRarity === "rare"
           ? "profile-emblem-rarity-rare"
           : "profile-emblem-rarity-common";
+  const profileEmblemCategoryClass = equippedStyleSnapshot
+    ? inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Trail"
+      ? "profile-emblem-category-trail"
+      : inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Badge"
+        ? "profile-emblem-category-badge"
+        : inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Avatar"
+          ? "profile-emblem-category-avatar"
+          : "profile-emblem-category-bubble"
+    : "profile-emblem-category-bubble";
   const equippedStyleName = equippedStyleSnapshot
     ? formatRewardKeyLabel(equippedStyleSnapshot.rewardKey)
     : "Default style";
@@ -2255,7 +2264,7 @@ export function BubbleDropShell() {
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
               <div className="relative flex items-start gap-3">
                 <div
-                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
+                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} ${profileEmblemCategoryClass} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
                     isProfileBubblePressed ? "profile-bubble-touch" : ""
                   }`}
                   style={
