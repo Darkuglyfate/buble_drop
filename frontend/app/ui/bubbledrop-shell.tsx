@@ -45,8 +45,6 @@ import {
   inferSlotFromRewardKey,
   loadPersistedEquippedStyles,
   savePersistedEquippedStyle,
-  type CosmeticSlot,
-  type EquippedStyleBySlot,
   type EquippedStyleSnapshot,
 } from "./equipped-style-sync";
 
@@ -623,7 +621,6 @@ export function BubbleDropShell() {
   const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
     useState<EquippedStyleSnapshot | null>(null);
-  const [homeEquippedMerged, setHomeEquippedMerged] = useState<EquippedStyleBySlot>({});
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -729,20 +726,20 @@ export function BubbleDropShell() {
   const equippedRarity = equippedStyleSnapshot?.rarity ?? null;
   const profileStyleShellClass =
     equippedRarity === "legendary"
-      ? "from-[#fff2d8]/88 via-[#ffd7a9]/72 to-[#ffd3e2]/68 ring-[#ffdba3]/85"
+      ? "from-white/90 via-[#faf8f5]/88 to-[#f5f0e8]/82 ring-[#e8dcc8]/70"
       : equippedRarity === "epic"
         ? "from-[#f2e8ff]/86 via-[#e7ddff]/72 to-[#d8ecff]/68 ring-[#ddbeff]/72"
         : equippedRarity === "rare"
           ? "from-[#e6f8ff]/86 via-[#d8f0ff]/74 to-[#dce8ff]/66 ring-[#b8e8ff]/72"
           : "from-white/84 via-white/72 to-white/66 ring-white/72";
-  const profileStyleBadgeClass =
+  const profileRarityChipClass =
     equippedRarity === "legendary"
-      ? "bg-gradient-to-r from-[#fff2c5] to-[#ffd98a] text-[#6f4100]"
+      ? "profile-rarity-chip-legendary"
       : equippedRarity === "epic"
-        ? "bg-[#f1ddff] text-[#7140a9]"
+        ? "profile-rarity-chip-epic"
         : equippedRarity === "rare"
-          ? "bg-[#d5f0ff] text-[#125f89]"
-          : "bg-[#dce7ff] text-[#3b588f]";
+          ? "profile-rarity-chip-rare"
+          : "profile-rarity-chip-common";
   const profileEmblemRarityClass =
     equippedRarity === "legendary"
       ? "profile-emblem-rarity-legendary"
@@ -763,9 +760,6 @@ export function BubbleDropShell() {
   const equippedStyleName = equippedStyleSnapshot
     ? formatRewardKeyLabel(equippedStyleSnapshot.rewardKey)
     : "Default style";
-  const equippedStyleLabel = equippedStyleSnapshot
-    ? `${inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey)} style`
-    : "Default profile style";
   const walletDisplay = shortenWalletAddress(
     activeWalletAddress ?? connectedWalletAddress,
   );
@@ -982,7 +976,6 @@ export function BubbleDropShell() {
   useEffect(() => {
     if (!profileId) {
       setEquippedStyleSnapshot(null);
-      setHomeEquippedMerged({});
       return;
     }
     const persisted = loadPersistedEquippedStyles(profileId);
@@ -995,7 +988,6 @@ export function BubbleDropShell() {
     }
     const primary = getPrimaryEquippedStyle(merged);
     setEquippedStyleSnapshot(primary);
-    setHomeEquippedMerged(merged);
   }, [profileId, profileSummary]);
 
   useEffect(() => {
@@ -1748,30 +1740,6 @@ export function BubbleDropShell() {
     effectiveIsConnected &&
     isConnectedToBase &&
     !authenticatedSessionToken;
-  const canRunDailyCheckInAction =
-    Boolean(profileId) &&
-    !isFirstEntry &&
-    Boolean(authenticatedSessionToken) &&
-    effectiveIsConnected &&
-    isConnectedToBase;
-  const dailyMissionCheckInLabel = !effectiveIsConnected
-    ? "Daily check-in — connect wallet first"
-    : !isConnectedToBase
-      ? "Daily check-in — switch to Base"
-      : !authenticatedSessionToken
-        ? "Daily check-in — sign in on profile card"
-        : !profileId
-          ? "Daily check-in — sync profile below"
-          : isFirstEntry
-            ? "Daily check-in — finish onboarding first"
-            : dailyCheckInCompletedToday
-              ? "Daily check-in complete today"
-              : "Daily check-in (+20 XP)";
-  const dailyMissionCheckInDisabled =
-    isSubmittingAction ||
-    isWalletFlowBusy ||
-    !canRunDailyCheckInAction ||
-    dailyCheckInCompletedToday;
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
@@ -1951,6 +1919,54 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Play portal ready";
+  }
+
+  const onDailyMissionPrimary = () => {
+    if (!effectiveIsConnected) {
+      onConnectWallet();
+      return;
+    }
+    if (!isConnectedToBase) {
+      onSwitchToBase();
+      return;
+    }
+    if (!authenticatedSessionToken) {
+      onSignInWithBase();
+      return;
+    }
+    if (!profileId) {
+      void onBootstrapProfile();
+      return;
+    }
+    if (!profileSummary) {
+      void onRefreshProfile();
+      return;
+    }
+    if (quickSessionHref) {
+      window.location.assign(quickSessionHref);
+    }
+  };
+
+  let dailyMissionPrimaryLabel = "Open session";
+  let dailyMissionPrimaryDisabled = false;
+  if (!effectiveIsConnected) {
+    dailyMissionPrimaryLabel = isWalletFlowBusy ? "Connecting…" : "Connect profile";
+    dailyMissionPrimaryDisabled = isWalletFlowBusy;
+  } else if (!isConnectedToBase) {
+    dailyMissionPrimaryLabel = "Switch to Base";
+    dailyMissionPrimaryDisabled = isWalletFlowBusy;
+  } else if (!authenticatedSessionToken) {
+    dailyMissionPrimaryLabel = isSigningInWithBase ? "Signing in…" : "Sign in with Base";
+    dailyMissionPrimaryDisabled = isWalletFlowBusy;
+  } else if (!profileId) {
+    dailyMissionPrimaryLabel = isSubmittingAction ? "Syncing…" : "Sync profile";
+    dailyMissionPrimaryDisabled = !canSyncProfile || isSubmittingAction;
+  } else if (!profileSummary) {
+    dailyMissionPrimaryLabel = isSubmittingAction ? "Refreshing…" : "Refresh profile";
+    dailyMissionPrimaryDisabled = isSubmittingAction;
+  } else {
+    dailyMissionPrimaryLabel = "Open session";
+    dailyMissionPrimaryDisabled = !quickSessionHref;
   }
 
   const onAnswer = (index: number) => {
@@ -2327,72 +2343,45 @@ export function BubbleDropShell() {
                   <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#7085b0]">
-                    Player profile
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7085b0]">
+                    Пузырь · Bubble
                   </p>
                   <h1 className="mt-1 break-words text-[1.45rem] font-black leading-[1.05] tracking-[-0.035em] text-[#20365d]">
                     {nicknameDisplay}
                   </h1>
-                  <p className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-[#526ca0]">
-                    Equipped style
+                  {equippedStyleSnapshot ? (
+                    <>
+                      <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b9cc4]">
+                        Акцент на пузыре
+                      </p>
+                      <p className="mt-0.5 text-[0.95rem] font-bold leading-snug text-[#1e355d]">
+                        {equippedStyleName}
+                      </p>
+                      <span
+                        className={`profile-rarity-chip mt-2 inline-flex ${profileRarityChipClass}`}
+                      >
+                        {equippedStyleSnapshot.rarity}
+                      </span>
+                    </>
+                  ) : (
+                    <p className="mt-2 text-sm text-[#7b8fb8]">Базовый вид пузыря</p>
+                  )}
+                  <p className="mt-2 text-xs text-[#8b9cc4]">
+                    Все слои пузыря (аватар · оболочка · след · знак) — в{" "}
+                    {profileId && rewardsInventoryHref ? (
+                      <Link
+                        href={rewardsInventoryHref}
+                        className="font-semibold text-[#3d5a9e] underline decoration-[#b8c8e8] underline-offset-2"
+                      >
+                        Vault
+                      </Link>
+                    ) : (
+                      "Vault после онбординга"
+                    )}
                   </p>
-                  <p className="mt-1 text-sm font-semibold text-[#495f90]">{equippedStyleName}</p>
-                  <p className="mt-1 text-xs font-medium text-[#6177a2]">Avatar: {avatarLabel}</p>
-                  <div className="mt-2 inline-flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${profileStyleBadgeClass}`}
-                    >
-                      {equippedStyleSnapshot ? equippedStyleSnapshot.rarity : "profile"}
-                    </span>
-                    <span className="text-[11px] font-semibold text-[#6077a6]">
-                      {equippedStyleLabel}
-                    </span>
-                  </div>
-                  {profileId ? (
-                    <div className="mt-3 grid grid-cols-2 gap-1.5">
-                      {(
-                        [
-                          ["avatar", "Avatar"],
-                          ["bubbleSkin", "Bubble skin"],
-                          ["trail", "Trail"],
-                          ["badge", "Badge"],
-                        ] as const
-                      ).map(([slot, slotTitle]) => {
-                        const snap = homeEquippedMerged[slot as CosmeticSlot];
-                        const avatarFallback =
-                          slot === "avatar"
-                            ? profileSummary?.avatarState?.currentAvatar?.label
-                            : null;
-                        const label = snap
-                          ? formatRewardKeyLabel(snap.rewardKey)
-                          : avatarFallback ?? "—";
-                        const hasEquipped =
-                          Boolean(snap) ||
-                          (slot === "avatar" &&
-                            Boolean(profileSummary?.avatarState?.currentAvatar));
-                        return (
-                          <div
-                            key={slot}
-                            className="rounded-lg border border-[#dce6ff] bg-white/75 px-2 py-1.5"
-                          >
-                            <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#7b8fb8]">
-                              {slotTitle}
-                            </p>
-                            <p className="truncate text-[11px] font-semibold text-[#2f4a7f]">
-                              {label}
-                            </p>
-                            {hasEquipped ? (
-                              <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-[#2e7a46]">
-                                Equipped
-                              </span>
-                            ) : (
-                              <span className="text-[9px] text-[#9aa8c4]">Not equipped</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+                  <p className="mt-1 text-xs text-[#9aa8c4]">
+                    Стартовый пузырь: {avatarLabel}
+                  </p>
                   <p className="mt-1 text-xs text-[#7b8fb8]">
                     {walletDisplay}
                     {bootstrappedWalletAddress &&
@@ -2492,25 +2481,24 @@ export function BubbleDropShell() {
                   </div>
                   {awaitingProfileCreationOnly ? (
                     <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
-                      After <strong className="text-[#284679]">Sync profile</strong> below, this button
-                      runs daily check-in.
+                      After <strong className="text-[#284679]">Sync profile</strong> below, use{" "}
+                      <strong className="text-[#284679]">Open session</strong> here.
                     </p>
                   ) : null}
                   {signInOnlyOnProfileCard ? (
                     <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
                       After <strong className="text-[#284679]">Sign in with Base</strong> on the
-                      profile card, daily check-in unlocks here.
+                      profile card, tap <strong className="text-[#284679]">Open session</strong>{" "}
+                      here.
                     </p>
                   ) : null}
                   <button
                     type="button"
-                    onClick={onDailyCheckIn}
-                    disabled={dailyMissionCheckInDisabled}
+                    onClick={onDailyMissionPrimary}
+                    disabled={dailyMissionPrimaryDisabled}
                     className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2.5 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                   >
-                    {isSubmittingAction && canRunDailyCheckInAction && !dailyCheckInCompletedToday
-                      ? "Processing..."
-                      : dailyMissionCheckInLabel}
+                    {dailyMissionPrimaryLabel}
                   </button>
                 </div>
 

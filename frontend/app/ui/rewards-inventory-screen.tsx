@@ -729,7 +729,7 @@ export function RewardsInventoryScreen() {
   };
 
   return (
-    <div className="relative min-h-screen px-4 py-6 sm:px-6">
+    <div className="vault-drop-surface relative min-h-screen px-4 py-6 sm:px-6">
       <div className="floating-bubbles">
         <span className="bubble b1" />
         <span className="bubble b2" />
@@ -738,49 +738,57 @@ export function RewardsInventoryScreen() {
       </div>
 
       <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
-        <section className="bubble-card p-4">
+        <section className="vault-drop-panel p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Collection</p>
-              <h1 className="mt-1 text-xl font-bold text-[#27457b]">Rewards inventory</h1>
+              <p className="vault-drop-muted text-xs font-semibold uppercase tracking-[0.12em]">
+                Collection
+              </p>
+              <h1 className="vault-drop-title mt-1 text-xl font-bold">Rewards inventory</h1>
             </div>
             <Link
               href={withBubbleDropContext("/", { profileId, walletAddress }, { skipIntro: true })}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
+              className="vault-drop-btn-alt inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold"
             >
-              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
+              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#c8daf5]" />
               Back
             </Link>
           </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">
+          <p className="vault-drop-muted mt-3 text-sm">
             Pick a slot, tap an item, apply instantly. Designed for quick mobile use.
           </p>
+          <div className="vault-drop-ceremony mt-4">
+            <div className="vault-drop-flash" aria-hidden />
+            <p className="vault-drop-muted mt-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em]">
+              Drop preview
+            </p>
+          </div>
         </section>
 
         {needsOnboarding ? (
-          <section className="bubble-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">
+          <section className="vault-drop-panel p-4">
+            <p className="vault-drop-muted text-xs font-semibold uppercase tracking-[0.12em]">
               First entry required
             </p>
-            <h2 className="mt-1 text-lg font-bold text-[#27457b]">
+            <h2 className="vault-drop-title mt-1 text-lg font-bold">
               Finish onboarding before inventory access
             </h2>
-            <p className="mt-3 text-sm text-[#5d76a5]">
+            <p className="vault-drop-muted mt-3 text-sm">
               Finish your first BubbleDrop setup on the home screen to unlock your collection.
             </p>
             <Link
               href={withBubbleDropContext("/", { profileId, walletAddress }, { skipIntro: true })}
-              className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
+              className="vault-drop-btn-main mt-4 inline-flex rounded-xl px-4 py-3 text-sm"
             >
               Go to onboarding
             </Link>
           </section>
         ) : null}
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
+        <section className={`vault-drop-panel p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
           <div className="flex items-center justify-between">
-            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-              <UnifiedIcon kind="vault" className="ui-icon text-[#48608f]" />
+            <h2 className="vault-drop-title inline-flex items-center gap-1.5 text-sm font-semibold">
+              <UnifiedIcon kind="vault" className="ui-icon text-[#8fa8d4]" />
               Slots
             </h2>
             <button
@@ -792,14 +800,14 @@ export function RewardsInventoryScreen() {
                 }
                 void loadInventory(profileId);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+              className="vault-drop-btn-alt inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-60"
             >
-              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
+              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#c8daf5]" />
               {isLoading ? "Refreshing..." : "Update"}
             </button>
           </div>
           {isResolvingOnboardingState ? (
-            <p className="mt-3 text-sm text-[#6074a0]">Checking your collection access...</p>
+            <p className="vault-drop-muted mt-3 text-sm">Checking your collection access...</p>
           ) : null}
           <div className="inventory-slot-tabs mt-3">
             {SLOT_ORDER.map((slot) => (
@@ -815,21 +823,21 @@ export function RewardsInventoryScreen() {
             ))}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-xl bg-white/80 p-3">
-              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
-                <UnifiedIcon kind="nft" className="ui-icon text-[#6074a0]" />
+            <div className="rounded-xl border border-white/15 bg-white/10 p-3">
+              <p className="vault-drop-muted inline-flex items-center gap-1 text-xs">
+                <UnifiedIcon kind="nft" className="ui-icon text-[#8fa8d4]" />
                 NFTs
               </p>
-              <p className="mt-1 font-semibold">
+              <p className="vault-drop-title mt-1 font-semibold">
                 {testingOverrideActive ? displayCounts.nfts : (inventory?.nftCount ?? "—")}
               </p>
             </div>
-            <div className="rounded-xl bg-white/80 p-3">
-              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
-                <UnifiedIcon kind="cosmetic" className="ui-icon text-[#6074a0]" />
+            <div className="rounded-xl border border-white/15 bg-white/10 p-3">
+              <p className="vault-drop-muted inline-flex items-center gap-1 text-xs">
+                <UnifiedIcon kind="cosmetic" className="ui-icon text-[#8fa8d4]" />
                 Cosmetics
               </p>
-              <p className="mt-1 font-semibold">
+              <p className="vault-drop-title mt-1 font-semibold">
                 {testingOverrideActive
                   ? displayCounts.cosmetics
                   : (inventory?.cosmeticCount ?? "—")}
@@ -838,50 +846,53 @@ export function RewardsInventoryScreen() {
           </div>
         </section>
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
+        <section className={`vault-drop-panel p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
           <div className="flex items-center justify-between">
-            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-              <UnifiedIcon kind="cosmetic" className="ui-icon text-[#48608f]" />
+            <h2 className="vault-drop-title inline-flex items-center gap-1.5 text-sm font-semibold">
+              <UnifiedIcon kind="cosmetic" className="ui-icon text-[#8fa8d4]" />
               Equipped now
             </h2>
             <button
               type="button"
               onClick={() => setIsAdvancedFiltersOpen((current) => !current)}
-              className="rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f]"
+              className="vault-drop-btn-alt rounded-lg px-3 py-2 text-xs font-semibold"
             >
               {isAdvancedFiltersOpen ? "Hide advanced" : "Advanced filters"}
             </button>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {SLOT_ORDER.map((slot) => (
-              <article key={slot} className="rounded-xl border border-[#dce6ff] bg-white/80 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5c75a4]">
+              <article
+                key={slot}
+                className="rounded-xl border border-white/15 bg-white/[0.07] p-3"
+              >
+                <p className="vault-drop-muted text-[11px] font-semibold uppercase tracking-[0.08em]">
                   {slotLabel(slot)}
                 </p>
-                <p className="mt-1 text-xs font-semibold text-[#2f4a7f]">{equippedSlotLabel(slot)}</p>
+                <p className="vault-drop-title mt-1 text-xs font-semibold">{equippedSlotLabel(slot)}</p>
               </article>
             ))}
           </div>
           {isAdvancedFiltersOpen ? (
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[#445e8f]">
-              <label className="rounded-xl bg-white/80 p-2">
+            <div className="vault-drop-muted mt-3 grid grid-cols-2 gap-2 text-xs">
+              <label className="rounded-xl border border-white/15 bg-white/[0.07] p-2">
                 Ownership
                 <select
                   value={ownershipFilter}
                   onChange={(event) => setOwnershipFilter(event.target.value as OwnershipFilter)}
-                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md border border-white/15 bg-[#141e36] px-2 py-2 text-sm text-[#eef4ff]"
                 >
                   <option value="all">All</option>
                   <option value="obtained">Obtained</option>
                   <option value="equipped">Equipped</option>
                 </select>
               </label>
-              <label className="rounded-xl bg-white/80 p-2">
+              <label className="rounded-xl border border-white/15 bg-white/[0.07] p-2">
                 Rarity
                 <select
                   value={rarityFilter}
                   onChange={(event) => setRarityFilter(event.target.value as RarityFilter)}
-                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md border border-white/15 bg-[#141e36] px-2 py-2 text-sm text-[#eef4ff]"
                 >
                   <option value="all">All rarity</option>
                   <option value="common">Common</option>
@@ -890,12 +901,12 @@ export function RewardsInventoryScreen() {
                   <option value="legendary">Legendary</option>
                 </select>
               </label>
-              <label className="col-span-2 rounded-xl bg-white/80 p-2">
+              <label className="col-span-2 rounded-xl border border-white/15 bg-white/[0.07] p-2">
                 Season
                 <select
                   value={seasonFilter}
                   onChange={(event) => setSeasonFilter(event.target.value as SeasonFilter)}
-                  className="mt-1 block w-full rounded-md bg-white px-2 py-2 text-sm"
+                  className="mt-1 block w-full rounded-md border border-white/15 bg-[#141e36] px-2 py-2 text-sm text-[#eef4ff]"
                 >
                   <option value="all">All seasons</option>
                   <option value="core">Core</option>
@@ -906,20 +917,20 @@ export function RewardsInventoryScreen() {
           ) : null}
         </section>
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-            <UnifiedIcon kind="vault" className="ui-icon text-[#48608f]" />
+        <section className={`vault-drop-panel p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
+          <h2 className="vault-drop-title inline-flex items-center gap-1.5 text-sm font-semibold">
+            <UnifiedIcon kind="vault" className="ui-icon text-[#8fa8d4]" />
             {slotLabel(activeSlot)} collectibles
           </h2>
           {needsOnboarding ? (
-            <p className="mt-3 text-sm text-[#6074a0]">
+            <p className="vault-drop-muted mt-3 text-sm">
               Finish onboarding first to unlock filtering, equip actions, and preview.
             </p>
           ) : null}
 
           {!needsOnboarding && activeSlot === "avatar" && starterAvatars.length > 0 ? (
-            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#6074a0]">
+            <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.07] p-3">
+              <p className="vault-drop-muted text-xs font-semibold uppercase tracking-[0.1em]">
                 Starter avatars
               </p>
               <div className="mt-2 grid grid-cols-1 gap-2">
@@ -933,12 +944,12 @@ export function RewardsInventoryScreen() {
                       disabled={isSwitchingAvatar || !authSessionToken}
                       className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm transition-all ${
                         isEquipped
-                          ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679]"
-                          : "border-[#dce6ff] bg-white text-[#3c588b]"
+                          ? "border-cyan-400/50 bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-[#eef4ff]"
+                          : "border-white/15 bg-white/5 text-[#d7e5ff]"
                       } disabled:opacity-60`}
                     >
                       <span className="font-semibold">{avatar.label}</span>
-                      <span className="ml-2 text-xs uppercase tracking-[0.08em] text-[#6d82ad]">
+                      <span className="vault-drop-muted ml-2 text-xs uppercase tracking-[0.08em]">
                         {isEquipped ? "Equipped" : "Tap to equip"}
                       </span>
                     </button>
@@ -954,39 +965,42 @@ export function RewardsInventoryScreen() {
                 return (
                   <article
                     key={item.id}
-                    className={`inventory-item-card rarity-${item.rarity} mt-3 rounded-xl border p-3`}
+                    className={`inventory-item-card rarity-${item.rarity} relative mt-3 overflow-hidden rounded-3xl border p-0`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-[#2f4a7f]">{item.label}</p>
-                        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.08em] text-[#6074a0]">
-                          {rarityLabel(item.rarity)}
-                        </p>
+                    <span className="drop-card-bubble-deco" aria-hidden />
+                    <div className="drop-card-inner p-3 pt-3.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="vault-drop-title text-sm font-semibold">{item.label}</p>
+                          <p className="vault-drop-muted mt-1 text-xs font-semibold uppercase tracking-[0.08em]">
+                            {rarityLabel(item.rarity)}
+                          </p>
+                        </div>
+                        {isEquipped ? (
+                          <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-300">
+                            Equipped
+                          </span>
+                        ) : null}
                       </div>
-                      {isEquipped ? (
-                        <span className="rounded-full bg-[#ecf8ef] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#2e7a46]">
-                          Equipped
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-3 grid grid-cols-1 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => equipCollectible(item)}
-                        disabled={
-                          (item.slot === "avatar" &&
-                            (!authSessionToken || isSwitchingAvatar)) ||
-                          (item.slot !== "avatar" && !rareAccessActive && !testingOverrideActive) ||
-                          (item.slot !== "avatar" && isApplyingCollectibleId !== null)
-                        }
-                        className="min-h-11 rounded-lg bg-gradient-to-r from-[#c7efff] to-[#d6d8ff] px-3 py-2 text-xs font-semibold text-[#294578] disabled:opacity-60"
-                      >
-                        {isEquipped
-                          ? "Equipped"
-                          : isApplyingCollectibleId === item.id
-                            ? "Applying..."
-                            : "Apply"}
-                      </button>
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => equipCollectible(item)}
+                          disabled={
+                            (item.slot === "avatar" &&
+                              (!authSessionToken || isSwitchingAvatar)) ||
+                            (item.slot !== "avatar" && !rareAccessActive && !testingOverrideActive) ||
+                            (item.slot !== "avatar" && isApplyingCollectibleId !== null)
+                          }
+                          className="vault-drop-btn-main min-h-11 px-3 py-2 text-xs disabled:opacity-60"
+                        >
+                          {isEquipped
+                            ? "Equipped"
+                            : isApplyingCollectibleId === item.id
+                              ? "Applying..."
+                              : "Apply"}
+                        </button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -996,7 +1010,7 @@ export function RewardsInventoryScreen() {
           {!needsOnboarding &&
           filteredCollectibles.length === 0 &&
           !(activeSlot === "avatar" && starterAvatars.length > 0) ? (
-            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+            <div className="vault-drop-muted mt-3 rounded-xl border border-white/15 bg-white/[0.07] p-4 text-sm">
               No items for this slot yet. Try clearing advanced filters.
               <button
                 type="button"
@@ -1005,7 +1019,7 @@ export function RewardsInventoryScreen() {
                   setRarityFilter("all");
                   setSeasonFilter("all");
                 }}
-                className="mt-3 block rounded-lg bg-[#edf4ff] px-3 py-2 text-xs font-semibold text-[#3e5f93]"
+                className="vault-drop-btn-alt mt-3 block rounded-lg px-3 py-2 text-xs font-semibold"
               >
                 Reset filters
               </button>
@@ -1013,27 +1027,29 @@ export function RewardsInventoryScreen() {
           ) : null}
 
           {!needsOnboarding && !rareAccessActive && !testingOverrideActive ? (
-            <div className="mt-3 rounded-xl border border-[#f0ddab] bg-[#fff6de] p-3 text-xs font-semibold text-[#6f5424]">
-              Cosmetic apply is visible but locked. Keep daily streak active and complete qualified bubble sessions to unlock apply.
+            <div className="mt-3 rounded-xl border border-amber-400/35 bg-amber-500/10 p-3 text-xs font-semibold text-amber-100/95">
+              Cosmetic apply is visible but locked. Keep daily streak active and complete qualified bubble
+              sessions to unlock apply.
             </div>
           ) : null}
 
           {!needsOnboarding && testingOverrideActive ? (
-            <div className="mt-3 rounded-xl border border-[#cce7ff] bg-[#eaf6ff] p-3 text-xs font-semibold text-[#2e5f8c]">
+            <div className="mt-3 rounded-xl border border-cyan-400/35 bg-cyan-500/10 p-3 text-xs font-semibold text-cyan-100">
               Test override active: all skins are visible and apply is unlocked for QA.
             </div>
           ) : null}
 
           {!needsOnboarding && !isLoading && !errorMessage && displayCollectibles.length === 0 ? (
-            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
-              Your rewards vault is empty for now. New NFTs/cosmetics will appear after confirmed session rewards.
+            <div className="vault-drop-muted mt-3 rounded-xl border border-white/15 bg-white/[0.07] p-4 text-sm">
+              Your rewards vault is empty for now. New NFTs/cosmetics will appear after confirmed session
+              rewards.
             </div>
           ) : null}
         </section>
 
         {errorMessage ? (
-          <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">
+          <section className="vault-drop-panel p-4">
+            <p className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-3 text-sm text-rose-100">
               {errorMessage === "Connect and sign in to view your rewards."
                 ? errorMessage
                 : errorMessage === "We couldn't load your reward access right now."
