@@ -1931,7 +1931,6 @@ export function BubbleDropShell() {
       return;
     }
     if (!authenticatedSessionToken) {
-      onSignInWithBase();
       return;
     }
     if (!profileId) {
@@ -1940,6 +1939,16 @@ export function BubbleDropShell() {
     }
     if (!profileSummary) {
       void onRefreshProfile();
+      return;
+    }
+    if (showDedicatedDailyCheckSection) {
+      if (quickSessionHref) {
+        window.location.assign(quickSessionHref);
+      }
+      return;
+    }
+    if (!dailyCheckInCompletedToday) {
+      void onDailyCheckIn();
       return;
     }
     if (quickSessionHref) {
@@ -1956,13 +1965,19 @@ export function BubbleDropShell() {
     dailyMissionPrimaryLabel = "Switch to Base";
     dailyMissionPrimaryDisabled = isWalletFlowBusy;
   } else if (!authenticatedSessionToken) {
-    dailyMissionPrimaryLabel = isSigningInWithBase ? "Signing in…" : "Sign in with Base";
-    dailyMissionPrimaryDisabled = isWalletFlowBusy;
+    dailyMissionPrimaryLabel = "Daily check-in (+20 XP)";
+    dailyMissionPrimaryDisabled = true;
   } else if (!profileId) {
     dailyMissionPrimaryLabel = isSubmittingAction ? "Syncing…" : "Sync profile";
     dailyMissionPrimaryDisabled = !canSyncProfile || isSubmittingAction;
   } else if (!profileSummary) {
     dailyMissionPrimaryLabel = isSubmittingAction ? "Refreshing…" : "Refresh profile";
+    dailyMissionPrimaryDisabled = isSubmittingAction;
+  } else if (showDedicatedDailyCheckSection) {
+    dailyMissionPrimaryLabel = "Open session";
+    dailyMissionPrimaryDisabled = !quickSessionHref;
+  } else if (!dailyCheckInCompletedToday) {
+    dailyMissionPrimaryLabel = isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)";
     dailyMissionPrimaryDisabled = isSubmittingAction;
   } else {
     dailyMissionPrimaryLabel = "Open session";
@@ -2487,9 +2502,10 @@ export function BubbleDropShell() {
                   ) : null}
                   {signInOnlyOnProfileCard ? (
                     <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
-                      After <strong className="text-[#284679]">Sign in with Base</strong> on the
-                      profile card, tap <strong className="text-[#284679]">Open session</strong>{" "}
-                      here.
+                      <strong className="text-[#284679]">Sign in with Base</strong> только на карточке
+                      профиля выше. Затем нажмите эту кнопку для{" "}
+                      <strong className="text-[#284679]">ежедневного check-in</strong> (+20 XP), после
+                      — откроется сессия.
                     </p>
                   ) : null}
                   <button
