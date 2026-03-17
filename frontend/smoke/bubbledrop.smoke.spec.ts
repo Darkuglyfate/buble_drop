@@ -210,6 +210,131 @@ async function mockBubbleDropApi(page: Page) {
       return;
     }
 
+    if (
+      pathname === "/profile/rewards-inventory" &&
+      request.method() === "GET"
+    ) {
+      await route.fulfill({
+        json: {
+          profileId: activeProfileId,
+          nftCount: 2,
+          cosmeticCount: 3,
+          nfts: [
+            {
+              id: "nft-1",
+              key: "genesis-spark",
+              label: "Genesis Spark",
+              tier: "rare",
+              acquiredAt: "2026-03-14T12:00:00.000Z",
+            },
+            {
+              id: "nft-2",
+              key: "starter-bubble-shell",
+              label: "Starter Bubble Shell",
+              tier: "simple",
+              acquiredAt: "2026-03-12T12:00:00.000Z",
+            },
+          ],
+          cosmetics: [
+            {
+              id: "cosmetic-1",
+              key: "glossy-aura",
+              label: "Glossy Aura",
+              unlockedAt: "2026-03-14T12:05:00.000Z",
+            },
+            {
+              id: "cosmetic-2",
+              key: "comet-trail",
+              label: "Comet Trail",
+              unlockedAt: "2026-03-14T12:06:00.000Z",
+            },
+            {
+              id: "cosmetic-3",
+              key: "founder-badge",
+              label: "Founder Badge",
+              unlockedAt: "2026-03-14T12:07:00.000Z",
+            },
+          ],
+        },
+      });
+      return;
+    }
+
+    if (pathname === "/profile/avatar/select" && request.method() === "POST") {
+      const requestBody = (await request.postDataJSON()) as {
+        profileId: string;
+        avatarId: string;
+      };
+      await route.fulfill({
+        json: {
+          profileId: requestBody.profileId,
+          avatarId: requestBody.avatarId,
+          avatarLabel:
+            requestBody.avatarId === starterAvatarId
+              ? "Starter Bubble Blue"
+              : "Starter Bubble Lilac",
+        },
+      });
+      return;
+    }
+
+    if (pathname === "/profile/leaderboard" && request.method() === "GET") {
+      await route.fulfill({
+        json: [
+          {
+            rank: 1,
+            profileId: activeProfileId,
+            nickname: "bubblecaptain",
+            totalXp: 710,
+            currentStreak: 6,
+          },
+          {
+            rank: 2,
+            profileId: "20000000-0000-4000-8000-000000000002",
+            nickname: "ripplepilot",
+            totalXp: 680,
+            currentStreak: 5,
+          },
+        ],
+      });
+      return;
+    }
+
+    if (
+      pathname === "/partner-token/referral/progress" &&
+      request.method() === "GET"
+    ) {
+      await route.fulfill({
+        json: {
+          inviterProfileId: activeProfileId,
+          totalReferrals: 2,
+          pendingReferrals: 1,
+          successfulReferrals: 1,
+          referrals: [
+            {
+              referralId: "ref-1",
+              invitedWalletAddress:
+                "0x2000000000000000000000000000000000000001",
+              invitedProfileId: "20000000-0000-4000-8000-000000000003",
+              status: "successful",
+              successfulAt: "2026-03-15T10:00:00.000Z",
+              createdAt: "2026-03-14T10:00:00.000Z",
+            },
+            {
+              referralId: "ref-2",
+              invitedWalletAddress:
+                "0x2000000000000000000000000000000000000002",
+              invitedProfileId: null,
+              status: "pending",
+              successfulAt: null,
+              createdAt: "2026-03-16T10:00:00.000Z",
+            },
+          ],
+        },
+      });
+      return;
+    }
+
     if (pathname === "/bubble-session/start" && request.method() === "POST") {
       await route.fulfill({
         json: {
@@ -494,4 +619,49 @@ test("navigates season hub, token detail, and partner transparency", async ({
   await expect(page.getByText("Partner token transparency")).toBeVisible();
   await expect(page.getByText("Season token overview")).toBeVisible();
   await expect(page.getByText("Bubble Bloom")).toBeVisible();
+});
+
+test("supports inventory filters, preview, and equip actions", async ({
+  page,
+}) => {
+  await page.goto(
+    `/inventory?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Rewards inventory" }),
+  ).toBeVisible();
+  await expect(page.getByText("Before / after preview")).toBeVisible();
+
+  await page.getByLabel("Slot").selectOption("trail");
+  await expect(page.getByText("Comet Trail")).toBeVisible();
+
+  await page.getByRole("button", { name: "Preview" }).first().click();
+  await expect(page.getByRole("button", { name: "Previewing" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Apply" }).first().click();
+});
+
+test("loads all world menu screens", async ({ page }) => {
+  await page.goto(
+    `/season?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+  );
+  await expect(page.getByRole("heading", { name: "Season hub" })).toBeVisible();
+
+  await page.goto(
+    `/leaderboard?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+  );
+  await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
+
+  await page.goto(
+    `/referrals?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+  );
+  await expect(page.getByRole("heading", { name: "Referral progress" })).toBeVisible();
+
+  await page.goto(
+    `/partner-tokens?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Partner token transparency" }),
+  ).toBeVisible();
 });

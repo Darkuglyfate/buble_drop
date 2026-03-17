@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
@@ -224,6 +224,8 @@ export function BubbleSessionPlayScreen() {
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const playfieldRef = useRef<HTMLDivElement | null>(null);
+  const popAudioContextRef = useRef<AudioContext | null>(null);
+  const popAudioUnavailableRef = useRef(false);
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
@@ -243,12 +245,68 @@ export function BubbleSessionPlayScreen() {
       ? authSession.authSessionToken
       : null;
 
+  const playPopSound = (isBonus: boolean) => {
+    if (typeof window === "undefined" || popAudioUnavailableRef.current) {
+      return;
+    }
+    try {
+      const contextCandidate = window as typeof window & {
+        webkitAudioContext?: typeof AudioContext;
+      };
+      const AudioContextCtor = window.AudioContext || contextCandidate.webkitAudioContext;
+      if (!AudioContextCtor) {
+        popAudioUnavailableRef.current = true;
+        return;
+      }
+
+      let audioContext = popAudioContextRef.current;
+      if (!audioContext) {
+        audioContext = new AudioContextCtor();
+        popAudioContextRef.current = audioContext;
+      }
+      if (audioContext.state === "suspended") {
+        void audioContext.resume();
+      }
+
+      const now = audioContext.currentTime;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = isBonus ? "triangle" : "sine";
+      oscillator.frequency.setValueAtTime(isBonus ? 780 : 560, now);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        isBonus ? 280 : 180,
+        now + (isBonus ? 0.16 : 0.12),
+      );
+
+      gainNode.gain.setValueAtTime(0.0001, now);
+      gainNode.gain.exponentialRampToValueAtTime(isBonus ? 0.08 : 0.06, now + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + (isBonus ? 0.2 : 0.14));
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(now);
+      oscillator.stop(now + (isBonus ? 0.22 : 0.16));
+    } catch {
+      popAudioUnavailableRef.current = true;
+    }
+  };
+
   useEffect(() => {
     setAuthSession(
       getSmokeSignInSessionFromCurrentUrl() ??
         loadBubbleDropFrontendSignInSession(),
     );
   }, [connectedWalletAddress, walletAddress]);
+
+  useEffect(() => {
+    return () => {
+      const currentAudioContext = popAudioContextRef.current;
+      if (currentAudioContext) {
+        void currentAudioContext.close();
+      }
+      popAudioContextRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     setIsResolvingOnboardingState(true);
@@ -542,6 +600,7 @@ export function BubbleSessionPlayScreen() {
     setActiveTapCount((prev) => prev + tapUnits);
     setLastTapGainSeconds(tapGainSeconds);
     setLastTapFeedbackAtMs(now);
+    playPopSound(Boolean(tappedBubble?.isBonus));
     setTapCombo((prevCombo) => {
       const nextCombo =
         lastTapAtMs !== null && now - lastTapAtMs <= COMBO_WINDOW_MS ? prevCombo + 1 : 1;
@@ -841,7 +900,9 @@ export function BubbleSessionPlayScreen() {
                         aria-label="Pop bubble"
                         onClick={(event) => onRecordActivePlay(bubble.id, event)}
                         disabled={!isActive || sessionCompleted}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow-[0_18px_44px_rgba(122,136,201,0.24)] transition-[top,left,transform,border-radius] ease-in-out disabled:opacity-70"
+                        className={`session-active-bubble absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow-[0_18px_44px_rgba(122,136,201,0.24)] transition-[top,left,transform,border-radius,opacity] ease-in-out disabled:opacity-70 ${
+                          bubble.isBonus ? "session-active-bubble-bonus" : ""
+                        }`}
                         style={{
                           top: `${bubble.top}%`,
                           left: `${bubble.left}%`,
@@ -854,6 +915,8 @@ export function BubbleSessionPlayScreen() {
                           }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
                           transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg}deg) scale(${bubble.scale})`,
                           transitionDuration: `${bubble.driftMs}ms`,
+                          "--bubble-morph-duration": `${Math.max(1800, bubble.driftMs + 400)}ms`,
+                          "--bubble-sheen-duration": `${Math.max(1400, bubble.driftMs - 300)}ms`,
                           opacity:
                             bubble.poppedUntilMs > Date.now()
                               ? 0.08
@@ -869,8 +932,13 @@ export function BubbleSessionPlayScreen() {
                               }, 78%, 68%, ${bubble.alpha}), hsla(${bubble.hue + 10}, 74%, 84%, ${
                                 bubble.alpha * 0.56
                               }))`,
-                        }}
-                      />
+                        } as CSSProperties}
+                      >
+                        <span className="session-bubble-core" />
+                        <span className="session-bubble-highlight session-bubble-highlight-a" />
+                        <span className="session-bubble-highlight session-bubble-highlight-b" />
+                        {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
+                      </button>
                     ))}
                     {popBursts.map((burst) => (
                       <span key={burst.id}>

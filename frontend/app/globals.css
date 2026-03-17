@@ -1051,6 +1051,88 @@ body.glass-strong .bubble {
   opacity: 0.9;
 }
 
+.session-active-bubble {
+  overflow: hidden;
+  animation: sessionBubbleMorph var(--bubble-morph-duration, 2400ms) ease-in-out infinite alternate;
+  will-change: border-radius, filter;
+}
+
+.session-active-bubble-bonus {
+  box-shadow:
+    0 18px 44px rgba(255, 206, 124, 0.36),
+    0 0 0 1px rgba(255, 248, 198, 0.5) inset;
+}
+
+.session-bubble-core {
+  position: absolute;
+  inset: 18%;
+  border-radius: 999px;
+  background: radial-gradient(circle at 36% 24%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.08) 62%);
+  opacity: 0.5;
+}
+
+.session-bubble-highlight {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: sessionBubbleSheen var(--bubble-sheen-duration, 1900ms) ease-in-out infinite;
+}
+
+.session-bubble-highlight-a {
+  top: 14%;
+  left: 18%;
+  width: 34%;
+  height: 24%;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.session-bubble-highlight-b {
+  bottom: 20%;
+  right: 22%;
+  width: 18%;
+  height: 14%;
+  background: rgba(255, 255, 255, 0.26);
+  animation-delay: 220ms;
+}
+
+.session-bubble-glint {
+  position: absolute;
+  top: 18%;
+  right: 20%;
+  width: 18%;
+  height: 18%;
+  border-radius: 999px;
+  background: rgba(255, 248, 190, 0.78);
+  box-shadow: 0 0 14px rgba(255, 226, 140, 0.72);
+}
+
+@keyframes sessionBubbleMorph {
+  0% {
+    border-radius: 48% 52% 50% 50% / 53% 47% 52% 48%;
+    filter: saturate(1) brightness(1);
+  }
+  50% {
+    border-radius: 56% 44% 52% 48% / 45% 55% 46% 54%;
+    filter: saturate(1.08) brightness(1.02);
+  }
+  100% {
+    border-radius: 42% 58% 46% 54% / 57% 43% 58% 42%;
+    filter: saturate(1.02) brightness(0.99);
+  }
+}
+
+@keyframes sessionBubbleSheen {
+  0%,
+  100% {
+    transform: translateY(-4%) scale(0.96);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translateY(5%) scale(1.04);
+    opacity: 0.58;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .avatar-bubble-preview,
   .avatar-bubble-liquid,
@@ -1060,7 +1142,9 @@ body.glass-strong .bubble {
   .drop-radar-ping,
   .intro-bubble,
   .intro-bubble-signal,
-  .intro-pop-burst {
+  .intro-pop-burst,
+  .session-active-bubble,
+  .session-bubble-highlight {
     animation: none !important;
     transition: none !important;
   }

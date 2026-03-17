@@ -586,7 +586,7 @@ export function BubbleDropShell() {
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
-  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
+  const { switchChainAsync } = useSwitchChain();
 
   const currentCard = ONBOARDING_CARDS[cardIndex];
   const connectedWalletAddress =
@@ -695,13 +695,6 @@ export function BubbleDropShell() {
     : profileSummary
       ? 100
       : 8;
-  const rewardsTokenCount =
-    profileSummary?.claimableTokenBalanceSummary.tokenCount ?? 0;
-  const claimableTokenAmount =
-    profileSummary?.claimableTokenBalanceSummary.totalClaimableAmount ?? "0";
-  const tokenHuntHint = isRareRewardAccessActive
-    ? "Complete one more bubble session now to roll partner token drops."
-    : "Daily check-in boosts premium partner-token drop odds.";
   const quickSessionHref = withBubbleDropContext("/session", {
     profileId,
     walletAddress: activeWalletAddress,
@@ -723,10 +716,6 @@ export function BubbleDropShell() {
     walletAddress: activeWalletAddress,
   });
   const partnerTokensHref = withBubbleDropContext("/partner-tokens", {
-    profileId,
-    walletAddress: activeWalletAddress,
-  });
-  const claimsHref = withBubbleDropContext("/claim", {
     profileId,
     walletAddress: activeWalletAddress,
   });
@@ -1589,7 +1578,7 @@ export function BubbleDropShell() {
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
   let primaryActionLabel = "Enter an XP run";
   let primaryActionDisabled = false;
-  let primaryActionHandler: () => void = onConnectWallet;
+  const primaryActionHandler: () => void = onConnectWallet;
   let primaryActionHref: string | null = quickSessionHref;
   let primaryActionKind: "button" | "link" = "link";
   let secondaryHeroActionLabel: string | null = null;
