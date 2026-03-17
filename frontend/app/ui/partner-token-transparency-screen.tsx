@@ -94,7 +94,7 @@ export function PartnerTokenTransparencyScreen() {
               href={withBubbleDropContext("/", {
                 profileId: runtimeContext.profileId,
                 walletAddress: runtimeContext.walletAddress,
-              })}
+              }, { skipIntro: true })}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />

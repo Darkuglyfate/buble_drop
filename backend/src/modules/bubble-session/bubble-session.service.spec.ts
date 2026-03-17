@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -287,7 +286,8 @@ describe('BubbleSessionService', () => {
     );
   });
 
-  it('rejects second active session start', async () => {
+  it('returns existing active session when one is already open', async () => {
+    const startedAt = new Date('2026-03-15T11:50:00.000Z');
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       nickname: 'ready',
@@ -295,13 +295,21 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     sessionRepository.findOne!.mockResolvedValue({
-      id: 'session-open',
+      id: '44444444-4444-4444-8444-444444444444',
+      profileId: '11111111-1111-4111-8111-111111111111',
+      startedAt,
       isCompleted: false,
     });
 
-    await expect(
-      service.startSession('11111111-1111-4111-8111-111111111111'),
-    ).rejects.toBeInstanceOf(ConflictException);
+    const result = await service.startSession(
+      '11111111-1111-4111-8111-111111111111',
+    );
+
+    expect(result).toEqual({
+      sessionId: '44444444-4444-4444-8444-444444444444',
+      profileId: '11111111-1111-4111-8111-111111111111',
+      startedAt,
+    });
   });
 
   it('throws if profile is missing on completion', async () => {

@@ -607,7 +607,7 @@ export function BubbleSessionPlayScreen() {
                   href={withBubbleDropContext("/", {
                     profileId,
                     walletAddress: connectedWalletAddress ?? walletAddress,
-                  })}
+                  }, { skipIntro: true })}
                   className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
                 >
                   Go to onboarding
@@ -940,7 +940,7 @@ export function BubbleSessionPlayScreen() {
                 href={withBubbleDropContext("/", {
                   profileId,
                   walletAddress: connectedWalletAddress ?? walletAddress,
-                })}
+                }, { skipIntro: true })}
                 className="gloss-pill flex-1 rounded-xl bg-white/85 px-4 py-3 text-center text-sm font-semibold text-[#425b8a]"
               >
                 Back home

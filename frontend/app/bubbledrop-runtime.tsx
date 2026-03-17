@@ -68,6 +68,7 @@ function saveStoredAppContext(value: BubbleDropAppContextState): void {
 export function withBubbleDropContext(
   path: string,
   context: BubbleDropAppContextState,
+  options?: { skipIntro?: boolean },
 ): string {
   const searchParams = new URLSearchParams();
   if (context.profileId) {
@@ -75,6 +76,9 @@ export function withBubbleDropContext(
   }
   if (context.walletAddress) {
     searchParams.set("walletAddress", context.walletAddress);
+  }
+  if (options?.skipIntro) {
+    searchParams.set("skipIntro", "1");
   }
 
   const query = searchParams.toString();

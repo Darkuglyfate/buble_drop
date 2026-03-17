@@ -90,7 +90,11 @@ export class BubbleSessionService {
       order: { startedAt: 'DESC' },
     });
     if (activeSession) {
-      throw new ConflictException('Active bubble session already exists');
+      return {
+        sessionId: activeSession.id,
+        profileId: activeSession.profileId,
+        startedAt: activeSession.startedAt,
+      };
     }
 
     let session = this.bubbleSessionRepository.create({

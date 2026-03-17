@@ -140,7 +140,7 @@ export function ReferralProgressScreen() {
               <h1 className="mt-1 text-xl font-bold text-[#27457b]">Referral progress</h1>
             </div>
             <Link
-              href={withBubbleDropContext("/", { profileId, walletAddress })}
+              href={withBubbleDropContext("/", { profileId, walletAddress }, { skipIntro: true })}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
@@ -164,7 +164,7 @@ export function ReferralProgressScreen() {
               Finish your first BubbleDrop setup on the home screen to unlock referrals.
             </p>
             <Link
-              href={withBubbleDropContext("/", { profileId, walletAddress })}
+              href={withBubbleDropContext("/", { profileId, walletAddress }, { skipIntro: true })}
               className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
             >
               Go to onboarding

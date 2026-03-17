@@ -301,7 +301,7 @@ export function ClaimScreen() {
               href={withBubbleDropContext("/", {
                 profileId,
                 walletAddress: connectedWalletAddress ?? walletAddress,
-              })}
+              }, { skipIntro: true })}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
             >
               <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
@@ -329,7 +329,7 @@ export function ClaimScreen() {
               href={withBubbleDropContext("/", {
                 profileId,
                 walletAddress: connectedWalletAddress ?? walletAddress,
-              })}
+              }, { skipIntro: true })}
               className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
             >
               Go to onboarding
