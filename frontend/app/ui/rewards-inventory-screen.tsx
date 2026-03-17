@@ -261,6 +261,7 @@ function rarityLabel(rarity: RarityLevel): string {
 }
 
 const SLOT_ORDER: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
+const QA_FALLBACK_ID_PREFIX = "qa-";
 
 export function RewardsInventoryScreen() {
   const { profileId, walletAddress } = useBubbleDropRuntime();
@@ -386,11 +387,11 @@ export function RewardsInventoryScreen() {
 
   const effectiveEquipment = useMemo<Record<CosmeticSlot, string | null>>(() => {
     const base = { ...equippedBySlot };
-    if (selectedAvatarId) {
+    if (selectedAvatarId && (!base.avatar || starterAvatarIdSet.has(selectedAvatarId))) {
       base.avatar = selectedAvatarId;
     }
     return base;
-  }, [equippedBySlot, selectedAvatarId]);
+  }, [equippedBySlot, selectedAvatarId, starterAvatarIdSet]);
 
   const filteredCollectibles = useMemo(() => {
     return displayCollectibles.filter((item) => {
@@ -435,6 +436,19 @@ export function RewardsInventoryScreen() {
   const equipCollectible = (item: InventoryCollectible) => {
     if (item.slot === "avatar" && starterAvatarIdSet.has(item.id)) {
       void onSelectAvatar(item.id);
+      return;
+    }
+    const isQaFallbackItem = testingOverrideActive && item.id.startsWith(QA_FALLBACK_ID_PREFIX);
+    if (isQaFallbackItem) {
+      setErrorMessage(null);
+      setEquippedStyleRewardId(item.id);
+      setEquippedBySlot((current) => ({
+        ...current,
+        [item.slot]: item.id,
+      }));
+      if (item.slot === "avatar") {
+        setSelectedAvatarId(item.id);
+      }
       return;
     }
     if (!profileId || !authSessionToken || needsOnboarding) {
