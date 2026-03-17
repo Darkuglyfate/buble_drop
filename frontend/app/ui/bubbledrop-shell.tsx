@@ -232,6 +232,28 @@ function createAvatarBubbleTone(seed: string): {
   };
 }
 
+function formatRewardKeyLabel(rewardKey: string): string {
+  return rewardKey
+    .split(/[._-]+/)
+    .filter((part) => part && part !== "qa" && part !== "inventory")
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function inferStyleCategoryLabel(rewardKey: string): string {
+  const normalized = rewardKey.toLowerCase();
+  if (normalized.includes("avatar")) {
+    return "Avatar";
+  }
+  if (normalized.includes("trail") || normalized.includes("aura")) {
+    return "Trail";
+  }
+  if (normalized.includes("badge") || normalized.includes("emblem")) {
+    return "Badge";
+  }
+  return "Bubble skin";
+}
+
 type WorldIconKind =
   | "season"
   | "hunt"
@@ -364,6 +386,7 @@ function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: strin
 
 const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
+const NETWORK_REQUEST_TIMEOUT_MS = 15_000;
 const GLASS_MODE_STORAGE_KEY = "bubbledrop.glass-mode";
 const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
   stage: "idle",
@@ -420,6 +443,23 @@ async function getBackendFailureDetails(
     userMessage: fallbackMessage,
     detail: `Diagnostic: backend returned HTTP ${response.status}.`,
   };
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = NETWORK_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function getSmokeWalletOverride():
@@ -671,6 +711,7 @@ export function BubbleDropShell() {
     profileSummary?.avatarState.currentAvatar?.label ??
     (profileId ? "Starter bubble" : "Wake BubbleDrop");
   const profileVisualSeed =
+    equippedStyleSnapshot?.rewardKey ??
     equippedStyleSnapshot?.rewardId ??
     profileSummary?.avatarState.currentAvatar?.id ??
     profileSummary?.avatarState.currentAvatar?.key ??
@@ -693,8 +734,19 @@ export function BubbleDropShell() {
         : equippedRarity === "rare"
           ? "bg-[#d5f0ff] text-[#125f89]"
           : "bg-[#dce7ff] text-[#3b588f]";
+  const profileEmblemRarityClass =
+    equippedRarity === "legendary"
+      ? "profile-emblem-rarity-legendary"
+      : equippedRarity === "epic"
+        ? "profile-emblem-rarity-epic"
+        : equippedRarity === "rare"
+          ? "profile-emblem-rarity-rare"
+          : "profile-emblem-rarity-common";
+  const equippedStyleName = equippedStyleSnapshot
+    ? formatRewardKeyLabel(equippedStyleSnapshot.rewardKey)
+    : "Default style";
   const equippedStyleLabel = equippedStyleSnapshot
-    ? `${equippedStyleSnapshot.rarity.toUpperCase()} ${equippedStyleSnapshot.rewardKey}`
+    ? `${inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey)} style`
     : "Default profile style";
   const walletDisplay = shortenWalletAddress(
     activeWalletAddress ?? connectedWalletAddress,
@@ -971,19 +1023,20 @@ export function BubbleDropShell() {
       return;
     }
 
-    setIsSubmittingAction(true);
-    if (!silent) {
+    const shouldBlockActions = !silent;
+    if (shouldBlockActions) {
+      setIsSubmittingAction(true);
       setActionMessage(null);
     }
     try {
-      const response = await fetch(`${backendUrl}/profile/connect-wallet`, {
+      const response = await fetchWithTimeout(`${backendUrl}/profile/connect-wallet`, {
         method: "POST",
         headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
         body: JSON.stringify({ walletAddress: normalizedWalletAddress }),
       });
 
       if (!response.ok) {
-        if (!silent) {
+        if (shouldBlockActions) {
         setActionMessage("Your BubbleDrop home did not open just yet.");
         }
         return;
@@ -1011,15 +1064,23 @@ export function BubbleDropShell() {
         wallet_address: payload.walletAddress,
         source,
       });
-      if (!silent) {
+      if (shouldBlockActions) {
         setActionMessage("Your BubbleDrop home is ready.");
       }
-    } catch {
-      if (!silent) {
-        setActionMessage("Your profile is still settling in. Try again in a moment.");
+    } catch (error) {
+      if (shouldBlockActions) {
+        const isTimeoutAbort =
+          error instanceof DOMException && error.name === "AbortError";
+        setActionMessage(
+          isTimeoutAbort
+            ? "Profile sync timed out. Please tap Sync profile again."
+            : "Your profile is still settling in. Try again in a moment.",
+        );
       }
     } finally {
-      setIsSubmittingAction(false);
+      if (shouldBlockActions) {
+        setIsSubmittingAction(false);
+      }
     }
   };
 
@@ -2171,7 +2232,7 @@ export function BubbleDropShell() {
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
               <div className="relative flex items-start gap-3">
                 <div
-                  className={`profile-emblem profile-bubble-main relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
+                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
                     isProfileBubblePressed ? "profile-bubble-touch" : ""
                   }`}
                   style={
@@ -2203,9 +2264,10 @@ export function BubbleDropShell() {
                     {nicknameDisplay}
                   </h1>
                   <p className="mt-1 text-sm font-black uppercase tracking-[0.12em] text-[#526ca0]">
-                    Equipped avatar
+                    Equipped style
                   </p>
-                  <p className="mt-1 text-sm font-medium text-[#6177a2]">{avatarLabel}</p>
+                  <p className="mt-1 text-sm font-semibold text-[#495f90]">{equippedStyleName}</p>
+                  <p className="mt-1 text-xs font-medium text-[#6177a2]">Avatar: {avatarLabel}</p>
                   <div className="mt-2 inline-flex items-center gap-2">
                     <span
                       className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${profileStyleBadgeClass}`}
