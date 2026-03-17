@@ -40,6 +40,11 @@ import {
   type BackendProfileSummary,
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
+import {
+  loadPersistedEquippedStyle,
+  savePersistedEquippedStyle,
+  type EquippedStyleSnapshot,
+} from "./equipped-style-sync";
 
 type ProfileBootstrapResponse = {
   profileId: string;
@@ -240,15 +245,6 @@ type WorldIconKind =
   | "vault"
   | "claim"
   | "auth";
-
-type EquippedStyleSnapshot = {
-  rewardId: string;
-  rewardKey: string;
-  rarity: "common" | "rare" | "epic" | "legendary";
-  source: "nft" | "cosmetic";
-  variant: string;
-  appliedAt: string;
-};
 
 function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: string }) {
   const iconClassName = "h-3.5 w-3.5 text-[#4f6796]";
@@ -914,8 +910,18 @@ export function BubbleDropShell() {
   }, [runtimeContext.profileId]);
 
   useEffect(() => {
-    setEquippedStyleSnapshot(profileSummary?.styleState?.equippedStyle ?? null);
-  }, [profileSummary]);
+    if (!profileId) {
+      setEquippedStyleSnapshot(null);
+      return;
+    }
+    const backendStyle = profileSummary?.styleState?.equippedStyle ?? null;
+    if (backendStyle) {
+      setEquippedStyleSnapshot(backendStyle);
+      savePersistedEquippedStyle(profileId, backendStyle);
+      return;
+    }
+    setEquippedStyleSnapshot(loadPersistedEquippedStyle(profileId));
+  }, [profileId, profileSummary]);
 
   useEffect(() => {
     const resolveFirstEntry = async () => {

@@ -14,6 +14,11 @@ import {
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
+import {
+  loadPersistedEquippedStyle,
+  savePersistedEquippedStyle,
+  type EquippedStyleSnapshot,
+} from "./equipped-style-sync";
 import { UnifiedIcon } from "./unified-icons";
 
 type InventoryNft = {
@@ -177,11 +182,13 @@ async function fetchOnboardingStateForProfile(
   if (!payload) {
     return null;
   }
+  const resolvedEquippedStyle =
+    payload.styleState?.equippedStyle ?? loadPersistedEquippedStyle(profileId);
 
   return {
     needsOnboarding: payload.onboardingState.needsOnboarding,
     currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
-    equippedStyleRewardId: payload.styleState?.equippedStyle?.rewardId ?? null,
+    equippedStyleRewardId: resolvedEquippedStyle?.rewardId ?? null,
     rareAccessActive: payload.rareRewardAccess.active,
     testingOverrideActive: payload.styleState?.testingOverrideActive ?? false,
   };
@@ -440,14 +447,25 @@ export function RewardsInventoryScreen() {
     }
     const isQaFallbackItem = testingOverrideActive && item.id.startsWith(QA_FALLBACK_ID_PREFIX);
     if (isQaFallbackItem) {
+      const qaSnapshot: EquippedStyleSnapshot = {
+        rewardId: item.id,
+        rewardKey: item.key,
+        rarity: item.rarity,
+        source: item.source,
+        variant: `${item.rarity.toUpperCase()} INVENTORY QA`,
+        appliedAt: new Date().toISOString(),
+      };
       setErrorMessage(null);
-      setEquippedStyleRewardId(item.id);
+      setEquippedStyleRewardId(qaSnapshot.rewardId);
       setEquippedBySlot((current) => ({
         ...current,
-        [item.slot]: item.id,
+        [item.slot]: qaSnapshot.rewardId,
       }));
       if (item.slot === "avatar") {
-        setSelectedAvatarId(item.id);
+        setSelectedAvatarId(qaSnapshot.rewardId);
+      }
+      if (profileId) {
+        savePersistedEquippedStyle(profileId, qaSnapshot);
       }
       return;
     }
@@ -487,6 +505,7 @@ export function RewardsInventoryScreen() {
           ...current,
           [item.slot]: item.id,
         }));
+        savePersistedEquippedStyle(profileId, payload.equippedStyle);
       } catch {
         setErrorMessage("We couldn't apply this style right now.");
       } finally {
