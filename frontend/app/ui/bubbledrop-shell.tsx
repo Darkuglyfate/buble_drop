@@ -387,6 +387,7 @@ function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: strin
 const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
 const NETWORK_REQUEST_TIMEOUT_MS = 15_000;
+const PROFILE_SYNC_RETRY_COUNT = 1;
 const GLASS_MODE_STORAGE_KEY = "bubbledrop.glass-mode";
 const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
   stage: "idle",
@@ -1029,11 +1030,33 @@ export function BubbleDropShell() {
       setActionMessage(null);
     }
     try {
-      const response = await fetchWithTimeout(`${backendUrl}/profile/connect-wallet`, {
-        method: "POST",
-        headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
-        body: JSON.stringify({ walletAddress: normalizedWalletAddress }),
-      });
+      let response: Response | null = null;
+      let timeoutTriggered = false;
+      for (let attempt = 0; attempt <= PROFILE_SYNC_RETRY_COUNT; attempt += 1) {
+        try {
+          response = await fetchWithTimeout(`${backendUrl}/profile/connect-wallet`, {
+            method: "POST",
+            headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
+            body: JSON.stringify({ walletAddress: normalizedWalletAddress }),
+          });
+          timeoutTriggered = false;
+          break;
+        } catch (error) {
+          const isTimeoutAbort =
+            error instanceof DOMException && error.name === "AbortError";
+          if (!isTimeoutAbort || attempt >= PROFILE_SYNC_RETRY_COUNT) {
+            throw error;
+          }
+          timeoutTriggered = true;
+        }
+      }
+
+      if (!response) {
+        if (shouldBlockActions && timeoutTriggered) {
+          setActionMessage("Profile sync timed out. Please tap Sync profile again.");
+        }
+        return;
+      }
 
       if (!response.ok) {
         if (shouldBlockActions) {
