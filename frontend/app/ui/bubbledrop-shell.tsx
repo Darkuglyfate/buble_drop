@@ -1128,7 +1128,19 @@ export function BubbleDropShell() {
   useEffect(() => {
     const nextSeed = Math.floor(Math.random() * 1_000_000);
     setIntroPatternSeed(nextSeed);
-    setWelcomeIntroVisible(true);
+    if (typeof window === "undefined") {
+      setWelcomeIntroVisible(true);
+      return;
+    }
+
+    const url = new URL(window.location.href);
+    const skipIntro = url.searchParams.get("skipIntro") === "1";
+    setWelcomeIntroVisible(!skipIntro);
+
+    if (skipIntro) {
+      url.searchParams.delete("skipIntro");
+      window.history.replaceState(null, "", url.toString());
+    }
   }, []);
 
   const onConnectWallet = async () => {

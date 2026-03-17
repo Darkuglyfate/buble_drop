@@ -365,6 +365,13 @@ export function BubbleSessionPlayScreen() {
     ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
     : false;
   const completedResult = sessionCompleted && completionResult ? completionResult : null;
+  const backHomeHrefBase = withBubbleDropContext("/", {
+    profileId,
+    walletAddress: connectedWalletAddress ?? walletAddress,
+  });
+  const backHomeHref = backHomeHrefBase.includes("?")
+    ? `${backHomeHrefBase}&skipIntro=1`
+    : `${backHomeHrefBase}?skipIntro=1`;
 
   const onStartSession = () => {
     if (isActive || sessionCompleted || isSubmitting) {
@@ -528,10 +535,7 @@ export function BubbleSessionPlayScreen() {
           <header className="pointer-events-none absolute inset-x-0 top-0 z-20 p-4 sm:p-5">
             <div className="mx-auto flex w-full max-w-md items-start justify-between gap-3">
               <Link
-                href={withBubbleDropContext("/", {
-                  profileId,
-                  walletAddress: connectedWalletAddress ?? walletAddress,
-                })}
+                href={backHomeHref}
                 className="pointer-events-auto rounded-full border border-white/75 bg-white/76 px-4 py-2 text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.12)] backdrop-blur-sm"
               >
                 Back
