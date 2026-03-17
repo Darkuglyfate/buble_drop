@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { ConnectWalletDto } from './dto/connect-wallet.dto';
+import { EquipStyleDto } from './dto/equip-style.dto';
 import { GetProfileSummaryDto } from './dto/get-profile-summary.dto';
 import { SelectAvatarDto } from './dto/select-avatar.dto';
 import {
@@ -23,6 +24,7 @@ import {
   ProfileService,
   ProfileStartupState,
   ProfileSummary,
+  EquippedStyleResult,
   RewardsInventoryView,
   StarterAvatarView,
 } from './profile.service';
@@ -89,6 +91,26 @@ export class ProfileController {
     );
 
     return this.profileService.selectAvatar(dto.profileId, dto.avatarId);
+  }
+
+  @Post('style/equip')
+  async equipStyle(
+    @Body() dto: EquipStyleDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
+  ): Promise<EquippedStyleResult> {
+    await this.walletBindingService.assertProfileAccess(
+      dto.profileId,
+      authSessionHeader,
+    );
+
+    return this.profileService.equipStyle(
+      dto.profileId,
+      dto.rewardId,
+      dto.rewardKey,
+      dto.rarity,
+      dto.source,
+      dto.variant,
+    );
   }
 
   @Get('starter-avatars')

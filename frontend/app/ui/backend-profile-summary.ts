@@ -51,6 +51,16 @@ export type BackendProfileSummary = {
       claimableAmount: string;
     }>;
   };
+  styleState: {
+    equippedStyle: {
+      rewardId: string;
+      rewardKey: string;
+      rarity: "common" | "rare" | "epic" | "legendary";
+      source: "nft" | "cosmetic";
+      variant: string;
+      appliedAt: string;
+    } | null;
+  };
 };
 
 export async function fetchBackendProfileSummary(

@@ -75,6 +75,18 @@ type PopBurst = {
   sizeRem: number;
 };
 
+type SkinRarity = "common" | "rare" | "epic" | "legendary";
+type SkinLayout = "diagonal" | "split" | "frame";
+
+type SkinRewardCard = {
+  id: string;
+  key: string;
+  source: "nft" | "cosmetic";
+  rarity: SkinRarity;
+  layout: SkinLayout;
+  variantLabel: string;
+};
+
 type RareRewardTokenOutcome = {
   tokenSymbol: string;
   tokenAmountAwarded: string;
@@ -116,6 +128,18 @@ type SessionCompleteResponse = {
   qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
   rareRewardAccessActive: boolean;
   rareRewardOutcome: RareRewardOutcome;
+};
+
+type EquipStyleResponse = {
+  profileId: string;
+  equippedStyle: {
+    rewardId: string;
+    rewardKey: string;
+    rarity: SkinRarity;
+    source: "nft" | "cosmetic";
+    variant: string;
+    appliedAt: string;
+  };
 };
 
 async function fetchOnboardingStateForProfile(
@@ -164,6 +188,83 @@ function hasIssuedRareRewardOutcome(outcome: RareRewardOutcome): boolean {
 
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min);
+}
+
+function hashValue(input: string): number {
+  return Array.from(input).reduce((acc, char, index) => {
+    return (acc + char.charCodeAt(0) * (index + 17)) % 10000;
+  }, 0);
+}
+
+function getSkinRarityFromHash(hash: number): SkinRarity {
+  const roll = hash % 100;
+  if (roll < 56) {
+    return "common";
+  }
+  if (roll < 83) {
+    return "rare";
+  }
+  if (roll < 96) {
+    return "epic";
+  }
+  return "legendary";
+}
+
+function getSkinLayoutFromHash(hash: number): SkinLayout {
+  const layoutIdx = hash % 3;
+  if (layoutIdx === 0) {
+    return "diagonal";
+  }
+  if (layoutIdx === 1) {
+    return "split";
+  }
+  return "frame";
+}
+
+function getRarityIntensity(rarity: SkinRarity): string {
+  if (rarity === "common") {
+    return "1/4";
+  }
+  if (rarity === "rare") {
+    return "2/4";
+  }
+  if (rarity === "epic") {
+    return "3/4";
+  }
+  return "4/4";
+}
+
+function getDropStylePalette(rarity: SkinRarity): {
+  shell: string;
+  chip: string;
+  glow: string;
+} {
+  if (rarity === "common") {
+    return {
+      shell: "from-[#3d4a69] to-[#2f3955]",
+      chip: "bg-[#dce7ff] text-[#3b588f]",
+      glow: "shadow-[0_14px_34px_rgba(0,0,0,0.24)]",
+    };
+  }
+  if (rarity === "rare") {
+    return {
+      shell: "from-[#27477a] to-[#27507d]",
+      chip: "bg-[#d5f0ff] text-[#125f89]",
+      glow: "shadow-[0_14px_34px_rgba(70,164,220,0.24)]",
+    };
+  }
+  if (rarity === "epic") {
+    return {
+      shell: "from-[#3f2f72] to-[#29426f]",
+      chip: "bg-[#f1ddff] text-[#7040a8]",
+      glow: "shadow-[0_14px_34px_rgba(164,114,255,0.3)]",
+    };
+  }
+  return {
+    shell: "from-[#6f4d2b] via-[#7e4b2d] to-[#6f3f1f]",
+    chip: "bg-gradient-to-r from-[#fff2c5] to-[#ffd98a] text-[#6f4100]",
+    glow: "shadow-[0_14px_34px_rgba(255,187,80,0.34)] ring-1 ring-[#ffe4aa]/70",
+  };
 }
 
 function createActivePlayBubble(id: number): ActivePlayBubble {
@@ -223,6 +324,14 @@ export function BubbleSessionPlayScreen() {
   );
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
+  const [equippedSkinRewardId, setEquippedSkinRewardId] = useState<string | null>(null);
+  const [inventorySavedRewardIds, setInventorySavedRewardIds] = useState<string[]>([]);
+  const [lastApplyMoment, setLastApplyMoment] = useState<{
+    rewardId: string;
+    rewardKey: string;
+    rarity: SkinRarity;
+    source: "nft" | "cosmetic";
+  } | null>(null);
   const playfieldRef = useRef<HTMLDivElement | null>(null);
   const popAudioContextRef = useRef<AudioContext | null>(null);
   const popAudioUnavailableRef = useRef(false);
@@ -506,6 +615,35 @@ export function BubbleSessionPlayScreen() {
     ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
     : false;
   const completedResult = sessionCompleted && completionResult ? completionResult : null;
+  const visualRewardCards: SkinRewardCard[] = completedResult
+    ? [
+        ...completedResult.rareRewardOutcome.nftRewards.map((reward) => {
+          const hash = hashValue(`${reward.id}:${reward.key}:nft`);
+          const rarity = getSkinRarityFromHash(hash);
+          return {
+            id: reward.id,
+            key: reward.key,
+            source: "nft" as const,
+            rarity,
+            layout: getSkinLayoutFromHash(hash),
+            variantLabel: `${rarity.toUpperCase()} ${hash % 3 === 0 ? "A" : hash % 3 === 1 ? "B" : "C"}`,
+          };
+        }),
+        ...completedResult.rareRewardOutcome.cosmeticRewards.map((reward) => {
+          const hash = hashValue(`${reward.id}:${reward.key}:cosmetic`);
+          const rarity = getSkinRarityFromHash(hash);
+          return {
+            id: reward.id,
+            key: reward.key,
+            source: "cosmetic" as const,
+            rarity,
+            layout: getSkinLayoutFromHash(hash),
+            variantLabel: `${rarity.toUpperCase()} ${hash % 3 === 0 ? "A" : hash % 3 === 1 ? "B" : "C"}`,
+          };
+        }),
+      ]
+    : [];
+  const hasVisualRewards = visualRewardCards.length > 0;
   const completedRunDurationLabel = completedResult
     ? formatDurationLabel(completedResult.sessionDurationSeconds)
     : null;
@@ -521,6 +659,56 @@ export function BubbleSessionPlayScreen() {
   const backHomeHref = backHomeHrefBase.includes("?")
     ? `${backHomeHrefBase}&skipIntro=1`
     : `${backHomeHrefBase}?skipIntro=1`;
+
+  const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
+    if (!profileId || !authSessionToken) {
+      setActionMessage("Finish wallet auth before applying this style.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setActionMessage(null);
+    void (async () => {
+      try {
+        const response = await fetch(`${backendUrl}/profile/style/equip`, {
+          method: "POST",
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
+          body: JSON.stringify({
+            profileId,
+            rewardId: rewardCard.id,
+            rewardKey: rewardCard.key,
+            rarity: rewardCard.rarity,
+            source: rewardCard.source,
+            variant: rewardCard.variantLabel,
+          }),
+        });
+        if (!response.ok) {
+          setActionMessage(`Apply failed (code ${response.status}).`);
+          return;
+        }
+        const payload = (await response.json()) as EquipStyleResponse;
+        setEquippedSkinRewardId(payload.equippedStyle.rewardId);
+        setLastApplyMoment({
+          rewardId: payload.equippedStyle.rewardId,
+          rewardKey: payload.equippedStyle.rewardKey,
+          rarity: payload.equippedStyle.rarity,
+          source: payload.equippedStyle.source,
+        });
+        setActionMessage(`${payload.equippedStyle.rewardKey} equipped and synced.`);
+      } catch {
+        setActionMessage("Apply failed. Check network and try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  };
+
+  const onSaveRewardToInventory = (rewardCard: SkinRewardCard) => {
+    setInventorySavedRewardIds((current) =>
+      current.includes(rewardCard.id) ? current : [...current, rewardCard.id],
+    );
+    setActionMessage(`${rewardCard.key} saved to inventory.`);
+  };
 
   const onStartSession = () => {
     if (isActive || sessionCompleted || isSubmitting) {
@@ -567,6 +755,9 @@ export function BubbleSessionPlayScreen() {
         setPopBursts([]);
         setSessionCompleted(false);
         setCompletionResult(null);
+        setEquippedSkinRewardId(null);
+        setInventorySavedRewardIds([]);
+        setLastApplyMoment(null);
         setActivePlayBubbles(
           Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
             createActivePlayBubble(index),
@@ -1162,27 +1353,93 @@ export function BubbleSessionPlayScreen() {
             </section>
           ) : null}
 
-          {completedResult.rareRewardOutcome.nftRewards.length > 0 ? (
+          {hasVisualRewards ? (
             <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">NFT rewards</h2>
-              {completedResult.rareRewardOutcome.nftRewards.map((reward) => (
-                <article key={reward.id} className="mt-3 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
-                  <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
-                  <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
-                </article>
-              ))}
+              <h2 className="text-sm font-semibold text-[#30466f]">Skin drops</h2>
+              <p className="mt-1 text-xs text-[#6077a6]">
+                Each drop has a unique style family and supports Apply Moment.
+              </p>
+              <div className="mt-3 space-y-3">
+                {visualRewardCards.map((rewardCard) => {
+                  const palette = getDropStylePalette(rewardCard.rarity);
+                  const isEquippedNow = equippedSkinRewardId === rewardCard.id;
+                  const isSavedToInventory = inventorySavedRewardIds.includes(rewardCard.id);
+                  return (
+                    <article
+                      key={`${rewardCard.source}-${rewardCard.id}`}
+                      className={`relative overflow-hidden rounded-2xl border border-white/40 bg-gradient-to-br ${palette.shell} ${palette.glow} p-3 text-white`}
+                    >
+                      {rewardCard.layout === "diagonal" ? (
+                        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(255,255,255,0.18),transparent_40%)]" />
+                      ) : null}
+                      {rewardCard.layout === "split" ? (
+                        <span className="pointer-events-none absolute inset-y-0 left-0 w-[34%] border-r border-white/20 bg-white/10" />
+                      ) : null}
+                      {rewardCard.layout === "frame" ? (
+                        <span className="pointer-events-none absolute inset-[7px] rounded-xl border border-white/30" />
+                      ) : null}
+                      {rewardCard.rarity === "legendary" ? (
+                        <span className="pointer-events-none absolute inset-[-30%] bg-[conic-gradient(from_40deg,rgba(255,227,140,0)_0deg,rgba(255,227,140,0.3)_70deg,rgba(255,155,83,0)_130deg,rgba(255,227,140,0.28)_210deg,rgba(255,227,140,0)_300deg)]" />
+                      ) : null}
+                      <div className="relative">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-black tracking-[0.08em] ${palette.chip}`}>
+                            {rewardCard.variantLabel}
+                          </span>
+                          <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/90">
+                            {rewardCard.source}
+                          </span>
+                        </div>
+                        <h3 className="mt-2 text-xl font-black leading-tight">{rewardCard.key}</h3>
+                        <p className="mt-1 text-xs text-white/85">
+                          Layout: {rewardCard.layout}. Rarity intensity:{" "}
+                          {getRarityIntensity(rewardCard.rarity)}.
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEquipRewardNow(rewardCard)}
+                            className="flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-xs font-bold text-[#163157]"
+                          >
+                            {isEquippedNow ? "Applied" : "Equip now"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onSaveRewardToInventory(rewardCard)}
+                            className="rounded-xl border border-white/50 bg-white/15 px-3 py-2 text-xs font-bold text-white"
+                          >
+                            {isSavedToInventory ? "Saved" : "Inventory"}
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
             </section>
           ) : null}
 
-          {completedResult.rareRewardOutcome.cosmeticRewards.length > 0 ? (
+          {lastApplyMoment ? (
             <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Cosmetic rewards</h2>
-              {completedResult.rareRewardOutcome.cosmeticRewards.map((reward) => (
-                <article key={reward.id} className="mt-3 rounded-xl border border-[#dce5ff] bg-white/80 p-3">
-                  <p className="text-sm font-semibold text-[#334f82]">{reward.key}</p>
-                  <p className="mt-1 text-xs text-[#6077a6]">Definition ID: {reward.id}</p>
-                </article>
-              ))}
+              <h2 className="text-sm font-semibold text-[#30466f]">Apply moment</h2>
+              <div className="mt-2 rounded-2xl border border-white/70 bg-white/70 p-3">
+                <div
+                  className={`h-24 rounded-xl border border-white/70 ${
+                    lastApplyMoment.rarity === "common"
+                      ? "bg-[radial-gradient(circle_at_center,rgba(163,198,255,0.44),rgba(131,175,247,0.18)_44%,rgba(131,175,247,0)_75%)]"
+                      : lastApplyMoment.rarity === "rare"
+                        ? "bg-[radial-gradient(circle_at_center,rgba(112,214,255,0.56),rgba(82,186,255,0.22)_44%,rgba(82,186,255,0)_75%)]"
+                        : lastApplyMoment.rarity === "epic"
+                          ? "bg-[radial-gradient(circle_at_center,rgba(207,138,255,0.64),rgba(162,111,255,0.3)_44%,rgba(162,111,255,0)_75%)]"
+                          : "bg-[radial-gradient(circle_at_center,rgba(255,220,140,0.78),rgba(255,174,89,0.34)_40%,rgba(255,130,69,0)_75%)]"
+                  }`}
+                />
+                <p className="mt-2 text-xs text-[#6077a6]">
+                  {lastApplyMoment.rewardKey} applied. Intensity{" "}
+                  {getRarityIntensity(lastApplyMoment.rarity)} for{" "}
+                  {lastApplyMoment.rarity.toUpperCase()}.
+                </p>
+              </div>
             </section>
           ) : null}
 
@@ -1193,6 +1450,9 @@ export function BubbleSessionPlayScreen() {
                 onClick={() => {
                   setSessionCompleted(false);
                   setCompletionResult(null);
+                  setEquippedSkinRewardId(null);
+                  setInventorySavedRewardIds([]);
+                  setLastApplyMoment(null);
                   setSessionStartedAtMs(null);
                   setActiveTapCount(0);
                   setTapFeedbackPoint(null);

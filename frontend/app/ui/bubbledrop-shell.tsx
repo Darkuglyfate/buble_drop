@@ -241,6 +241,15 @@ type WorldIconKind =
   | "claim"
   | "auth";
 
+type EquippedStyleSnapshot = {
+  rewardId: string;
+  rewardKey: string;
+  rarity: "common" | "rare" | "epic" | "legendary";
+  source: "nft" | "cosmetic";
+  variant: string;
+  appliedAt: string;
+};
+
 function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: string }) {
   const iconClassName = "h-3.5 w-3.5 text-[#4f6796]";
   const mergedClassName = className
@@ -571,6 +580,8 @@ export function BubbleDropShell() {
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
   const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
+  const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
+    useState<EquippedStyleSnapshot | null>(null);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -663,11 +674,32 @@ export function BubbleDropShell() {
   const avatarLabel =
     profileSummary?.avatarState.currentAvatar?.label ??
     (profileId ? "Starter bubble" : "Wake BubbleDrop");
-  const profileBubbleTone = createAvatarBubbleTone(
+  const profileVisualSeed =
+    equippedStyleSnapshot?.rewardId ??
     profileSummary?.avatarState.currentAvatar?.id ??
-      profileSummary?.avatarState.currentAvatar?.key ??
-      "bubble-default",
-  );
+    profileSummary?.avatarState.currentAvatar?.key ??
+    "bubble-default";
+  const profileBubbleTone = createAvatarBubbleTone(profileVisualSeed);
+  const equippedRarity = equippedStyleSnapshot?.rarity ?? null;
+  const profileStyleShellClass =
+    equippedRarity === "legendary"
+      ? "from-[#fff2d8]/88 via-[#ffd7a9]/72 to-[#ffd3e2]/68 ring-[#ffdba3]/85"
+      : equippedRarity === "epic"
+        ? "from-[#f2e8ff]/86 via-[#e7ddff]/72 to-[#d8ecff]/68 ring-[#ddbeff]/72"
+        : equippedRarity === "rare"
+          ? "from-[#e6f8ff]/86 via-[#d8f0ff]/74 to-[#dce8ff]/66 ring-[#b8e8ff]/72"
+          : "from-white/84 via-white/72 to-white/66 ring-white/72";
+  const profileStyleBadgeClass =
+    equippedRarity === "legendary"
+      ? "bg-gradient-to-r from-[#fff2c5] to-[#ffd98a] text-[#6f4100]"
+      : equippedRarity === "epic"
+        ? "bg-[#f1ddff] text-[#7140a9]"
+        : equippedRarity === "rare"
+          ? "bg-[#d5f0ff] text-[#125f89]"
+          : "bg-[#dce7ff] text-[#3b588f]";
+  const equippedStyleLabel = equippedStyleSnapshot
+    ? `${equippedStyleSnapshot.rarity.toUpperCase()} ${equippedStyleSnapshot.rewardKey}`
+    : "Default profile style";
   const walletDisplay = shortenWalletAddress(
     activeWalletAddress ?? connectedWalletAddress,
   );
@@ -880,6 +912,10 @@ export function BubbleDropShell() {
   useEffect(() => {
     setProfileId(runtimeContext.profileId);
   }, [runtimeContext.profileId]);
+
+  useEffect(() => {
+    setEquippedStyleSnapshot(profileSummary?.styleState?.equippedStyle ?? null);
+  }, [profileSummary]);
 
   useEffect(() => {
     const resolveFirstEntry = async () => {
@@ -2106,7 +2142,9 @@ export function BubbleDropShell() {
           </section>
         ) : (
           <>
-            <section className="bubble-card player-profile-card overflow-hidden p-4">
+            <section
+              className={`bubble-card player-profile-card relative overflow-hidden bg-gradient-to-br p-4 ring-1 ${profileStyleShellClass}`}
+            >
               <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_70%)]" />
               <div className="absolute -right-10 top-0 h-28 w-28 rounded-full bg-[#ffdff0]/50 blur-3xl" />
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
@@ -2147,6 +2185,16 @@ export function BubbleDropShell() {
                     Equipped avatar
                   </p>
                   <p className="mt-1 text-sm font-medium text-[#6177a2]">{avatarLabel}</p>
+                  <div className="mt-2 inline-flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${profileStyleBadgeClass}`}
+                    >
+                      {equippedStyleSnapshot ? equippedStyleSnapshot.rarity : "profile"}
+                    </span>
+                    <span className="text-[11px] font-semibold text-[#6077a6]">
+                      {equippedStyleLabel}
+                    </span>
+                  </div>
                   <p className="mt-1 text-xs text-[#7b8fb8]">
                     {walletDisplay}
                     {bootstrappedWalletAddress &&

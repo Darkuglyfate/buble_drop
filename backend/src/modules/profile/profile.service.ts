@@ -103,6 +103,30 @@ export interface ProfileSummary {
       claimableAmount: string;
     }>;
   };
+  styleState: {
+    equippedStyle:
+      | {
+          rewardId: string;
+          rewardKey: string;
+          rarity: 'common' | 'rare' | 'epic' | 'legendary';
+          source: 'nft' | 'cosmetic';
+          variant: string;
+          appliedAt: string;
+        }
+      | null;
+  };
+}
+
+export interface EquippedStyleResult {
+  profileId: string;
+  equippedStyle: {
+    rewardId: string;
+    rewardKey: string;
+    rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    source: 'nft' | 'cosmetic';
+    variant: string;
+    appliedAt: string;
+  };
 }
 
 export interface StarterAvatarView {
@@ -473,6 +497,56 @@ export class ProfileService {
         tokenCount: positiveBalances.length,
         balances: positiveBalances,
       },
+      styleState: {
+        equippedStyle: profile.equippedStyleSnapshot,
+      },
+    };
+  }
+
+  async equipStyle(
+    profileId: string,
+    rewardId: string,
+    rewardKey: string,
+    rarity: 'common' | 'rare' | 'epic' | 'legendary',
+    source: 'nft' | 'cosmetic',
+    variant: string,
+  ): Promise<EquippedStyleResult> {
+    this.assertUuid(profileId, 'Invalid profileId format');
+    this.assertUuid(rewardId, 'Invalid rewardId format');
+
+    const normalizedRewardKey = rewardKey.trim();
+    if (!normalizedRewardKey) {
+      throw new BadRequestException('rewardKey must not be empty');
+    }
+    const normalizedVariant = variant.trim();
+    if (!normalizedVariant) {
+      throw new BadRequestException('variant must not be empty');
+    }
+
+    const profile = await this.profileRepository.findOne({
+      where: { id: profileId },
+    });
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    this.assertOnboardingCompleted(
+      profile,
+      'Onboarding must be completed before style equip is allowed',
+    );
+
+    profile.equippedStyleSnapshot = {
+      rewardId,
+      rewardKey: normalizedRewardKey,
+      rarity,
+      source,
+      variant: normalizedVariant,
+      appliedAt: new Date().toISOString(),
+    };
+    const savedProfile = await this.profileRepository.save(profile);
+
+    return {
+      profileId: savedProfile.id,
+      equippedStyle: profile.equippedStyleSnapshot,
     };
   }
 
