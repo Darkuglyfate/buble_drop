@@ -15,8 +15,10 @@ import {
 } from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import {
-  loadPersistedEquippedStyle,
-  savePersistedEquippedStyle,
+  getPrimaryEquippedStyle,
+  inferSlotFromRewardKey,
+  loadPersistedEquippedStyles,
+  savePersistedEquippedStyles,
   type EquippedStyleSnapshot,
 } from "./equipped-style-sync";
 import { UnifiedIcon } from "./unified-icons";
@@ -174,6 +176,7 @@ async function fetchOnboardingStateForProfile(
 ): Promise<{
   needsOnboarding: boolean;
   currentAvatarId: string | null;
+  equippedStyle: EquippedStyleSnapshot | null;
   equippedStyleRewardId: string | null;
   rareAccessActive: boolean;
   testingOverrideActive: boolean;
@@ -182,13 +185,20 @@ async function fetchOnboardingStateForProfile(
   if (!payload) {
     return null;
   }
-  const resolvedEquippedStyle =
-    payload.styleState?.equippedStyle ?? loadPersistedEquippedStyle(profileId);
+  const backendEquippedStyle = payload.styleState?.equippedStyle ?? null;
+  const persistedBySlot = loadPersistedEquippedStyles(profileId);
+  const mergedBySlot = { ...persistedBySlot };
+  if (backendEquippedStyle) {
+    const slot = inferSlotFromRewardKey(backendEquippedStyle.rewardKey);
+    mergedBySlot[slot] = backendEquippedStyle;
+  }
+  const primary = getPrimaryEquippedStyle(mergedBySlot);
 
   return {
     needsOnboarding: payload.onboardingState.needsOnboarding,
     currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
-    equippedStyleRewardId: resolvedEquippedStyle?.rewardId ?? null,
+    equippedStyle: backendEquippedStyle,
+    equippedStyleRewardId: primary?.rewardId ?? null,
     rareAccessActive: payload.rareRewardAccess.active,
     testingOverrideActive: payload.styleState?.testingOverrideActive ?? false,
   };
@@ -483,7 +493,8 @@ export function RewardsInventoryScreen() {
         setSelectedAvatarId(qaSnapshot.rewardId);
       }
       if (profileId) {
-        savePersistedEquippedStyle(profileId, qaSnapshot);
+        const current = loadPersistedEquippedStyles(profileId);
+        savePersistedEquippedStyles(profileId, { ...current, [item.slot]: qaSnapshot });
       }
       return;
     }
@@ -500,6 +511,17 @@ export function RewardsInventoryScreen() {
     const previousEquippedBySlot = { ...equippedBySlot };
     const previousEquippedStyleRewardId = equippedStyleRewardId;
     const previousSelectedAvatarId = selectedAvatarId;
+    const previousPersistedBySlot = profileId
+      ? loadPersistedEquippedStyles(profileId)
+      : undefined;
+    const optimisticSnapshot: EquippedStyleSnapshot = {
+      rewardId: item.id,
+      rewardKey: item.key,
+      rarity: item.rarity,
+      source: item.source,
+      variant: `${item.rarity.toUpperCase()} INVENTORY`,
+      appliedAt: new Date().toISOString(),
+    };
     setEquippedStyleRewardId(item.id);
     setEquippedBySlot((current) => ({
       ...current,
@@ -507,6 +529,13 @@ export function RewardsInventoryScreen() {
     }));
     if (item.slot === "avatar") {
       setSelectedAvatarId(item.id);
+    }
+    if (profileId) {
+      const current = loadPersistedEquippedStyles(profileId);
+      savePersistedEquippedStyles(profileId, {
+        ...current,
+        [item.slot]: optimisticSnapshot,
+      });
     }
     setIsApplyingCollectibleId(item.id);
     setErrorMessage(null);
@@ -528,6 +557,9 @@ export function RewardsInventoryScreen() {
           setEquippedBySlot(previousEquippedBySlot);
           setEquippedStyleRewardId(previousEquippedStyleRewardId);
           setSelectedAvatarId(previousSelectedAvatarId);
+          if (profileId && previousPersistedBySlot !== undefined) {
+            savePersistedEquippedStyles(profileId, previousPersistedBySlot);
+          }
           setErrorMessage("We couldn't apply this style right now.");
           return;
         }
@@ -537,11 +569,18 @@ export function RewardsInventoryScreen() {
           ...current,
           [item.slot]: item.id,
         }));
-        savePersistedEquippedStyle(profileId, payload.equippedStyle);
+        const current = loadPersistedEquippedStyles(profileId);
+        savePersistedEquippedStyles(profileId, {
+          ...current,
+          [item.slot]: payload.equippedStyle,
+        });
       } catch (error) {
         setEquippedBySlot(previousEquippedBySlot);
         setEquippedStyleRewardId(previousEquippedStyleRewardId);
         setSelectedAvatarId(previousSelectedAvatarId);
+        if (profileId && previousPersistedBySlot !== undefined) {
+          savePersistedEquippedStyles(profileId, previousPersistedBySlot);
+        }
         const isTimeoutAbort =
           error instanceof DOMException && error.name === "AbortError";
         if (isTimeoutAbort) {
@@ -561,6 +600,21 @@ export function RewardsInventoryScreen() {
         loadBubbleDropFrontendSignInSession(),
     );
   }, [walletAddress]);
+
+  useEffect(() => {
+    if (!profileId) return;
+    const persisted = loadPersistedEquippedStyles(profileId);
+    const primary = getPrimaryEquippedStyle(persisted);
+    setEquippedBySlot({
+      avatar: persisted.avatar?.rewardId ?? null,
+      bubbleSkin: persisted.bubbleSkin?.rewardId ?? null,
+      trail: persisted.trail?.rewardId ?? null,
+      badge: persisted.badge?.rewardId ?? null,
+    });
+    if (primary) {
+      setEquippedStyleRewardId(primary.rewardId);
+    }
+  }, [profileId]);
 
   useEffect(() => {
     const resolvedProfileId = profileId;
@@ -587,6 +641,18 @@ export function RewardsInventoryScreen() {
       setEquippedStyleRewardId(onboardingState.equippedStyleRewardId);
       setRareAccessActive(onboardingState.rareAccessActive);
       setTestingOverrideActive(onboardingState.testingOverrideActive);
+      const persistedBySlot = loadPersistedEquippedStyles(resolvedProfileId);
+      const mergedBySlot = { ...persistedBySlot };
+      if (onboardingState.equippedStyle) {
+        const slot = inferSlotFromRewardKey(onboardingState.equippedStyle.rewardKey);
+        mergedBySlot[slot] = onboardingState.equippedStyle;
+      }
+      setEquippedBySlot({
+        avatar: onboardingState.currentAvatarId ?? mergedBySlot.avatar?.rewardId ?? null,
+        bubbleSkin: mergedBySlot.bubbleSkin?.rewardId ?? null,
+        trail: mergedBySlot.trail?.rewardId ?? null,
+        badge: mergedBySlot.badge?.rewardId ?? null,
+      });
       setIsResolvingOnboardingState(false);
       await loadStarterAvatars();
 

@@ -41,8 +41,12 @@ import {
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
 import {
-  loadPersistedEquippedStyle,
+  getPrimaryEquippedStyle,
+  inferSlotFromRewardKey,
+  loadPersistedEquippedStyles,
   savePersistedEquippedStyle,
+  type CosmeticSlot,
+  type EquippedStyleBySlot,
   type EquippedStyleSnapshot,
 } from "./equipped-style-sync";
 
@@ -619,6 +623,7 @@ export function BubbleDropShell() {
   const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
     useState<EquippedStyleSnapshot | null>(null);
+  const [homeEquippedMerged, setHomeEquippedMerged] = useState<EquippedStyleBySlot>({});
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -678,6 +683,9 @@ export function BubbleDropShell() {
     isSignedInWithBase && hasVerifiedAuthSession(signInSession)
       ? signInSession?.authSessionToken ?? null
       : null;
+  const showWelcomeBeforeSync = Boolean(
+    !profileId && connectedWalletAddress && authenticatedSessionToken,
+  );
   const isWalletFlowBusy =
     isWalletConnectPending ||
     isSigningInWithBase ||
@@ -974,15 +982,20 @@ export function BubbleDropShell() {
   useEffect(() => {
     if (!profileId) {
       setEquippedStyleSnapshot(null);
+      setHomeEquippedMerged({});
       return;
     }
+    const persisted = loadPersistedEquippedStyles(profileId);
+    const merged = { ...persisted };
     const backendStyle = profileSummary?.styleState?.equippedStyle ?? null;
     if (backendStyle) {
-      setEquippedStyleSnapshot(backendStyle);
+      const slot = inferSlotFromRewardKey(backendStyle.rewardKey);
+      merged[slot] = backendStyle;
       savePersistedEquippedStyle(profileId, backendStyle);
-      return;
     }
-    setEquippedStyleSnapshot(loadPersistedEquippedStyle(profileId));
+    const primary = getPrimaryEquippedStyle(merged);
+    setEquippedStyleSnapshot(primary);
+    setHomeEquippedMerged(merged);
   }, [profileId, profileSummary]);
 
   useEffect(() => {
@@ -1062,14 +1075,18 @@ export function BubbleDropShell() {
 
       if (!response) {
         if (shouldBlockActions && timeoutTriggered) {
-          setActionMessage("Profile sync timed out. Please tap Sync profile again.");
+          setActionMessage(
+            "Profile sync timed out. Tap Sync profile below to try again.",
+          );
         }
         return;
       }
 
       if (!response.ok) {
         if (shouldBlockActions) {
-        setActionMessage("Your BubbleDrop home did not open just yet.");
+          setActionMessage(
+            "Profile couldn't be created just yet. Tap Sync profile below to try again.",
+          );
         }
         return;
       }
@@ -1105,8 +1122,8 @@ export function BubbleDropShell() {
           error instanceof DOMException && error.name === "AbortError";
         setActionMessage(
           isTimeoutAbort
-            ? "Profile sync timed out. Please tap Sync profile again."
-            : "Your profile is still settling in. Try again in a moment.",
+            ? "Profile sync timed out. Tap Sync profile below to try again."
+            : "Profile couldn't be created just yet. Tap Sync profile below to try again.",
         );
       }
     } finally {
@@ -2256,6 +2273,27 @@ export function BubbleDropShell() {
           </section>
         ) : (
           <>
+            {showWelcomeBeforeSync ? (
+              <section className="bubble-card p-4">
+                <div className="gloss-pill rounded-2xl bg-gradient-to-r from-[#99dbff] to-[#d6c8ff] p-4 text-[#1d2f57]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#3d5686]">
+                    Welcome
+                  </p>
+                  <h2 className="mt-1 text-xl font-bold">Welcome to BubbleDrop</h2>
+                  <p className="mt-2 text-sm text-[#425b8a]">
+                    One more step: tap Sync profile below to create your bubble identity.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onBootstrapProfile}
+                  disabled={isSubmittingAction}
+                  className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                >
+                  {isSubmittingAction ? "Processing..." : "Sync profile"}
+                </button>
+              </section>
+            ) : null}
             <section
               className={`bubble-card player-profile-card relative overflow-hidden bg-gradient-to-br p-4 ring-1 ${profileStyleShellClass}`}
             >
@@ -2264,7 +2302,7 @@ export function BubbleDropShell() {
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
               <div className="relative flex items-start gap-3">
                 <div
-                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} ${profileEmblemCategoryClass} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
+                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} ${profileEmblemCategoryClass} ${equippedStyleSnapshot ? "profile-emblem-equipped" : ""} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
                     isProfileBubblePressed ? "profile-bubble-touch" : ""
                   }`}
                   style={
@@ -2310,6 +2348,51 @@ export function BubbleDropShell() {
                       {equippedStyleLabel}
                     </span>
                   </div>
+                  {profileId ? (
+                    <div className="mt-3 grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          ["avatar", "Avatar"],
+                          ["bubbleSkin", "Bubble skin"],
+                          ["trail", "Trail"],
+                          ["badge", "Badge"],
+                        ] as const
+                      ).map(([slot, slotTitle]) => {
+                        const snap = homeEquippedMerged[slot as CosmeticSlot];
+                        const avatarFallback =
+                          slot === "avatar"
+                            ? profileSummary?.avatarState?.currentAvatar?.label
+                            : null;
+                        const label = snap
+                          ? formatRewardKeyLabel(snap.rewardKey)
+                          : avatarFallback ?? "—";
+                        const hasEquipped =
+                          Boolean(snap) ||
+                          (slot === "avatar" &&
+                            Boolean(profileSummary?.avatarState?.currentAvatar));
+                        return (
+                          <div
+                            key={slot}
+                            className="rounded-lg border border-[#dce6ff] bg-white/75 px-2 py-1.5"
+                          >
+                            <p className="text-[9px] font-bold uppercase tracking-[0.08em] text-[#7b8fb8]">
+                              {slotTitle}
+                            </p>
+                            <p className="truncate text-[11px] font-semibold text-[#2f4a7f]">
+                              {label}
+                            </p>
+                            {hasEquipped ? (
+                              <span className="text-[9px] font-semibold uppercase tracking-[0.06em] text-[#2e7a46]">
+                                Equipped
+                              </span>
+                            ) : (
+                              <span className="text-[9px] text-[#9aa8c4]">Not equipped</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   <p className="mt-1 text-xs text-[#7b8fb8]">
                     {walletDisplay}
                     {bootstrappedWalletAddress &&
