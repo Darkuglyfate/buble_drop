@@ -352,6 +352,9 @@ export function BubbleSessionPlayScreen() {
             : !authSessionToken
               ? "Use Sign in with Base on Home before starting a run."
               : null;
+  const startSessionStatusMessage =
+    startSessionBlockReason ??
+    (!isActive && !sessionCompleted ? actionMessage : null);
   const gameplayToastMessage =
     actionMessage && !sessionCompleted ? actionMessage : null;
   const resultToastMessage = actionMessage && sessionCompleted ? actionMessage : null;
@@ -387,7 +390,9 @@ export function BubbleSessionPlayScreen() {
         });
 
         if (!response.ok) {
-          setActionMessage("We couldn't start that session right now.");
+          setActionMessage(
+            `Session start failed (code ${response.status}). Please retry in a moment.`,
+          );
           return;
         }
 
@@ -409,7 +414,7 @@ export function BubbleSessionPlayScreen() {
         });
         setActionMessage("Session started. Keep tapping to show active play.");
       } catch {
-        setActionMessage("We couldn't start that session right now.");
+        setActionMessage("Session start failed. Check network and try again.");
       } finally {
         setIsSubmitting(false);
       }
@@ -692,7 +697,7 @@ export function BubbleSessionPlayScreen() {
                 )}
               </div>
 
-              {gameplayToastMessage ? (
+              {gameplayToastMessage && isActive ? (
                 <div className="pointer-events-none absolute inset-x-0 bottom-[8.75rem] z-20 px-4 sm:px-6">
                   <div className="mx-auto w-full max-w-md rounded-full border border-white/75 bg-white/78 px-4 py-2 text-center text-xs font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.14)] backdrop-blur-sm">
                     {gameplayToastMessage}
@@ -767,9 +772,9 @@ export function BubbleSessionPlayScreen() {
                       {isSubmitting && isActive ? "Submitting..." : "Complete session"}
                     </button>
                   </div>
-                  {startSessionBlockReason ? (
+                  {startSessionStatusMessage ? (
                     <p className="mt-2 text-center text-[11px] font-medium text-[#5c6f99]">
-                      {startSessionBlockReason}
+                      {startSessionStatusMessage}
                     </p>
                   ) : null}
                 </div>

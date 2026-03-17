@@ -570,7 +570,7 @@ export function BubbleDropShell() {
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
   const [onboardingSessionCompleted, setOnboardingSessionCompleted] = useState(false);
   const [isProfileBubblePressed, setIsProfileBubblePressed] = useState(false);
-  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(false);
+  const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -1128,11 +1128,7 @@ export function BubbleDropShell() {
   useEffect(() => {
     const nextSeed = Math.floor(Math.random() * 1_000_000);
     setIntroPatternSeed(nextSeed);
-    if (typeof window === "undefined") {
-      return;
-    }
-    const introSeen = window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
-    setWelcomeIntroVisible(!introSeen);
+    setWelcomeIntroVisible(true);
   }, []);
 
   const onConnectWallet = async () => {
@@ -1588,6 +1584,8 @@ export function BubbleDropShell() {
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
+  let showHeroSection = true;
+  let showDedicatedDailyCheckSection = false;
   const canAttemptDailyCheckIn = !isSubmittingAction && !isWalletFlowBusy;
   const dailyMissionActionLabel = !effectiveIsConnected
     ? "Sign in with Base"
@@ -1762,6 +1760,8 @@ export function BubbleDropShell() {
     secondaryHeroActionDisabled = isSubmittingAction;
     secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "XP lane open";
+    showHeroSection = false;
+    showDedicatedDailyCheckSection = true;
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
     heroTitle = "Your bubble board is awake and ready for today's run.";
@@ -2305,7 +2305,8 @@ export function BubbleDropShell() {
               </div>
             </section>
 
-            <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
+            {showHeroSection ? (
+              <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
               <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
               <div className="absolute -bottom-12 left-0 h-32 w-32 rounded-full bg-white/20 blur-3xl" />
               <div className="hero-portal-glow absolute right-[-1.5rem] top-[-0.6rem] h-44 w-44 rounded-full" />
@@ -2441,7 +2442,30 @@ export function BubbleDropShell() {
                   </div>
                 ) : null}
               </div>
-            </section>
+              </section>
+            ) : null}
+
+            {showDedicatedDailyCheckSection ? (
+              <section className="bubble-card p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
+                  Daily check-in
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#20365d]">
+                  Mark today in Base
+                </h3>
+                <p className="mt-2 text-sm text-[#5f749f]">
+                  Use this separate button to mark the day before your run.
+                </p>
+                <button
+                  type="button"
+                  onClick={onDailyCheckIn}
+                  disabled={isSubmittingAction || dailyCheckInCompletedToday}
+                  className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                >
+                  {dailyCheckInCompletedToday ? "Daily check-in complete" : "Daily check-in (+20 XP)"}
+                </button>
+              </section>
+            ) : null}
 
             <section className="bubble-card p-4">
               <div className="flex items-center justify-between gap-3">
