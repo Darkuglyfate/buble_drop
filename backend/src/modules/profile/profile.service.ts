@@ -796,7 +796,9 @@ export class ProfileService {
       const normalized = rawValue.trim().toLowerCase();
       return normalized === '1' || normalized === 'true' || normalized === 'yes';
     }
-    return false;
+    // Temporary QA default: keep unlock-all enabled when env is not provided,
+    // so remote test sessions can immediately access all skins.
+    return true;
   }
 
   private async ensureStarterAvatarsUnlocked(
