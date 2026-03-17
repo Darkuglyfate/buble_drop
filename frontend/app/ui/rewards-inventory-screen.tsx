@@ -70,6 +70,26 @@ type InventoryCollectible = {
 
 const QA_FALLBACK_COLLECTIBLES: InventoryCollectible[] = [
   {
+    id: "qa-avatar-nebula-helm",
+    key: "qa.avatar.nebula-helm",
+    label: "Nebula Helm",
+    source: "cosmetic",
+    slot: "avatar",
+    rarity: "epic",
+    season: "core",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "qa-avatar-royal-mask",
+    key: "qa.avatar.royal-mask",
+    label: "Royal Mask",
+    source: "nft",
+    slot: "avatar",
+    rarity: "legendary",
+    season: "genesis",
+    obtainedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
     id: "qa-bubble-neon-spectrum",
     key: "qa.bubble.neon-spectrum",
     label: "Neon Spectrum",
@@ -833,7 +853,9 @@ export function RewardsInventoryScreen() {
               })
             : null}
 
-          {!needsOnboarding && filteredCollectibles.length === 0 ? (
+          {!needsOnboarding &&
+          filteredCollectibles.length === 0 &&
+          !(activeSlot === "avatar" && starterAvatars.length > 0) ? (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
               No items for this slot yet. Try clearing advanced filters.
               <button
