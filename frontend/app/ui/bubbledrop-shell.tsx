@@ -1618,11 +1618,11 @@ export function BubbleDropShell() {
   let heroBody = "Connect -> Sign -> Play.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
-  let primaryActionLabel = "Enter an XP run";
+  let primaryActionLabel = "Sign in with Base";
   let primaryActionDisabled = false;
-  const primaryActionHandler: () => void = onConnectWallet;
-  let primaryActionHref: string | null = quickSessionHref;
-  let primaryActionKind: "button" | "link" = "link";
+  let primaryActionHandler: () => void = onConnectWallet;
+  let primaryActionHref: string | null = null;
+  let primaryActionKind: "button" | "link" = "button";
   let secondaryHeroActionLabel: string | null = null;
   let secondaryHeroActionDisabled = false;
   let secondaryHeroActionHandler: (() => void) | null = null;
@@ -1728,14 +1728,20 @@ export function BubbleDropShell() {
   if (!effectiveIsConnected) {
     heroPortalCopy = "Connect to wake";
     heroBody = "Use Daily mission for wallet setup.";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Sign in with Base";
+    primaryActionHandler = onConnectWallet;
+    primaryActionKind = "button";
+    primaryActionHref = null;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Switch to Base";
+    primaryActionHandler = onSwitchToBase;
+    primaryActionKind = "button";
+    primaryActionHref = null;
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
@@ -1743,7 +1749,10 @@ export function BubbleDropShell() {
     heroBody = "One signature to unlock app actions.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Sign in with Base";
+    primaryActionHandler = onSignInWithBase;
+    primaryActionKind = "button";
+    primaryActionHref = null;
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
@@ -1751,7 +1760,10 @@ export function BubbleDropShell() {
     heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Sync profile";
+    primaryActionHandler = onBootstrapProfile;
+    primaryActionKind = "button";
+    primaryActionHref = null;
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
@@ -1759,7 +1771,10 @@ export function BubbleDropShell() {
     heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Refresh profile";
+    primaryActionHandler = onRefreshProfile;
+    primaryActionKind = "button";
+    primaryActionHref = null;
     heroPortalCopy = "Glow calibrating";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
