@@ -29,6 +29,7 @@ frontend/next-env.d.ts
 
 # Local tooling
 .vercel/
+.cursor/settings.json
 
 # Legacy unrelated demo folder
 bubble/

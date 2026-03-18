@@ -83,12 +83,6 @@ type DailyCheckInResponse = {
   rareRewardAccessActive?: boolean;
 };
 
-type StarterAvatar = {
-  id: string;
-  key: string;
-  label: string;
-};
-
 type OnboardingCompletionResponse = {
   profileId: string;
   nickname: string;
@@ -611,20 +605,6 @@ function getSmokeWalletOverride():
   };
 }
 
-async function fetchStarterAvatars(backendUrl: string): Promise<StarterAvatar[]> {
-  const response = await fetch(`${backendUrl}/profile/starter-avatars`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    return [];
-  }
-
-  return (await response.json()) as StarterAvatar[];
-}
-
 type IntroBubbleSpec = {
   id: string;
   top: string;
@@ -716,10 +696,6 @@ export function BubbleDropShell() {
   );
   const [bootstrappedWalletAddress, setBootstrappedWalletAddress] = useState("");
   const [nicknameInput, setNicknameInput] = useState("");
-  const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
-  const [selectedStarterAvatarId, setSelectedStarterAvatarId] = useState<string | null>(null);
-  const [pressedAvatarId, setPressedAvatarId] = useState<string | null>(null);
-  const [isLoadingStarterAvatars, setIsLoadingStarterAvatars] = useState(false);
   const [isResolvingFirstEntry, setIsResolvingFirstEntry] = useState(true);
   const [isFirstEntry, setIsFirstEntry] = useState(true);
   const [profileSummary, setProfileSummary] = useState<BackendProfileSummary | null>(null);
@@ -1023,22 +999,6 @@ export function BubbleDropShell() {
     }
   }, [effectiveIsConnected, isSignedInWithBase, walletFlowState.phase, walletFlowState.stage]);
 
-  const loadStarterAvatarOptions = async () => {
-    if (!backendUrl) {
-      return [];
-    }
-
-    setIsLoadingStarterAvatars(true);
-    try {
-      const avatars = await fetchStarterAvatars(backendUrl);
-      setStarterAvatars(avatars);
-      setSelectedStarterAvatarId((currentValue) => currentValue ?? avatars[0]?.id ?? null);
-      return avatars;
-    } finally {
-      setIsLoadingStarterAvatars(false);
-    }
-  };
-
   const refreshProfileSummary = async (targetProfileId: string) => {
     const summary = await fetchBackendProfileSummary(backendUrl, targetProfileId);
     if (!summary) {
@@ -1052,9 +1012,6 @@ export function BubbleDropShell() {
     setIsFirstEntry(needsOnboarding);
     setBootstrappedWalletAddress(summary.profileIdentity.walletAddress);
     setNicknameInput(summary.profileIdentity.nickname ?? "");
-    setSelectedStarterAvatarId(
-      summary.avatarState.currentAvatar?.id ?? null,
-    );
     runtimeContext.setAppContext({
       profileId: summary.profileIdentity.profileId,
       walletAddress: summary.profileIdentity.walletAddress,
@@ -1062,7 +1019,6 @@ export function BubbleDropShell() {
     identifyAnalyticsUser(summary.profileIdentity.profileId, {
       wallet_address: summary.profileIdentity.walletAddress,
     });
-    await loadStarterAvatarOptions();
     return summary;
   };
 
@@ -1804,11 +1760,6 @@ export function BubbleDropShell() {
       return;
     }
 
-    if (!selectedStarterAvatarId) {
-      setActionMessage("Select one starter avatar before completing onboarding.");
-      return;
-    }
-
     setIsSubmittingAction(true);
     setActionMessage(null);
     try {
@@ -1818,12 +1769,11 @@ export function BubbleDropShell() {
         body: JSON.stringify({
           profileId,
           nickname,
-          avatarId: selectedStarterAvatarId,
         }),
       });
 
       if (!response.ok) {
-        setActionMessage("We couldn't finish onboarding. Check your nickname and avatar.");
+        setActionMessage("We couldn't finish onboarding. Check your nickname and try again.");
         return;
       }
 
@@ -1922,9 +1872,17 @@ export function BubbleDropShell() {
           : isRareRewardAccessActive
             ? "Rare lane detected"
             : "XP lane detected";
-  const dropRadarHint = isRareRewardAccessActive
-    ? "Rare drops can appear in today's run."
-    : "Check-in and sessions increase drop chance.";
+  const dropRadarHeadline = !effectiveIsConnected
+    ? "WALLET OFFLINE"
+    : !isConnectedToBase
+      ? "BASE REQUIRED"
+      : !authenticatedSessionToken
+        ? "AUTH LOCKED"
+        : isFirstEntry
+          ? "ONBOARDING"
+          : isRareRewardAccessActive
+            ? "RARE DETECTED"
+            : "XP DETECTED";
   const introTapBubbleIds = useMemo(
     () =>
       pickIntroTapTargets(
@@ -2408,7 +2366,7 @@ export function BubbleDropShell() {
               </p>
               <h1 className="mt-1 text-xl font-bold">Set your BubbleDrop identity</h1>
               <p className="mt-2 text-sm text-[#425b8a]">
-                Finish first entry with a nickname and one approved starter avatar. Backend confirms completion.
+                Finish first entry with a nickname. Starter Bubble Blue is applied automatically.
               </p>
             </div>
 
@@ -2423,68 +2381,12 @@ export function BubbleDropShell() {
               />
             </div>
 
-            <div className="mt-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#6074a0]">Starter avatar</p>
-              {isLoadingStarterAvatars ? (
-                <p className="mt-3 text-sm text-[#6074a0]">Loading starter avatars...</p>
-              ) : starterAvatars.length === 0 ? (
-                <p className="mt-3 text-sm text-[#7f3a53]">Starter avatars unavailable from backend.</p>
-              ) : (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {starterAvatars.map((avatar) => {
-                    const isSelected = selectedStarterAvatarId === avatar.id;
-                    const avatarTone = createAvatarBubbleTone(avatar.id);
-                    const avatarGlyphPreview = getAvatarGlyph(null, avatar.label);
-                    return (
-                      <button
-                        key={avatar.id}
-                        type="button"
-                        onClick={() => setSelectedStarterAvatarId(avatar.id)}
-                        onPointerDown={() => setPressedAvatarId(avatar.id)}
-                        onPointerUp={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                        onPointerLeave={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                        onPointerCancel={() => setPressedAvatarId((current) => (current === avatar.id ? null : current))}
-                        className={`rounded-xl border px-3 py-3 text-left text-sm font-semibold ${
-                          isSelected
-                            ? "border-[#8fc9ff] bg-gradient-to-r from-[#dff6ff] to-[#ece2ff] text-[#284679]"
-                            : "border-[#dce6ff] bg-white/80 text-[#3c588b]"
-                        }`}
-                      >
-                        <span className="flex items-center gap-3">
-                          <span
-                            className={`avatar-bubble-preview ${
-                              pressedAvatarId === avatar.id
-                                ? "avatar-bubble-touch"
-                                : ""
-                            }`}
-                            style={
-                              {
-                                "--avatar-base": avatarTone.base,
-                                "--avatar-highlight": avatarTone.highlight,
-                                "--avatar-glow": avatarTone.glow,
-                              } as CSSProperties
-                            }
-                          >
-                            <span className="avatar-bubble-liquid" />
-                            <span className="avatar-bubble-glyph">{avatarGlyphPreview}</span>
-                          </span>
-                          <span>{avatar.label}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
             <button
               type="button"
               onClick={onCompleteOnboarding}
               disabled={
                 isSubmittingAction ||
-                !authenticatedSessionToken ||
-                isLoadingStarterAvatars ||
-                starterAvatars.length === 0
+                !authenticatedSessionToken
               }
               className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-left text-sm font-semibold text-[#1f3561] disabled:opacity-60"
             >
@@ -2626,7 +2528,7 @@ export function BubbleDropShell() {
                 </div>
                 <div className="rounded-2xl bg-white/72 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7b8fb8]">Frame</p>
-                  <p className="mt-1 truncate text-sm font-black tracking-[-0.02em] text-[#233b67]">
+                  <p className="mt-1 min-h-[2rem] break-words text-[13px] font-black leading-[1.08] tracking-[-0.03em] text-[#233b67]">
                     {currentFrameLabel}
                   </p>
                 </div>
@@ -2686,19 +2588,6 @@ export function BubbleDropShell() {
                       </p>
                     </div>
                   </div>
-                  {awaitingProfileCreationOnly ? (
-                    <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
-                      After <strong className="text-[#284679]">Sync profile</strong> below, use{" "}
-                      <strong className="text-[#284679]">Open session</strong> here.
-                    </p>
-                  ) : null}
-                  {signInOnlyOnProfileCard ? (
-                    <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
-                      <strong className="text-[#284679]">Sign in with Base</strong> только на карточке
-                      профиля выше. Затем нажмите эту кнопку для ежедневного check-in (+20 XP), после —
-                      откроется сессия.
-                    </p>
-                  ) : null}
                   <button
                     type="button"
                     onClick={onDailyMissionPrimary}
@@ -2719,9 +2608,12 @@ export function BubbleDropShell() {
                       {dropRadarPercent}%
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-3 flex flex-col items-center text-center">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6b5d8f]">
+                      {dropRadarHeadline}
+                    </p>
                     <div
-                      className="drop-radar-dial relative h-12 w-12 shrink-0 rounded-full"
+                      className="drop-radar-dial relative mt-2 h-20 w-20 shrink-0 rounded-full"
                       style={
                         {
                           background: `conic-gradient(from 210deg, rgba(96,208,255,0.95) ${dropRadarPercent}%, rgba(255,255,255,0.55) ${dropRadarPercent}% 100%)`,
@@ -2730,14 +2622,13 @@ export function BubbleDropShell() {
                     >
                       <span className="drop-radar-sweep" />
                       <span className="drop-radar-ping" />
-                      <span className="absolute inset-[4px] grid place-items-center rounded-full bg-white/82 text-[9px] font-black text-[#5a4a83]">
+                      <span className="absolute inset-[6px] grid place-items-center rounded-full bg-white/82 text-[12px] font-black text-[#5a4a83]">
                         RAD
                       </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-black leading-4 text-[#3f3163]">{dropRadarStateLabel}</p>
-                      <p className="mt-1 text-[11px] leading-4 text-[#6e6490]">{dropRadarHint}</p>
-                    </div>
+                    <p className="mt-3 text-[13px] font-black leading-4 text-[#3f3163]">
+                      {dropRadarStateLabel}
+                    </p>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-1.5 text-center">
                     <div className="min-w-0 rounded-lg bg-white/64 px-1 py-1.5">

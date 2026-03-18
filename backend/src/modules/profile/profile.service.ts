@@ -52,6 +52,7 @@ export interface AvatarSelectionResult {
 }
 
 const DEFAULT_ONBOARDING_XP_AMOUNT = 20;
+const DEFAULT_STARTER_AVATAR_KEY = 'starter-bubble-blue';
 
 export interface ProfileSummary {
   onboardingState: {
@@ -282,10 +283,12 @@ export class ProfileService {
   async completeOnboarding(
     profileId: string,
     nickname: string,
-    avatarId: string,
+    avatarId?: string,
   ): Promise<OnboardingCompletionResult> {
     this.assertUuid(profileId, 'Invalid profileId format');
-    this.assertUuid(avatarId, 'Invalid avatarId format');
+    if (avatarId) {
+      this.assertUuid(avatarId, 'Invalid avatarId format');
+    }
 
     const normalizedNickname = nickname.trim();
     if (!normalizedNickname || normalizedNickname.length > 32) {
@@ -312,10 +315,16 @@ export class ProfileService {
       order: { createdAt: 'ASC' },
     });
     const starterAvatar =
-      starterAvatars.find((avatar) => avatar.id === avatarId) ?? null;
+      (avatarId
+        ? starterAvatars.find((avatar) => avatar.id === avatarId) ?? null
+        : starterAvatars.find((avatar) => avatar.key === DEFAULT_STARTER_AVATAR_KEY) ??
+          starterAvatars[0] ??
+          null);
     if (!starterAvatar) {
       throw new BadRequestException(
-        'Avatar must be one of approved starter avatars',
+        avatarId
+          ? 'Avatar must be one of approved starter avatars'
+          : 'Approved starter avatars are unavailable',
       );
     }
 

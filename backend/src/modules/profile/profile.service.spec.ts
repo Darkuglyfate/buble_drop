@@ -297,17 +297,15 @@ describe('ProfileService', () => {
       totalXp: 0,
       onboardingCompletedAt: null,
     });
-    avatarRepository.findOne!.mockResolvedValue({
-      id: 'avatar-starter',
-      isStarter: true,
-    });
     avatarRepository.find!.mockResolvedValue([
       {
         id: '22222222-2222-4222-8222-222222222222',
+        key: 'starter-bubble-blue',
         isStarter: true,
       },
       {
         id: '33333333-3333-4333-8333-333333333333',
+        key: 'starter-bubble-lilac',
         isStarter: true,
       },
     ]);
@@ -332,10 +330,10 @@ describe('ProfileService', () => {
     const result = await service.completeOnboarding(
       '11111111-1111-4111-8111-111111111111',
       'newbie',
-      '22222222-2222-4222-8222-222222222222',
     );
 
     expect(result.nickname).toBe('newbie');
+    expect(result.avatarId).toBe('22222222-2222-4222-8222-222222222222');
     expect(result.onboardingXpGranted).toBe(20);
     expect(result.totalXp).toBe(20);
     expect(result.needsOnboarding).toBe(false);
@@ -350,17 +348,15 @@ describe('ProfileService', () => {
       totalXp: 0,
       onboardingCompletedAt: null,
     });
-    avatarRepository.findOne!.mockResolvedValue({
-      id: 'avatar-starter',
-      isStarter: true,
-    });
     avatarRepository.find!.mockResolvedValue([
       {
         id: '22222222-2222-4222-8222-222222222222',
+        key: 'starter-bubble-blue',
         isStarter: true,
       },
       {
         id: '33333333-3333-4333-8333-333333333333',
+        key: 'starter-bubble-lilac',
         isStarter: true,
       },
     ]);
@@ -385,7 +381,6 @@ describe('ProfileService', () => {
     const result = await service.completeOnboarding(
       '11111111-1111-4111-8111-111111111111',
       'defaulted',
-      '22222222-2222-4222-8222-222222222222',
     );
 
     expect(result.onboardingXpGranted).toBe(20);
@@ -413,7 +408,6 @@ describe('ProfileService', () => {
       service.completeOnboarding(
         '11111111-1111-4111-8111-111111111111',
         'new-name',
-        '22222222-2222-4222-8222-222222222222',
       ),
     ).rejects.toBeInstanceOf(ConflictException);
 
