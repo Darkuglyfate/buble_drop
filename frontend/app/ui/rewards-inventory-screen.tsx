@@ -40,7 +40,9 @@ type InventoryCosmetic = {
 
 type CosmeticSlot = "avatar" | "bubbleSkin" | "trail" | "badge";
 type OwnershipFilter = "all" | "obtained" | "equipped";
-type RarityLevel = "common" | "rare" | "epic" | "legendary";
+import type { ProfileStyleRarity } from "./profile-style-rarity";
+
+type RarityLevel = ProfileStyleRarity;
 type RarityFilter = "all" | RarityLevel;
 type SeasonFilter = "all" | "core" | "genesis";
 
@@ -163,7 +165,7 @@ type EquipStyleResponse = {
   equippedStyle: {
     rewardId: string;
     rewardKey: string;
-    rarity: "common" | "rare" | "epic" | "legendary";
+    rarity: ProfileStyleRarity;
     source: "nft" | "cosmetic";
     variant: string;
     appliedAt: string;
@@ -234,12 +236,18 @@ function inferRarity(
   if (normalizedTier === "rare") {
     return "rare";
   }
+  if (normalizedTier === "uncommon") {
+    return "uncommon";
+  }
   const source = `${key} ${label}`.toLowerCase();
   if (source.includes("legendary")) {
     return "legendary";
   }
   if (source.includes("epic")) {
     return "epic";
+  }
+  if (source.includes("uncommon") || source.includes("unusual")) {
+    return "uncommon";
   }
   if (source.includes("rare") || source.includes("glossy")) {
     return "rare";
@@ -896,6 +904,7 @@ export function RewardsInventoryScreen() {
                 >
                   <option value="all">All rarity</option>
                   <option value="common">Common</option>
+                  <option value="uncommon">Uncommon</option>
                   <option value="rare">Rare</option>
                   <option value="epic">Epic</option>
                   <option value="legendary">Legendary</option>

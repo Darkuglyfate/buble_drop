@@ -1,5 +1,8 @@
 "use client";
 
+import type { ProfileStyleRarity } from "./profile-style-rarity";
+import { normalizeProfileStyleRarity } from "./profile-style-rarity";
+
 export type BackendProfileSummary = {
   onboardingState: {
     needsOnboarding: boolean;
@@ -55,7 +58,7 @@ export type BackendProfileSummary = {
     equippedStyle: {
       rewardId: string;
       rewardKey: string;
-      rarity: "common" | "rare" | "epic" | "legendary";
+      rarity: ProfileStyleRarity;
       source: "nft" | "cosmetic";
       variant: string;
       appliedAt: string;
@@ -85,5 +88,12 @@ export async function fetchBackendProfileSummary(
     return null;
   }
 
-  return (await response.json()) as BackendProfileSummary;
+  const raw = (await response.json()) as BackendProfileSummary;
+  if (raw?.styleState?.equippedStyle?.rarity != null) {
+    raw.styleState.equippedStyle = {
+      ...raw.styleState.equippedStyle,
+      rarity: normalizeProfileStyleRarity(raw.styleState.equippedStyle.rarity as string),
+    };
+  }
+  return raw;
 }

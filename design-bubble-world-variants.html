@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bubble world — 3 варианта редизайна</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Sora:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #1a2d52;
+        --muted: #5a7199;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Sora", system-ui, sans-serif;
+        background: #0c1224;
+        color: #e8eefc;
+        min-height: 100vh;
+      }
+      .page-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background:
+          radial-gradient(900px 500px at 20% 10%, rgba(100, 180, 255, 0.18), transparent 55%),
+          radial-gradient(700px 400px at 85% 70%, rgba(255, 140, 200, 0.12), transparent 50%),
+          radial-gradient(600px 380px at 50% 100%, rgba(160, 120, 255, 0.1), transparent 45%),
+          linear-gradient(165deg, #0f1830 0%, #0a0f1c 100%);
+        pointer-events: none;
+      }
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 420px;
+        margin: 0 auto;
+        padding: 20px 16px 56px;
+      }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        margin: -4px -8px 20px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(15, 24, 48, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .topbar h1 {
+        margin: 0;
+        font-family: "Outfit", sans-serif;
+        font-size: 1rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #b8cef5;
+      }
+      .topbar p {
+        margin: 6px 0 0;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #8a9ec0;
+      }
+      .topbar nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .topbar a {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #7eb8ff;
+        text-decoration: none;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(100, 160, 255, 0.12);
+        border: 1px solid rgba(120, 180, 255, 0.25);
+      }
+      .topbar a:hover {
+        background: rgba(100, 160, 255, 0.22);
+      }
+      .block {
+        margin-bottom: 36px;
+      }
+      .block h2 {
+        margin: 0 0 6px;
+        font-family: "Outfit", sans-serif;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #9db7e8;
+      }
+      .block .desc {
+        margin: 0 0 14px;
+        font-size: 11px;
+        line-height: 1.5;
+        color: #7d8fb5;
+        max-width: 36em;
+      }
+      .phone {
+        border-radius: 22px;
+        padding: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .bw-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+      .bw-head span {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #8fa6cc;
+      }
+
+      /* ——— A · Bento ——— */
+      .v-bento {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto auto;
+        gap: 10px;
+        grid-template-areas:
+          "season season"
+          "season season"
+          "board ref"
+          "tokens tokens";
+      }
+      .v-bento .tile {
+        border-radius: 18px;
+        padding: 14px 14px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        min-height: 72px;
+        cursor: default;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      .v-bento .tile:hover {
+        transform: translateY(-2px);
+      }
+      .v-bento .season {
+        grid-area: season;
+        min-height: 120px;
+        background: linear-gradient(145deg, rgba(180, 230, 255, 0.35), rgba(200, 190, 255, 0.25));
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow: 0 12px 32px rgba(60, 100, 180, 0.2);
+        backdrop-filter: blur(14px);
+      }
+      .v-bento .board {
+        grid-area: board;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+      }
+      .v-bento .ref {
+        grid-area: ref;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(10px);
+      }
+      .v-bento .tokens {
+        grid-area: tokens;
+        min-height: 64px;
+        background: linear-gradient(90deg, rgba(255, 200, 230, 0.2), rgba(210, 200, 255, 0.2));
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        backdrop-filter: blur(12px);
+      }
+      .v-bento .ico {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.2);
+        margin-bottom: 8px;
+      }
+      .v-bento .season .ico {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+      }
+      .v-bento .label {
+        font-family: "Outfit", sans-serif;
+        font-size: 15px;
+        font-weight: 800;
+        color: #fff;
+        letter-spacing: -0.02em;
+      }
+      .v-bento .sub {
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.65);
+        margin-top: 2px;
+      }
+
+      /* ——— B · Glass uniform ——— */
+      .v-glass {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .v-glass .tile {
+        border-radius: 18px;
+        padding: 16px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: linear-gradient(165deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+        backdrop-filter: blur(16px) saturate(140%);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        transition: transform 0.15s ease, border-color 0.15s ease;
+      }
+      .v-glass .tile:hover {
+        transform: scale(1.02);
+        border-color: rgba(255, 255, 255, 0.45);
+      }
+      .v-glass .tile:nth-child(1) {
+        border-left: 3px solid rgba(120, 200, 255, 0.9);
+      }
+      .v-glass .tile:nth-child(2) {
+        border-left: 3px solid rgba(180, 160, 255, 0.9);
+      }
+      .v-glass .tile:nth-child(3) {
+        border-left: 3px solid rgba(255, 190, 120, 0.9);
+      }
+      .v-glass .tile:nth-child(4) {
+        border-left: 3px solid rgba(255, 150, 190, 0.9);
+      }
+      .v-glass .label {
+        font-family: "Outfit", sans-serif;
+        font-size: 14px;
+        font-weight: 800;
+        color: #fff;
+      }
+      .v-glass .hint {
+        font-size: 9px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(255, 255, 255, 0.5);
+        margin-top: 6px;
+      }
+
+      /* ——— C · Playful capsules ——— */
+      .v-cap {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .v-cap .tile {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 18px;
+        border-radius: 999px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        background: radial-gradient(120% 80% at 10% 20%, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.04));
+        box-shadow:
+          0 6px 20px rgba(80, 120, 200, 0.15),
+          inset 0 -2px 12px rgba(0, 0, 0, 0.08);
+        transition: transform 0.12s ease;
+      }
+      .v-cap .tile:active {
+        transform: scale(0.98);
+      }
+      .v-cap .blob {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        box-shadow: inset 0 -4px 12px rgba(0, 0, 0, 0.15);
+      }
+      .v-cap .t1 .blob {
+        background: linear-gradient(145deg, #7ec8ff, #5a9fd4);
+      }
+      .v-cap .t2 .blob {
+        background: linear-gradient(145deg, #c4a8ff, #8b7adb);
+      }
+      .v-cap .t3 .blob {
+        background: linear-gradient(145deg, #ffd48a, #f0a060);
+      }
+      .v-cap .t4 .blob {
+        background: linear-gradient(145deg, #ffa8c8, #e878a8);
+      }
+      .v-cap .text {
+        flex: 1;
+        min-width: 0;
+      }
+      .v-cap .label {
+        font-family: "Outfit", sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+        color: #fff;
+      }
+      .v-cap .sub {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.55);
+        margin-top: 2px;
+      }
+      .v-cap .chev {
+        color: rgba(255, 255, 255, 0.35);
+        font-size: 18px;
+        font-weight: 300;
+      }
+
+      .mcp-note {
+        margin-top: 28px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        font-size: 11px;
+        line-height: 1.55;
+        color: #8fa3c4;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px dashed rgba(255, 255, 255, 0.12);
+      }
+      .mcp-note strong {
+        color: #c5d8ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+    <div class="wrap">
+      <div class="topbar">
+        <h1>Bubble world — выбор варианта</h1>
+        <p>
+          Три макета на одной странице. Открой файл в браузере, сравни, напиши букву
+          <strong style="color: #a8c8ff">A</strong>,
+          <strong style="color: #a8c8ff">B</strong> или
+          <strong style="color: #a8c8ff">C</strong> — перенесём в Next.js.
+        </p>
+        <nav>
+          <a href="#v-a">A · Bento</a>
+          <a href="#v-b">B · Glass</a>
+          <a href="#v-c">C · Capsules</a>
+        </nav>
+      </div>
+
+      <div class="block" id="v-a">
+        <h2>A · Bento</h2>
+        <p class="desc">
+          Крупный тайл <strong>Season</strong> — фокус внимания; остальные вторичны (тренд bento grid,
+          референс через MCP Brave: stan.vision / bento UI).
+        </p>
+        <div class="phone">
+          <div class="bw-head"><span>Bubble world</span></div>
+          <div class="v-bento">
+            <div class="tile season">
+              <div class="ico"></div>
+              <div class="label">Season</div>
+              <div class="sub">Главный сезон · награды</div>
+            </div>
+            <div class="tile board">
+              <div class="ico" style="height: 28px"></div>
+              <div class="label" style="font-size: 13px">Board</div>
+            </div>
+            <div class="tile ref">
+              <div class="ico" style="height: 28px"></div>
+              <div class="label" style="font-size: 13px">Referrals</div>
+            </div>
+            <div class="tile tokens">
+              <div class="label" style="font-size: 14px">Tokens</div>
+              <div class="sub">Партнёрский пул</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="block" id="v-b">
+        <h2>B · Единое стекло</h2>
+        <p class="desc">
+          Один визуальный язык: blur + лёгкий градиент. Различие только цветной акцент-полоска слева
+          (glassmorphism, uxpilot / ui.glass).
+        </p>
+        <div class="phone">
+          <div class="bw-head"><span>Bubble world</span></div>
+          <div class="v-glass">
+            <div class="tile">
+              <div class="label">Season</div>
+              <div class="hint">Сезон</div>
+            </div>
+            <div class="tile">
+              <div class="label">Board</div>
+              <div class="hint">Таблица</div>
+            </div>
+            <div class="tile">
+              <div class="label">Referrals</div>
+              <div class="hint">Приглашения</div>
+            </div>
+            <div class="tile">
+              <div class="label">Tokens</div>
+              <div class="hint">Партнёры</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="block" id="v-c">
+        <h2>C · Капсулы</h2>
+        <p class="desc">
+          Вертикальный список «пилюль» с цветным шаром-иконкой — удобно для большого пальца, ощущение
+          игры и пузырей.
+        </p>
+        <div class="phone">
+          <div class="bw-head"><span>Bubble world</span></div>
+          <div class="v-cap">
+            <div class="tile t1">
+              <div class="blob">◇</div>
+              <div class="text">
+                <div class="label">Season</div>
+                <div class="sub">Текущий сезон и дропы</div>
+              </div>
+              <span class="chev">›</span>
+            </div>
+            <div class="tile t2">
+              <div class="blob">▤</div>
+              <div class="text">
+                <div class="label">Board</div>
+                <div class="sub">Лидерборд</div>
+              </div>
+              <span class="chev">›</span>
+            </div>
+            <div class="tile t3">
+              <div class="blob">✦</div>
+              <div class="text">
+                <div class="label">Referrals</div>
+                <div class="sub">Пригласи друзей</div>
+              </div>
+              <span class="chev">›</span>
+            </div>
+            <div class="tile t4">
+              <div class="blob">◈</div>
+              <div class="text">
+                <div class="label">Tokens</div>
+                <div class="sub">Пул партнёров</div>
+              </div>
+              <span class="chev">›</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mcp-note">
+        <strong>MCP:</strong> вариант A опирается на поиск Brave (bento grid — крупный тайл + фокус).
+        Вариант B — на тренды glassmorphism (слои, blur, без перегруза). Вариант C — отдельный UX-паттерн
+        под мобильный tap. Файл:
+        <code style="color: #9ec0ff">design-bubble-world-variants.html</code>
+        в корне репозитория.
+      </div>
+    </div>
+  </body>
+</html>

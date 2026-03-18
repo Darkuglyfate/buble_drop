@@ -47,6 +47,10 @@ import {
   savePersistedEquippedStyle,
   type EquippedStyleSnapshot,
 } from "./equipped-style-sync";
+import {
+  ProfileBubbleMotionShell,
+  ProfileRarityChipMotion,
+} from "./profile-rarity-motion";
 
 type ProfileBootstrapResponse = {
   profileId: string;
@@ -164,6 +168,52 @@ const QUALIFICATION_BADGE_COPY: Record<
       "bg-gradient-to-r from-[#ffe38f] to-[#ffb5e7] text-[#6b3f00] shadow-[0_0_20px_rgba(255,208,128,0.65)]",
   },
 };
+
+/** Local-only demo: cycles profile bubble through all five rarity tiers (motion + styling). */
+const COSMETIC_PREVIEW_INTERVAL_MS = 5000;
+
+const COSMETIC_PREVIEW_DEMOS: EquippedStyleSnapshot[] = [
+  {
+    rewardId: "demo-c",
+    rewardKey: "preview.bubble.azure.mist",
+    rarity: "common",
+    source: "cosmetic",
+    variant: "preview",
+    appliedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    rewardId: "demo-u",
+    rewardKey: "preview.bubble.lagoon.sheen",
+    rarity: "uncommon",
+    source: "cosmetic",
+    variant: "preview",
+    appliedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    rewardId: "demo-r",
+    rewardKey: "preview.bubble.reef.current",
+    rarity: "rare",
+    source: "cosmetic",
+    variant: "preview",
+    appliedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    rewardId: "demo-e",
+    rewardKey: "preview.bubble.nebula.veil",
+    rarity: "epic",
+    source: "cosmetic",
+    variant: "preview",
+    appliedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    rewardId: "demo-l",
+    rewardKey: "preview.bubble.solar.crown",
+    rarity: "legendary",
+    source: "cosmetic",
+    variant: "preview",
+    appliedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
 
 const ONBOARDING_CARDS: OnboardingCard[] = [
   {
@@ -621,6 +671,8 @@ export function BubbleDropShell() {
   const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
     useState<EquippedStyleSnapshot | null>(null);
+  const [cosmeticTierPreviewActive, setCosmeticTierPreviewActive] = useState(false);
+  const [cosmeticPreviewIndex, setCosmeticPreviewIndex] = useState(0);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
     Array<{ id: string; x: number; y: number }>
@@ -706,24 +758,21 @@ export function BubbleDropShell() {
   const isRareRewardAccessActive = profileSummary?.rareRewardAccess.active ?? false;
   const qualificationBadge = qualificationStatus
     ? QUALIFICATION_BADGE_COPY[qualificationStatus]
-    : {
-        label: "Pending",
-        className: "bg-[#eef2fb] text-[#5d6f93]",
-      };
+    : null;
   const nicknameDisplay =
     profileSummary?.profileIdentity.nickname ??
     (connectedWalletAddress ? "Fresh bubble" : "Guest bubble");
-  const avatarLabel =
-    profileSummary?.avatarState.currentAvatar?.label ??
-    (profileId ? "Starter bubble" : "Wake BubbleDrop");
+  const profileCardEquippedStyle = cosmeticTierPreviewActive
+    ? COSMETIC_PREVIEW_DEMOS[cosmeticPreviewIndex % COSMETIC_PREVIEW_DEMOS.length]
+    : equippedStyleSnapshot;
   const profileVisualSeed =
-    equippedStyleSnapshot?.rewardKey ??
-    equippedStyleSnapshot?.rewardId ??
+    profileCardEquippedStyle?.rewardKey ??
+    profileCardEquippedStyle?.rewardId ??
     profileSummary?.avatarState.currentAvatar?.id ??
     profileSummary?.avatarState.currentAvatar?.key ??
     "bubble-default";
   const profileBubbleTone = createAvatarBubbleTone(profileVisualSeed);
-  const equippedRarity = equippedStyleSnapshot?.rarity ?? null;
+  const equippedRarity = profileCardEquippedStyle?.rarity ?? null;
   const profileStyleShellClass =
     equippedRarity === "legendary"
       ? "from-white/90 via-[#faf8f5]/88 to-[#f5f0e8]/82 ring-[#e8dcc8]/70"
@@ -731,7 +780,9 @@ export function BubbleDropShell() {
         ? "from-[#f2e8ff]/86 via-[#e7ddff]/72 to-[#d8ecff]/68 ring-[#ddbeff]/72"
         : equippedRarity === "rare"
           ? "from-[#e6f8ff]/86 via-[#d8f0ff]/74 to-[#dce8ff]/66 ring-[#b8e8ff]/72"
-          : "from-white/84 via-white/72 to-white/66 ring-white/72";
+          : equippedRarity === "uncommon"
+            ? "from-[#e8fbff]/86 via-[#dcf8fc]/74 to-[#e6f2ff]/68 ring-[#8ee0e8]/72"
+            : "from-white/84 via-white/72 to-white/66 ring-white/72";
   const profileRarityChipClass =
     equippedRarity === "legendary"
       ? "profile-rarity-chip-legendary"
@@ -739,26 +790,30 @@ export function BubbleDropShell() {
         ? "profile-rarity-chip-epic"
         : equippedRarity === "rare"
           ? "profile-rarity-chip-rare"
-          : "profile-rarity-chip-common";
+          : equippedRarity === "uncommon"
+            ? "profile-rarity-chip-uncommon"
+            : "profile-rarity-chip-common";
   const profileEmblemRarityClass =
     equippedRarity === "legendary"
-      ? "profile-emblem-rarity-legendary"
+      ? "profile-emblem-rarity-legendary-framer"
       : equippedRarity === "epic"
         ? "profile-emblem-rarity-epic"
         : equippedRarity === "rare"
           ? "profile-emblem-rarity-rare"
-          : "profile-emblem-rarity-common";
-  const profileEmblemCategoryClass = equippedStyleSnapshot
-    ? inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Trail"
+          : equippedRarity === "uncommon"
+            ? "profile-emblem-rarity-uncommon"
+            : "profile-emblem-rarity-common";
+  const profileEmblemCategoryClass = profileCardEquippedStyle
+    ? inferStyleCategoryLabel(profileCardEquippedStyle.rewardKey) === "Trail"
       ? "profile-emblem-category-trail"
-      : inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Badge"
+      : inferStyleCategoryLabel(profileCardEquippedStyle.rewardKey) === "Badge"
         ? "profile-emblem-category-badge"
-        : inferStyleCategoryLabel(equippedStyleSnapshot.rewardKey) === "Avatar"
+        : inferStyleCategoryLabel(profileCardEquippedStyle.rewardKey) === "Avatar"
           ? "profile-emblem-category-avatar"
           : "profile-emblem-category-bubble"
     : "profile-emblem-category-bubble";
-  const equippedStyleName = equippedStyleSnapshot
-    ? formatRewardKeyLabel(equippedStyleSnapshot.rewardKey)
+  const equippedStyleName = profileCardEquippedStyle
+    ? formatRewardKeyLabel(profileCardEquippedStyle.rewardKey)
     : "Default style";
   const walletDisplay = shortenWalletAddress(
     activeWalletAddress ?? connectedWalletAddress,
@@ -772,6 +827,8 @@ export function BubbleDropShell() {
     profileSummary?.rankFrameState.currentFrame?.minLifetimeXp ?? 0;
   const hasUnlockedCollection =
     Boolean(profileId) && !profileSummary?.onboardingState.needsOnboarding;
+  /** After wallet + profile sync: show hero, Bubble world, Glass, etc. */
+  const showFullBubbleDropMenu = Boolean(profileId);
   const progressToNextFramePercent = nextFrame
     ? Math.max(
         8,
@@ -819,7 +876,7 @@ export function BubbleDropShell() {
       : "border-[#dce6ff] bg-[#f8fbff] text-[#2d4578]";
   const walletFlowTitle =
     walletFlowState.stage === "connecting"
-      ? "Connecting"
+      ? "Signing in…"
       : walletFlowState.stage === "awaiting_wallet_approval"
         ? "Awaiting wallet approval"
         : walletFlowState.stage === "signing_in"
@@ -1561,7 +1618,7 @@ export function BubbleDropShell() {
     setWelcomeIntroVisible(false);
   };
 
-  const onDailyCheckIn = async () => {
+  const onDailyCheckIn = async (opts?: { openBubbleSessionAfter?: boolean }) => {
     if (!profileId) {
       setActionMessage("Connect, sign in, and sync your profile before checking in.");
       return;
@@ -1628,6 +1685,9 @@ export function BubbleDropShell() {
           payload.newStreak ?? payload.currentStreak ?? 0
         }.`,
       );
+      if (opts?.openBubbleSessionAfter && quickSessionHref) {
+        window.location.assign(quickSessionHref);
+      }
     } catch {
       setActionMessage("Today's check-in did not land. Try again in a moment.");
     } finally {
@@ -1706,18 +1766,23 @@ export function BubbleDropShell() {
       ? isConnectedToBase
         ? "Base ready"
         : "Switch to Base"
-      : "Connect wallet",
+      : "Sign in needed",
     authenticatedSessionToken ? "Signed in" : "Secure sign-in needed",
-    isRareRewardAccessActive ? "Rare glow live" : qualificationBadge.label,
+    isRareRewardAccessActive
+      ? "Rare glow live"
+      : qualificationBadge
+        ? qualificationBadge.label
+        : "Rare access off",
   ];
   const canSyncProfile =
     !isSubmittingAction &&
     Boolean(authenticatedSessionToken) &&
     Boolean(connectedWalletAddress) &&
     isConnectedToBase;
-  let heroStatusLabel = "Arrival";
-  let heroTitle = "Wake your bubble and step into today's drop.";
-  let heroBody = "Connect -> Sign -> Play.";
+  let heroStatusLabel = "Wallet";
+  let heroTitle = "Start here — then play, streak, earn.";
+  let heroBody =
+    "Pop bubbles in runs, check in daily to grow your streak, and unlock shots at NFT profile cosmetics plus partner-pool rewards. Your first move: scroll to Daily mission and tap Sign in with Base — link your wallet and you’re in.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
   let primaryActionLabel = "Sign in with Base";
@@ -1807,11 +1872,39 @@ export function BubbleDropShell() {
     return () => window.clearTimeout(timer);
   }, [introBubblesRemaining, welcomeIntroVisible]);
 
+  const cosmeticUrlDemoRef = useRef(false);
+  useEffect(() => {
+    if (welcomeIntroVisible || cosmeticUrlDemoRef.current) {
+      return;
+    }
+    try {
+      if (new URLSearchParams(window.location.search).get("cosmeticDemo") === "1") {
+        cosmeticUrlDemoRef.current = true;
+        setCosmeticTierPreviewActive(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [welcomeIntroVisible]);
+
+  useEffect(() => {
+    if (!cosmeticTierPreviewActive) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setCosmeticPreviewIndex((i) => (i + 1) % COSMETIC_PREVIEW_DEMOS.length);
+    }, COSMETIC_PREVIEW_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [cosmeticTierPreviewActive]);
+
   const showHeroSecondaryAction = false;
 
   if (!effectiveIsConnected) {
-    heroPortalCopy = "Connect to wake";
-    heroBody = "Use Daily mission for wallet setup.";
+    heroStatusLabel = "Wallet";
+    heroPortalCopy = "Base entry";
+    heroTitle = "Start here — then play, streak, earn.";
+    heroBody =
+      "Pop bubbles in runs, check in daily to grow your streak, and unlock shots at NFT profile cosmetics plus partner-pool rewards. Your first move: scroll to Daily mission and tap Sign in with Base — link your wallet and you’re in.";
     primaryActionLabel = "Sign in with Base";
     primaryActionHandler = onConnectWallet;
     primaryActionKind = "button";
@@ -1861,19 +1954,32 @@ export function BubbleDropShell() {
     primaryActionKind = "button";
     primaryActionHref = null;
     heroPortalCopy = "Glow calibrating";
+  } else if (!dailyCheckInCompletedToday) {
+    /* ARRIVAL: ежедневный check-in на Base (газ), пока визит не отмечен */
+    heroStatusLabel = "Arrival";
+    heroTitle = "Mark today's visit on Base.";
+    heroBody =
+      "Daily check-in is an on-chain tap — small gas on Base, +XP and streak. Do it once per day.";
+    heroAccentClass =
+      "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
+    primaryActionLabel = isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)";
+    primaryActionHandler = () => {
+      void onDailyCheckIn();
+    };
+    primaryActionKind = "button";
+    primaryActionHref = null;
+    primaryActionDisabled = isSubmittingAction;
+    heroPortalCopy = "Base check-in";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Rewards paused";
     heroTitle = "Your glow is still alive, but premium drops are resting.";
-    heroBody = "Play session + check-in to restore rare.";
+    heroBody = "Play a warm-up run to move forward.";
     heroAccentClass =
       "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
     primaryActionLabel = "Enter a warm-up run";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
-    secondaryHeroActionDisabled = isSubmittingAction;
-    secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Premium lane resting";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
@@ -1881,43 +1987,34 @@ export function BubbleDropShell() {
     heroBody = "Rare rewards are active today.";
     heroAccentClass =
       "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
-    primaryActionLabel = "Enter today's bubble run";
+    primaryActionLabel = "Tap to play";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
-    secondaryHeroActionDisabled = isSubmittingAction;
-    secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Rare lane live";
   } else if (!isRareRewardAccessActive) {
     heroStatusLabel = "XP-only mode";
     heroTitle = "Today still moves your bubble forward.";
-    heroBody = "XP mode is active.";
+    heroBody = "XP mode is active — jump into bubbles.";
     heroAccentClass =
       "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
-    primaryActionLabel = "Enter an XP run";
+    primaryActionLabel = "Tap to play";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
-    secondaryHeroActionDisabled = isSubmittingAction;
-    secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "XP lane open";
     showHeroSection = false;
     showDedicatedDailyCheckSection = true;
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
-    heroTitle = "Your bubble board is awake and ready for today's run.";
-    heroBody = "All systems ready.";
+    heroTitle = "You're checked in — time for bubbles.";
+    heroBody = "Open the bubble session when you're ready.";
     heroAccentClass =
       "from-[#b7f0ff]/95 via-[#d8dcff]/92 to-[#ffe0f0]/92 text-[#173056]";
-    primaryActionLabel = "Enter bubble play";
+    primaryActionLabel = "Tap to play";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    secondaryHeroActionLabel = "Daily check-in (+20 XP)";
-    secondaryHeroActionDisabled = isSubmittingAction;
-    secondaryHeroActionHandler = onDailyCheckIn;
     heroPortalCopy = "Play portal ready";
   }
 
@@ -1948,7 +2045,7 @@ export function BubbleDropShell() {
       return;
     }
     if (!dailyCheckInCompletedToday) {
-      void onDailyCheckIn();
+      void onDailyCheckIn({ openBubbleSessionAfter: true });
       return;
     }
     if (quickSessionHref) {
@@ -1956,10 +2053,10 @@ export function BubbleDropShell() {
     }
   };
 
-  let dailyMissionPrimaryLabel = "Open session";
+  let dailyMissionPrimaryLabel = "Tap to play";
   let dailyMissionPrimaryDisabled = false;
   if (!effectiveIsConnected) {
-    dailyMissionPrimaryLabel = isWalletFlowBusy ? "Connecting…" : "Connect profile";
+    dailyMissionPrimaryLabel = isWalletFlowBusy ? "Signing in…" : "Sign in with Base";
     dailyMissionPrimaryDisabled = isWalletFlowBusy;
   } else if (!isConnectedToBase) {
     dailyMissionPrimaryLabel = "Switch to Base";
@@ -1974,14 +2071,13 @@ export function BubbleDropShell() {
     dailyMissionPrimaryLabel = isSubmittingAction ? "Refreshing…" : "Refresh profile";
     dailyMissionPrimaryDisabled = isSubmittingAction;
   } else if (showDedicatedDailyCheckSection) {
-    dailyMissionPrimaryLabel = "Open session";
+    dailyMissionPrimaryLabel = "Tap to play";
     dailyMissionPrimaryDisabled = !quickSessionHref;
-  } else if (!dailyCheckInCompletedToday) {
-    dailyMissionPrimaryLabel = isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)";
-    dailyMissionPrimaryDisabled = isSubmittingAction;
   } else {
-    dailyMissionPrimaryLabel = "Open session";
-    dailyMissionPrimaryDisabled = !quickSessionHref;
+    dailyMissionPrimaryLabel = isSubmittingAction ? "Checking in…" : "Tap to play";
+    dailyMissionPrimaryDisabled =
+      isSubmittingAction ||
+      (dailyCheckInCompletedToday ? !quickSessionHref : false);
   }
 
   const onAnswer = (index: number) => {
@@ -2311,29 +2407,51 @@ export function BubbleDropShell() {
           </section>
         ) : (
           <>
-            {showWelcomeBeforeSync ? (
-              <section className="bubble-card p-4">
-                <div className="gloss-pill rounded-2xl bg-gradient-to-r from-[#99dbff] to-[#d6c8ff] p-4 text-[#1d2f57]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#3d5686]">
-                    Welcome
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold">Welcome to BubbleDrop</h2>
-                  <p className="mt-2 text-sm text-[#425b8a]">
-                    One more step: use the single <strong>Sync profile</strong> button in the
-                    Profile sync card below (Next move).
-                  </p>
-                </div>
-              </section>
-            ) : null}
             <section
               className={`bubble-card player-profile-card relative overflow-hidden bg-gradient-to-br p-4 ring-1 ${profileStyleShellClass}`}
             >
+              {showWelcomeBeforeSync ? (
+                <div className="relative z-[2] mb-3 rounded-xl border border-[#b8d4ff]/90 bg-gradient-to-r from-[#e8f4ff] to-[#f0e8ff] px-3 py-2.5 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#3d5686]">
+                    Welcome
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-snug text-[#2d4578]">
+                    Almost there — tap <strong className="text-[#1f3561]">Sync profile</strong> in{" "}
+                    <strong className="text-[#1f3561]">Daily mission</strong> below.
+                  </p>
+                </div>
+              ) : null}
+              {cosmeticTierPreviewActive ? (
+                <div className="relative z-[2] mb-3 flex flex-col items-center gap-1 rounded-xl border border-[#b8cce8]/90 bg-white/80 px-3 py-2 shadow-sm">
+                  <p className="text-center text-[11px] font-bold uppercase tracking-[0.14em] text-[#2a4a78]">
+                    Rarity demo {cosmeticPreviewIndex + 1}/{COSMETIC_PREVIEW_DEMOS.length} ·{" "}
+                    {COSMETIC_PREVIEW_DEMOS[cosmeticPreviewIndex].rarity}
+                  </p>
+                  <p className="text-center text-[10px] text-[#62759a]">
+                    Pauses {COSMETIC_PREVIEW_INTERVAL_MS / 1000}s each ·{" "}
+                    <button
+                      type="button"
+                      className="font-semibold text-[#3d5a9e] underline decoration-[#b8c8e8] underline-offset-2"
+                      onClick={() => {
+                        setCosmeticTierPreviewActive(false);
+                        setCosmeticPreviewIndex(0);
+                      }}
+                    >
+                      Stop
+                    </button>
+                  </p>
+                </div>
+              ) : null}
               <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),transparent_70%)]" />
               <div className="absolute -right-10 top-0 h-28 w-28 rounded-full bg-[#ffdff0]/50 blur-3xl" />
               <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-[#ccefff]/50 blur-3xl" />
               <div className="relative flex items-start gap-3">
-                <div
-                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} ${profileEmblemCategoryClass} ${equippedStyleSnapshot ? "profile-emblem-equipped" : ""} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
+                <ProfileBubbleMotionShell
+                  rarity={
+                    profileCardEquippedStyle?.rarity ??
+                    ("common" as const)
+                  }
+                  className={`profile-emblem profile-bubble-main ${profileEmblemRarityClass} ${profileEmblemCategoryClass} ${profileCardEquippedStyle ? "profile-emblem-equipped" : ""} relative flex h-24 w-24 items-center justify-center rounded-[2.2rem] text-3xl font-black tracking-[0.12em] text-[#21406e] shadow-[0_18px_45px_rgba(109,145,219,0.28)] ring-1 ring-white/70 ${
                     isProfileBubblePressed ? "profile-bubble-touch" : ""
                   }`}
                   style={
@@ -2356,48 +2474,31 @@ export function BubbleDropShell() {
                   <span className="profile-bubble-orbit profile-bubble-orbit-b" />
                   <span className="absolute right-2 top-2 h-3 w-3 rounded-full bg-white/80" />
                   <span className="absolute bottom-3 left-3 h-2 w-2 rounded-full bg-white/60" />
-                </div>
+                </ProfileBubbleMotionShell>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7085b0]">
-                    Пузырь · Bubble
+                    Bubble · Profile
                   </p>
                   <h1 className="mt-1 break-words text-[1.45rem] font-black leading-[1.05] tracking-[-0.035em] text-[#20365d]">
                     {nicknameDisplay}
                   </h1>
-                  {equippedStyleSnapshot ? (
+                  {profileCardEquippedStyle ? (
                     <>
                       <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8b9cc4]">
-                        Акцент на пузыре
+                        {cosmeticTierPreviewActive ? "Demo cosmetic" : "Equipped on bubble"}
                       </p>
                       <p className="mt-0.5 text-[0.95rem] font-bold leading-snug text-[#1e355d]">
                         {equippedStyleName}
                       </p>
-                      <span
+                      <ProfileRarityChipMotion
+                        rarity={profileCardEquippedStyle.rarity}
                         className={`profile-rarity-chip mt-2 inline-flex ${profileRarityChipClass}`}
                       >
-                        {equippedStyleSnapshot.rarity}
-                      </span>
+                        {profileCardEquippedStyle.rarity}
+                      </ProfileRarityChipMotion>
                     </>
-                  ) : (
-                    <p className="mt-2 text-sm text-[#7b8fb8]">Базовый вид пузыря</p>
-                  )}
-                  <p className="mt-2 text-xs text-[#8b9cc4]">
-                    Все слои пузыря (аватар · оболочка · след · знак) — в{" "}
-                    {profileId && rewardsInventoryHref ? (
-                      <Link
-                        href={rewardsInventoryHref}
-                        className="font-semibold text-[#3d5a9e] underline decoration-[#b8c8e8] underline-offset-2"
-                      >
-                        Vault
-                      </Link>
-                    ) : (
-                      "Vault после онбординга"
-                    )}
-                  </p>
-                  <p className="mt-1 text-xs text-[#9aa8c4]">
-                    Стартовый пузырь: {avatarLabel}
-                  </p>
-                  <p className="mt-1 text-xs text-[#7b8fb8]">
+                  ) : null}
+                  <p className="mt-2 text-xs text-[#7b8fb8]">
                     {walletDisplay}
                     {bootstrappedWalletAddress &&
                     bootstrappedWalletAddress !== connectedWalletAddress
@@ -2405,11 +2506,13 @@ export function BubbleDropShell() {
                       : ""}
                   </p>
                 </div>
-                <span
-                  className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] ${qualificationBadge.className}`}
-                >
-                  {qualificationBadge.label}
-                </span>
+                {qualificationBadge ? (
+                  <span
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] ${qualificationBadge.className}`}
+                  >
+                    {qualificationBadge.label}
+                  </span>
+                ) : null}
               </div>
 
               {signInOnlyOnProfileCard ? (
@@ -2503,9 +2606,8 @@ export function BubbleDropShell() {
                   {signInOnlyOnProfileCard ? (
                     <p className="mt-2 text-center text-[11px] font-medium leading-snug text-[#6b7ca3]">
                       <strong className="text-[#284679]">Sign in with Base</strong> только на карточке
-                      профиля выше. Затем нажмите эту кнопку для{" "}
-                      <strong className="text-[#284679]">ежедневного check-in</strong> (+20 XP), после
-                      — откроется сессия.
+                      профиля выше. Затем нажмите эту кнопку для ежедневного check-in (+20 XP), после —
+                      откроется сессия.
                     </p>
                   ) : null}
                   <button
@@ -2581,6 +2683,8 @@ export function BubbleDropShell() {
               </div>
             </section>
 
+            {showFullBubbleDropMenu ? (
+            <>
             {showHeroSection ? (
               <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
               <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
@@ -2589,30 +2693,57 @@ export function BubbleDropShell() {
               <div className="hero-portal-ring absolute right-[0.9rem] top-[1.1rem] h-24 w-24 rounded-full border border-white/35" />
               <div className="hero-portal-ring hero-portal-ring-delay absolute right-[0.2rem] top-[0.4rem] h-32 w-32 rounded-full border border-white/20" />
               <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                      {heroStatusLabel}
-                    </p>
-                    <h2 className="mt-2 text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
-                      {heroTitle}
-                    </h2>
-                    <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">{heroBody}</p>
+                {!effectiveIsConnected ? (
+                  <>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                        {heroStatusLabel}
+                      </p>
+                      <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                        {heroPortalCopy}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
+                          {heroTitle}
+                        </h2>
+                        <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">
+                          {heroBody}
+                        </p>
+                      </div>
+                      <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
+                        <div className="absolute inset-3 rounded-full border border-white/28" />
+                        <div className="hero-portal-core h-10 w-10 rounded-full bg-gradient-to-br from-white/90 to-white/45" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
+                        {heroStatusLabel}
+                      </p>
+                      <h2 className="mt-2 text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
+                        {heroTitle}
+                      </h2>
+                      <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">{heroBody}</p>
+                    </div>
+                    <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
+                      <div className="absolute inset-3 rounded-full border border-white/28" />
+                      <div
+                        className={`hero-portal-core h-10 w-10 rounded-full ${
+                          isRareRewardAccessActive
+                            ? "bg-gradient-to-br from-[#fff1a8] via-[#ffd8e8] to-[#b5dfff] shadow-[0_0_30px_rgba(255,215,146,0.95)]"
+                            : "bg-gradient-to-br from-white/90 to-white/45"
+                        }`}
+                      />
+                      <span className="absolute bottom-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#29456f]/70">
+                        {heroPortalCopy}
+                      </span>
+                    </div>
                   </div>
-                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
-                    <div className="absolute inset-3 rounded-full border border-white/28" />
-                    <div
-                      className={`hero-portal-core h-10 w-10 rounded-full ${
-                        isRareRewardAccessActive
-                          ? "bg-gradient-to-br from-[#fff1a8] via-[#ffd8e8] to-[#b5dfff] shadow-[0_0_30px_rgba(255,215,146,0.95)]"
-                          : "bg-gradient-to-br from-white/90 to-white/45"
-                      }`}
-                    />
-                    <span className="absolute bottom-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#29456f]/70">
-                      {heroPortalCopy}
-                    </span>
-                  </div>
-                </div>
+                )}
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   {homeStatusPills.map((pill) => (
@@ -2629,6 +2760,17 @@ export function BubbleDropShell() {
                   <p className="mt-5 rounded-[1.2rem] border border-white/45 bg-white/45 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
                     <strong className="text-[#1f3561]">Sign in with Base</strong> is only on your{" "}
                     <strong>Player profile</strong> card above — scroll up and tap it there.
+                  </p>
+                ) : !effectiveIsConnected ? (
+                  <p className="mt-5 rounded-[1.1rem] border border-white/40 bg-white/35 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-[#5d729d]">
+                      Do this next
+                    </span>
+                    <span className="mt-2 block">
+                      Scroll to <strong className="text-[#1f3561]">Daily mission</strong>, tap{" "}
+                      <strong className="text-[#1f3561]">Sign in with Base</strong> — that’s how you
+                      connect and open your profile.
+                    </span>
                   </p>
                 ) : primaryActionKind === "link" && primaryActionHref ? (
                   <Link
@@ -2739,7 +2881,9 @@ export function BubbleDropShell() {
                 </p>
                 <button
                   type="button"
-                  onClick={onDailyCheckIn}
+                  onClick={() => {
+                    void onDailyCheckIn();
+                  }}
                   disabled={isSubmittingAction || dailyCheckInCompletedToday}
                   className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
                 >
@@ -2748,80 +2892,83 @@ export function BubbleDropShell() {
               </section>
             ) : null}
 
-            <section className="bubble-card p-4">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                  System
+            <section className="bubble-card p-3 sm:p-4">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7b8fb8]">
+                  Bubble world
                 </p>
-                <div className="rounded-[1rem] bg-gradient-to-br from-[#d7f3ff] via-[#e4e1ff] to-[#ffe0f1] px-3 py-2 text-right shadow-[0_12px_28px_rgba(109,145,219,0.12)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6f7fb0]">
-                    Lane
-                  </p>
-                  <p className="mt-1 text-sm font-black tracking-[-0.02em] text-[#3d4574]">Home</p>
+                <div className="flex flex-wrap items-center gap-0.5">
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-white/82 px-1.5 py-0.5 text-[9px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="season" className="ui-icon" />
+                    <span>Season</span>
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-white/82 px-1.5 py-0.5 text-[9px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="hunt" className="ui-icon" />
+                    <span>Hunt</span>
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-white/82 px-1.5 py-0.5 text-[9px] font-semibold text-[#48608f]">
+                    <WorldIcon kind="style" className="ui-icon" />
+                    <span>Style</span>
+                  </span>
                 </div>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onReplayIntro}
-                  className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f]"
+
+              <div className="mt-2.5 flex flex-col gap-1">
+                <Link
+                  href={seasonHref}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-[rgba(176,200,235,0.65)] bg-white/78 px-2.5 py-1.5 text-left shadow-[0_3px_10px_rgba(110,145,217,0.07)] transition-[transform,box-shadow] [-webkit-tap-highlight-color:transparent] hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(110,145,217,0.1)] active:translate-y-0"
                 >
-                  <span className="inline-flex items-center gap-1.5">
-                    <span>Replay intro</span>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#cff4ff] to-[#d8e4ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                    <WorldIcon kind="season" className="!h-3.5 !w-3.5 text-[#385a91]" />
+                  </div>
+                  <span className="min-w-0 flex-1 text-xs font-bold tracking-tight text-[#20365d]">
+                    Season
                   </span>
-                </button>
-                {canSyncProfile ? (
-                  <button
-                    type="button"
-                    onClick={onBootstrapProfile}
-                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f]"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <WorldIcon kind="sync" className="ui-icon ui-icon-active" />
-                      <span>Sync</span>
-                    </span>
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={onRefreshProfile}
-                  disabled={isSubmittingAction}
-                  className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
+                </Link>
+                <Link
+                  href={leaderboardHref}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-[rgba(176,200,235,0.65)] bg-white/78 px-2.5 py-1.5 text-left shadow-[0_3px_10px_rgba(110,145,217,0.07)] transition-[transform,box-shadow] [-webkit-tap-highlight-color:transparent] hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(110,145,217,0.1)] active:translate-y-0"
                 >
-                  <span className="inline-flex items-center gap-1.5">
-                    <WorldIcon kind="refresh" className="ui-icon ui-icon-active" />
-                    <span>Refresh</span>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#e6d8ff] to-[#ddd2f5] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                    <WorldIcon kind="board" className="!h-3.5 !w-3.5 text-[#385a91]" />
+                  </div>
+                  <span className="min-w-0 flex-1 text-xs font-bold tracking-tight text-[#20365d]">
+                    Board
                   </span>
-                </button>
-                {effectiveIsConnected && isConnectedToBase && isSignedInWithBase && !smokeWalletOverride ? (
-                  <button
-                    type="button"
-                    onClick={onClearBaseSignIn}
-                    disabled={isSubmittingAction || isWalletFlowBusy}
-                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <WorldIcon kind="auth" className="ui-icon ui-icon-active" />
-                      <span>Reset sign-in</span>
-                    </span>
-                  </button>
-                ) : null}
-                {effectiveIsConnected && !smokeWalletOverride ? (
-                  <button
-                    type="button"
-                    onClick={onDisconnectWallet}
-                    disabled={isSubmittingAction || isWalletFlowBusy}
-                    className="action-chip rounded-[1rem] bg-white/82 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <WorldIcon kind="disconnect" className="ui-icon ui-icon-active" />
-                      <span>Disconnect</span>
-                    </span>
-                  </button>
-                ) : null}
+                </Link>
+                <Link
+                  href={referralsHref}
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-[rgba(176,200,235,0.65)] bg-white/78 px-2.5 py-1.5 text-left shadow-[0_3px_10px_rgba(110,145,217,0.07)] transition-[transform,box-shadow] [-webkit-tap-highlight-color:transparent] hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(110,145,217,0.1)] active:translate-y-0"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#d8ffe9] to-[#cef5e8] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                    <WorldIcon kind="referrals" className="!h-3.5 !w-3.5 text-[#2d6b5a]" />
+                  </div>
+                  <span className="min-w-0 flex-1 text-xs font-bold tracking-tight text-[#20365d]">
+                    Referrals
+                  </span>
+                </Link>
+                <Link
+                  href={partnerTokensHref}
+                  onClick={() =>
+                    captureAnalyticsEvent("bubbledrop_partner_transparency_opened", {
+                      profile_id: profileId,
+                    })
+                  }
+                  className="flex cursor-pointer items-center gap-2 rounded-xl border border-[rgba(176,200,235,0.65)] bg-white/78 px-2.5 py-1.5 text-left shadow-[0_3px_10px_rgba(110,145,217,0.07)] transition-[transform,box-shadow] [-webkit-tap-highlight-color:transparent] hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(110,145,217,0.1)] active:translate-y-0"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#ffe1ec] to-[#e8e0ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                    <WorldIcon kind="tokens" className="!h-3.5 !w-3.5 text-[#385a91]" />
+                  </div>
+                  <span className="min-w-0 flex-1 text-xs font-bold tracking-tight text-[#20365d]">
+                    Tokens
+                  </span>
+                </Link>
               </div>
-              <div className="mt-3 flex items-center justify-between rounded-xl bg-white/70 px-3 py-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6076a3]">
+            </section>
+
+            <section className="bubble-card p-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
                   Glass
                 </p>
                 <div className="flex items-center gap-1">
@@ -2830,7 +2977,7 @@ export function BubbleDropShell() {
                       key={mode}
                       type="button"
                       onClick={() => setGlassMode(mode)}
-                      className={`rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                      className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
                         glassMode === mode
                           ? "bg-[#dce9ff] text-[#2f4f84]"
                           : "bg-white/80 text-[#5f739b]"
@@ -2843,71 +2990,8 @@ export function BubbleDropShell() {
               </div>
             </section>
 
-            <section className="bubble-card p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                  Bubble world
-                </p>
-                <div className="flex items-center gap-1">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
-                    <WorldIcon kind="season" className="ui-icon" />
-                    <span>Season</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
-                    <WorldIcon kind="hunt" className="ui-icon" />
-                    <span>Hunt</span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/82 px-2 py-1 text-[10px] font-semibold text-[#48608f]">
-                    <WorldIcon kind="style" className="ui-icon" />
-                    <span>Style</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Link
-                  href={seasonHref}
-                  className="action-card icon-card rounded-[1.2rem] bg-gradient-to-br from-[#dff3ff] to-[#ede3ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <WorldIcon kind="season" className="ui-icon ui-icon-active" />
-                    <span>Season</span>
-                  </span>
-                </Link>
-                <Link
-                  href={leaderboardHref}
-                  className="action-card icon-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <WorldIcon kind="board" className="ui-icon ui-icon-active" />
-                    <span>Board</span>
-                  </span>
-                </Link>
-                <Link
-                  href={referralsHref}
-                  className="action-card icon-card rounded-[1.2rem] bg-white/82 px-4 py-4 text-sm font-semibold text-[#36568d]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <WorldIcon kind="referrals" className="ui-icon ui-icon-active" />
-                    <span>Referrals</span>
-                  </span>
-                </Link>
-                <Link
-                  href={partnerTokensHref}
-                  onClick={() =>
-                    captureAnalyticsEvent("bubbledrop_partner_transparency_opened", {
-                      profile_id: profileId,
-                    })
-                  }
-                  className="action-card icon-card rounded-[1.2rem] bg-gradient-to-br from-[#ffe7f0] to-[#e7e6ff] px-4 py-4 text-sm font-semibold text-[#36568d]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <WorldIcon kind="tokens" className="ui-icon ui-icon-active" />
-                    <span>Tokens</span>
-                  </span>
-                </Link>
-              </div>
-            </section>
+            </>
+            ) : null}
 
             {actionMessage ? (
               <section className="sticky bottom-3 z-20">

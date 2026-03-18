@@ -16,6 +16,7 @@ import {
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
+import type { ProfileStyleRarity } from "./profile-style-rarity";
 
 const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
@@ -75,7 +76,7 @@ type PopBurst = {
   sizeRem: number;
 };
 
-type SkinRarity = "common" | "rare" | "epic" | "legendary";
+type SkinRarity = ProfileStyleRarity;
 type SkinLayout = "diagonal" | "split" | "frame";
 
 type SkinRewardCard = {
@@ -198,13 +199,16 @@ function hashValue(input: string): number {
 
 function getSkinRarityFromHash(hash: number): SkinRarity {
   const roll = hash % 100;
-  if (roll < 56) {
+  if (roll < 40) {
     return "common";
   }
-  if (roll < 83) {
+  if (roll < 58) {
+    return "uncommon";
+  }
+  if (roll < 74) {
     return "rare";
   }
-  if (roll < 96) {
+  if (roll < 90) {
     return "epic";
   }
   return "legendary";
@@ -223,15 +227,18 @@ function getSkinLayoutFromHash(hash: number): SkinLayout {
 
 function getRarityIntensity(rarity: SkinRarity): string {
   if (rarity === "common") {
-    return "1/4";
+    return "1/5";
+  }
+  if (rarity === "uncommon") {
+    return "2/5";
   }
   if (rarity === "rare") {
-    return "2/4";
+    return "3/5";
   }
   if (rarity === "epic") {
-    return "3/4";
+    return "4/5";
   }
-  return "4/4";
+  return "5/5";
 }
 
 function getDropStylePalette(rarity: SkinRarity): {
@@ -244,6 +251,13 @@ function getDropStylePalette(rarity: SkinRarity): {
       shell: "from-[#3d4a69] to-[#2f3955]",
       chip: "bg-[#dce7ff] text-[#3b588f]",
       glow: "shadow-[0_14px_34px_rgba(0,0,0,0.24)]",
+    };
+  }
+  if (rarity === "uncommon") {
+    return {
+      shell: "from-[#2d5560] to-[#2a4a58]",
+      chip: "bg-[#d4f5f0] text-[#0d5c5c]",
+      glow: "shadow-[0_14px_34px_rgba(64,180,170,0.22)]",
     };
   }
   if (rarity === "rare") {
@@ -1427,11 +1441,13 @@ export function BubbleSessionPlayScreen() {
                   className={`h-24 rounded-xl border border-white/70 ${
                     lastApplyMoment.rarity === "common"
                       ? "bg-[radial-gradient(circle_at_center,rgba(163,198,255,0.44),rgba(131,175,247,0.18)_44%,rgba(131,175,247,0)_75%)]"
-                      : lastApplyMoment.rarity === "rare"
-                        ? "bg-[radial-gradient(circle_at_center,rgba(112,214,255,0.56),rgba(82,186,255,0.22)_44%,rgba(82,186,255,0)_75%)]"
-                        : lastApplyMoment.rarity === "epic"
-                          ? "bg-[radial-gradient(circle_at_center,rgba(207,138,255,0.64),rgba(162,111,255,0.3)_44%,rgba(162,111,255,0)_75%)]"
-                          : "bg-[radial-gradient(circle_at_center,rgba(255,220,140,0.78),rgba(255,174,89,0.34)_40%,rgba(255,130,69,0)_75%)]"
+                      : lastApplyMoment.rarity === "uncommon"
+                        ? "bg-[radial-gradient(circle_at_center,rgba(120,230,220,0.5),rgba(72,188,198,0.22)_44%,rgba(72,188,198,0)_75%)]"
+                        : lastApplyMoment.rarity === "rare"
+                          ? "bg-[radial-gradient(circle_at_center,rgba(112,214,255,0.56),rgba(82,186,255,0.22)_44%,rgba(82,186,255,0)_75%)]"
+                          : lastApplyMoment.rarity === "epic"
+                            ? "bg-[radial-gradient(circle_at_center,rgba(207,138,255,0.64),rgba(162,111,255,0.3)_44%,rgba(162,111,255,0)_75%)]"
+                            : "bg-[radial-gradient(circle_at_center,rgba(255,220,140,0.78),rgba(255,174,89,0.34)_40%,rgba(255,130,69,0)_75%)]"
                   }`}
                 />
                 <p className="mt-2 text-xs text-[#6077a6]">

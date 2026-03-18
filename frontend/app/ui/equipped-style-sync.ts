@@ -1,9 +1,12 @@
 "use client";
 
+import type { ProfileStyleRarity } from "./profile-style-rarity";
+import { normalizeProfileStyleRarity } from "./profile-style-rarity";
+
 export type EquippedStyleSnapshot = {
   rewardId: string;
   rewardKey: string;
-  rarity: "common" | "rare" | "epic" | "legendary";
+  rarity: ProfileStyleRarity;
   source: "nft" | "cosmetic";
   variant: string;
   appliedAt: string;
@@ -26,7 +29,17 @@ function getStorageKeyPlural(profileId: string): string {
 
 function isValidSnapshot(parsed: unknown): parsed is EquippedStyleSnapshot {
   const p = parsed as EquippedStyleSnapshot;
-  return Boolean(p?.rewardId && p?.rewardKey && p?.rarity && p?.source);
+  if (!p?.rewardId || !p?.rewardKey || !p?.source) {
+    return false;
+  }
+  return true;
+}
+
+function normalizeSnapshot(s: EquippedStyleSnapshot): EquippedStyleSnapshot {
+  return {
+    ...s,
+    rarity: normalizeProfileStyleRarity(s.rarity as string),
+  };
 }
 
 export function inferSlotFromRewardKey(rewardKey: string): CosmeticSlot {
@@ -56,7 +69,8 @@ export function loadPersistedEquippedStyles(profileId: string): EquippedStyleByS
         const slots: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
         for (const slot of slots) {
           const val = parsed[slot];
-          if (val && isValidSnapshot(val)) result[slot] = val as EquippedStyleSnapshot;
+          if (val && isValidSnapshot(val))
+            result[slot] = normalizeSnapshot(val as EquippedStyleSnapshot);
         }
         return result;
       }
@@ -65,7 +79,7 @@ export function loadPersistedEquippedStyles(profileId: string): EquippedStyleByS
     if (!rawLegacy) return {};
     const legacy = JSON.parse(rawLegacy) as unknown;
     if (!legacy || !isValidSnapshot(legacy)) return {};
-    const snapshot = legacy as EquippedStyleSnapshot;
+    const snapshot = normalizeSnapshot(legacy as EquippedStyleSnapshot);
     const slot = inferSlotFromRewardKey(snapshot.rewardKey);
     return { [slot]: snapshot };
   } catch {
@@ -92,7 +106,10 @@ export function savePersistedEquippedStyle(
 ): void {
   const current = loadPersistedEquippedStyles(profileId);
   const slot = inferSlotFromRewardKey(style.rewardKey);
-  savePersistedEquippedStyles(profileId, { ...current, [slot]: style });
+  savePersistedEquippedStyles(profileId, {
+    ...current,
+    [slot]: normalizeSnapshot(style),
+  });
 }
 
 /** Primary style for shell display: bubbleSkin > trail > badge > avatar, then by latest appliedAt. */
