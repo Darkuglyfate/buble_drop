@@ -76,6 +76,16 @@ function buildProfileSummary(
     qualificationState: {
       status: overrides.qualificationStatus ?? "qualified",
     },
+    seasonProgress: {
+      qualificationStatus: overrides.qualificationStatus ?? "qualified",
+      eligibleAtSeasonEnd: overrides.rareRewardAccessActive ?? true,
+      streak: overrides.currentStreak ?? 6,
+      xp: overrides.totalXp ?? 710,
+      activeSessions: overrides.rareRewardAccessActive === false ? 2 : 5,
+      requiredStreak: 5,
+      requiredXp: 300,
+      requiredActiveSessions: 4,
+    },
     rareRewardAccess: {
       active: overrides.rareRewardAccessActive ?? true,
     },
@@ -97,6 +107,11 @@ function buildProfileSummary(
         overrides.claimableBalances ?? [
           { tokenSymbol: "BUBL", claimableAmount: "3" },
         ],
+    },
+    styleState: {
+      equippedStyle: null,
+      testingOverrideActive: false,
+      previewOnly: true,
     },
   };
 }
@@ -225,6 +240,8 @@ async function mockBubbleDropApi(page: Page) {
               key: "genesis-spark",
               label: "Genesis Spark",
               tier: "rare",
+              owned: true,
+              previewOnly: true,
               acquiredAt: "2026-03-14T12:00:00.000Z",
             },
             {
@@ -232,6 +249,8 @@ async function mockBubbleDropApi(page: Page) {
               key: "starter-bubble-shell",
               label: "Starter Bubble Shell",
               tier: "simple",
+              owned: true,
+              previewOnly: true,
               acquiredAt: "2026-03-12T12:00:00.000Z",
             },
           ],
@@ -240,18 +259,24 @@ async function mockBubbleDropApi(page: Page) {
               id: "cosmetic-1",
               key: "glossy-aura",
               label: "Glossy Aura",
+              owned: true,
+              previewOnly: true,
               unlockedAt: "2026-03-14T12:05:00.000Z",
             },
             {
               id: "cosmetic-2",
               key: "comet-trail",
               label: "Comet Trail",
+              owned: true,
+              previewOnly: true,
               unlockedAt: "2026-03-14T12:06:00.000Z",
             },
             {
               id: "cosmetic-3",
               key: "founder-badge",
               label: "Founder Badge",
+              owned: true,
+              previewOnly: true,
               unlockedAt: "2026-03-14T12:07:00.000Z",
             },
           ],
@@ -381,21 +406,25 @@ async function mockBubbleDropApi(page: Page) {
           totalXp: 772,
           qualificationStatus: "qualified",
           rareRewardAccessActive: true,
+          seasonProgress: {
+            qualificationStatus: "qualified",
+            eligibleAtSeasonEnd: true,
+            streak: 6,
+            xp: 772,
+            activeSessions: 5,
+            requiredStreak: 5,
+            requiredXp: 300,
+            requiredActiveSessions: 4,
+          },
           rareRewardOutcome: {
-            tokenSymbolAwarded: "BUBL",
-            tokenAmountAwarded: "1",
-            weeklyTicketsIssued: 1,
-            nftIdsAwarded: ["nft-1"],
-            cosmeticIdsAwarded: ["cosmetic-1"],
-            tokenReward: {
-              tokenSymbol: "BUBL",
-              tokenAmountAwarded: "1",
-              weeklyTicketsIssued: 1,
-              seasonId: "season-1",
-              weekStartDate: "2026-03-10",
-            },
-            nftRewards: [{ id: "nft-1", key: "genesis-spark" }],
-            cosmeticRewards: [{ id: "cosmetic-1", key: "glossy-aura" }],
+            tokenSymbolAwarded: null,
+            tokenAmountAwarded: "0",
+            weeklyTicketsIssued: 0,
+            nftIdsAwarded: [],
+            cosmeticIdsAwarded: [],
+            tokenReward: null,
+            nftRewards: [],
+            cosmeticRewards: [],
           },
         },
       });
@@ -496,28 +525,31 @@ async function mockBubbleDropApi(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("bubbledrop:intro-seen:v1", "1");
+  });
   await mockBubbleDropApi(page);
 });
 
 test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
-  await page.goto(`/?${smokeWalletQuery}`);
+  await page.goto(
+    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
+  );
 
   await expect(page.getByText("Signed in")).toBeVisible();
   await expect(page.getByText("0x1000...0001")).toBeVisible();
-  await expect(page.getByText("Rare lane live")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Enter today's bubble run" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Lock today's streak" })).toBeEnabled();
-  await expect(page.getByRole("link", { name: "Enter bubble session" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open season spotlight" })).toBeVisible();
+  await expect(page.getByText("Season chance live")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Daily check-in (+20 XP)", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Daily check-in (+20 XP)", exact: true })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tokens" })).toBeVisible();
 });
 
 test("completes onboarding flow with mocked backend confirmation", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${onboardingProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+    `/?profileId=${onboardingProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
   await expect(page.getByRole("heading", { name: "Daily rhythm" })).toBeVisible();
@@ -532,79 +564,70 @@ test("completes onboarding flow with mocked backend confirmation", async ({
   await expect(page.getByText("Set your BubbleDrop identity")).toBeVisible();
   await page.getByPlaceholder("Choose your nickname").fill("newbie");
   await page
-    .getByRole("button", { name: "Starter Bubble Blue" })
-    .click();
-  await page
     .getByRole("button", { name: "Complete onboarding" })
     .click();
 
   await expect(
     page.getByText("Onboarding completed. 20 XP granted. Total XP: 20."),
   ).toBeVisible();
-  await expect(page.getByText("XP-first day")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open reward vault" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open vault" })).toBeVisible();
 });
 
 test("runs daily check-in and shows refreshed summary state", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
-  await page.getByRole("button", { name: "Lock today's streak" }).click();
+  await page
+    .getByRole("button", { name: /Next move.*Daily check-in \(\+20 XP\)/ })
+    .click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
-  await expect(
-    page.locator("section").first().getByText("7", { exact: true }),
-  ).toBeVisible();
 });
 
-test("completes session and reveals confirmed reward outcome", async ({
+test("completes session and reveals confirmed season progress", async ({
   page,
 }) => {
   await page.goto(
-    `/session?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/session?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
   );
 
   await page.getByRole("button", { name: "Start session" }).click();
-  await page.getByRole("button", { name: "Tap bubble" }).click();
-  await page.getByRole("button", { name: "Complete session" }).click();
+  await page.getByRole("button", { name: "Pop bubble" }).first().click({ force: true });
+  await page.getByRole("button", { name: "Complete" }).click();
 
-  await expect(page.getByText("Issued rewards for this session")).toBeVisible();
+  await expect(page.getByText("Season progress updated")).toBeVisible();
   await expect(page.getByText("XP awarded")).toBeVisible();
-  await expect(page.getByText("Rare access", { exact: true })).toBeVisible();
-  await expect(page.getByText("Claimable token reward")).toBeVisible();
-  await expect(page.getByText("genesis-spark")).toBeVisible();
-  await expect(page.getByText("glossy-aura")).toBeVisible();
+  await expect(page.getByText("Season chance", { exact: true })).toBeVisible();
+  await expect(page.getByText("Season progress", { exact: true })).toBeVisible();
 });
 
-test("keeps claim UI gated when rare reward access is inactive", async ({
+test("shows legacy claim flow even when season chance is still building", async ({
   page,
 }) => {
   await page.goto(
     `/claim?profileId=${claimGatedProfileId}&walletAddress=${walletAddress}`,
   );
 
+  await expect(page.getByRole("heading", { name: "Season chance building" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "XP-only mode" }),
+    page.getByText(/Legacy token claims stay available/),
   ).toBeVisible();
   await expect(
-    page.getByText(/Claim requests are blocked before submit/),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Claim unavailable in XP-only mode" }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "Request full claim amount" }),
+  ).toBeEnabled();
 });
 
 test("navigates season hub, token detail, and partner transparency", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
-  await page.getByRole("link", { name: "Open season spotlight" }).click();
+  await page.getByRole("link", { name: "Season" }).click();
   await expect(page.getByText("Season hub")).toBeVisible();
   await expect(page.getByText("Genesis Bloom")).toBeVisible();
 
@@ -621,7 +644,7 @@ test("navigates season hub, token detail, and partner transparency", async ({
   await expect(page.getByText("Bubble Bloom")).toBeVisible();
 });
 
-test("supports inventory filters, preview, and equip actions", async ({
+test("supports inventory filters and preview-only collection state", async ({
   page,
 }) => {
   await page.goto(
@@ -631,15 +654,13 @@ test("supports inventory filters, preview, and equip actions", async ({
   await expect(
     page.getByRole("heading", { name: "Rewards inventory" }),
   ).toBeVisible();
-  await expect(page.getByText("Before / after preview")).toBeVisible();
+  await expect(page.getByText("Drop preview")).toBeVisible();
 
-  await page.getByLabel("Slot").selectOption("trail");
+  await page.getByRole("button", { name: /Trail/ }).click();
   await expect(page.getByText("Comet Trail")).toBeVisible();
-
-  await page.getByRole("button", { name: "Preview" }).first().click();
-  await expect(page.getByRole("button", { name: "Previewing" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Apply" }).first().click();
+  await expect(page.getByText("Collected on this profile · Preview only").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Collected" }).first()).toBeDisabled();
+  await expect(page.getByText("Preview only").first()).toBeVisible();
 });
 
 test("loads all world menu screens", async ({ page }) => {

@@ -12,7 +12,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
-import { QualificationService } from '../qualification/qualification.service';
+import {
+  QualificationService,
+  type SeasonProgressSnapshot,
+} from '../qualification/qualification.service';
 import { XpService, XpSource } from '../rewards/xp.service';
 import { Avatar } from './entities/avatar.entity';
 import { CosmeticDefinition } from './entities/cosmetic-definition.entity';
@@ -94,6 +97,7 @@ export interface ProfileSummary {
   qualificationState: {
     status: QualificationStatus;
   };
+  seasonProgress: SeasonProgressSnapshot;
   rareRewardAccess: {
     active: boolean;
   };
@@ -117,6 +121,7 @@ export interface ProfileSummary {
         }
       | null;
     testingOverrideActive: boolean;
+    previewOnly: boolean;
   };
 }
 
@@ -155,12 +160,16 @@ export interface RewardsInventoryView {
     key: string;
     label: string;
     tier: string;
+    owned: boolean;
+    previewOnly: boolean;
     acquiredAt: Date;
   }>;
   cosmetics: Array<{
     id: string;
     key: string;
     label: string;
+    owned: boolean;
+    previewOnly: boolean;
     unlockedAt: Date;
   }>;
 }
@@ -476,6 +485,8 @@ export class ProfileService {
     const qualification = await this.qualificationService.evaluateProgress(
       profile.id,
     );
+    const seasonProgress =
+      await this.qualificationService.getSeasonProgress(profile.id);
     const qualificationStatus = qualification.qualificationStatus;
     const rareRewardAccessActive = qualification.rareRewardAccessActive;
 
@@ -493,7 +504,7 @@ export class ProfileService {
       .reduce((sum, item) => sum + this.parseAmount(item.claimableAmount), 0n)
       .toString();
     const needsOnboarding = this.profileNeedsOnboarding(profile);
-    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
+    const testingOverrideActive = false;
 
     return {
       onboardingState: {
@@ -541,6 +552,7 @@ export class ProfileService {
       qualificationState: {
         status: qualificationStatus,
       },
+      seasonProgress,
       rareRewardAccess: {
         active: rareRewardAccessActive,
       },
@@ -552,6 +564,7 @@ export class ProfileService {
       styleState: {
         equippedStyle: await this.loadEquippedStyleSnapshot(profile.id),
         testingOverrideActive,
+        previewOnly: true,
       },
     };
   }
@@ -586,64 +599,14 @@ export class ProfileService {
       profile,
       'Onboarding must be completed before style equip is allowed',
     );
-    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
-    if (!testingOverrideActive) {
-      const qualificationSnapshot =
-        await this.qualificationService.evaluateProgress(profileId);
-      if (!qualificationSnapshot.rareRewardAccessActive) {
-        throw new ForbiddenException(
-          'Style apply is locked until game progression rules are met',
-        );
-      }
-
-      if (source === 'nft') {
-        const ownership = await this.profileNftOwnershipRepository.findOne({
-          where: { profileId: profile.id, nftDefinitionId: rewardId },
-        });
-        if (!ownership) {
-          throw new ForbiddenException(
-            'This NFT style is not owned by the current profile',
-          );
-        }
-      } else {
-        const unlock = await this.profileCosmeticUnlockRepository.findOne({
-          where: { profileId: profile.id, cosmeticDefinitionId: rewardId },
-        });
-        if (!unlock) {
-          throw new ForbiddenException(
-            'This cosmetic style is not unlocked for the current profile',
-          );
-        }
-      }
-    }
-
-    const equippedStyle: EquippedStyleResult['equippedStyle'] = {
-      rewardId,
-      rewardKey: normalizedRewardKey,
-      rarity,
-      source,
-      variant: normalizedVariant,
-      appliedAt: new Date().toISOString(),
-    };
-
-    try {
-      await this.profileRepository.query(
-        `UPDATE "profiles" SET "equippedStyleSnapshot" = $1, "updatedAt" = now() WHERE "id" = $2`,
-        [JSON.stringify(equippedStyle), profile.id],
-      );
-    } catch (error) {
-      if (this.isMissingEquippedStyleSnapshotColumnError(error)) {
-        throw new ConflictException(
-          'Style sync is temporarily unavailable. Apply profile migration and retry.',
-        );
-      }
-      throw error;
-    }
-
-    return {
-      profileId: profile.id,
-      equippedStyle,
-    };
+    void rewardId;
+    void normalizedRewardKey;
+    void rarity;
+    void source;
+    void normalizedVariant;
+    throw new ForbiddenException(
+      'Style apply is disabled while seasonal reward mode is active. Inventory items stay preview-only until season-end distribution is available.',
+    );
   }
 
   async getLeaderboard(limit = 20): Promise<LeaderboardEntry[]> {
@@ -678,21 +641,11 @@ export class ProfileService {
       profile,
       'Onboarding must be completed before rewards inventory is available',
     );
-    const testingOverrideActive = this.isAllSkinsTestingOverrideEnabled();
-
     const nftOwnerships = await this.profileNftOwnershipRepository.find({
       where: { profileId },
       order: { acquiredAt: 'DESC' },
     });
-    const nftDefinitions = testingOverrideActive
-      ? await this.nftDefinitionRepository.find()
-      : nftOwnerships.length
-        ? await this.nftDefinitionRepository.find({
-            where: {
-              id: In(nftOwnerships.map((item) => item.nftDefinitionId)),
-            },
-          })
-        : [];
+    const nftDefinitions = await this.nftDefinitionRepository.find();
     const nftDefinitionMap = new Map(
       nftDefinitions.map((item) => [item.id, item]),
     );
@@ -704,15 +657,7 @@ export class ProfileService {
       where: { profileId },
       order: { unlockedAt: 'DESC' },
     });
-    const cosmeticDefinitions = testingOverrideActive
-      ? await this.cosmeticDefinitionRepository.find()
-      : cosmeticUnlocks.length
-        ? await this.cosmeticDefinitionRepository.find({
-            where: {
-              id: In(cosmeticUnlocks.map((item) => item.cosmeticDefinitionId)),
-            },
-          })
-        : [];
+    const cosmeticDefinitions = await this.cosmeticDefinitionRepository.find();
     const cosmeticDefinitionMap = new Map(
       cosmeticDefinitions.map((item) => [item.id, item]),
     );
@@ -727,6 +672,8 @@ export class ProfileService {
         key: definition.key,
         label: definition.label,
         tier: definition.tier,
+        owned: Boolean(ownership),
+        previewOnly: true,
         acquiredAt: ownership?.acquiredAt ?? new Date(0),
       };
     });
@@ -737,6 +684,8 @@ export class ProfileService {
         id: definition.id,
         key: definition.key,
         label: definition.label,
+        owned: Boolean(unlock),
+        previewOnly: true,
         unlockedAt: unlock?.unlockedAt ?? new Date(0),
       };
     });
@@ -836,19 +785,7 @@ export class ProfileService {
   }
 
   private isAllSkinsTestingOverrideEnabled(): boolean {
-    const rawValue = this.configService.get<string | boolean | undefined>(
-      'BUBBLEDROP_TEST_UNLOCK_ALL_SKINS',
-    );
-    if (typeof rawValue === 'boolean') {
-      return rawValue;
-    }
-    if (typeof rawValue === 'string') {
-      const normalized = rawValue.trim().toLowerCase();
-      return normalized === '1' || normalized === 'true' || normalized === 'yes';
-    }
-    // Temporary QA default: keep unlock-all enabled when env is not provided,
-    // so remote test sessions can immediately access all skins.
-    return true;
+    return false;
   }
 
   private async ensureStarterAvatarsUnlocked(

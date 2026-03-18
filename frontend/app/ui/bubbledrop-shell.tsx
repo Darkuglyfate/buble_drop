@@ -213,11 +213,11 @@ const ONBOARDING_CARDS: OnboardingCard[] = [
   {
     id: "daily-checkin",
     title: "Daily rhythm",
-    question: "What keeps rare reward access active in BubbleDrop?",
+    question: "What keeps season reward progress active in BubbleDrop?",
     options: ["Daily Base check-in", "Opening the app only"],
     correctIndex: 0,
     wrongExplanation:
-      "Rare reward access is tied to daily Base check-ins, not passive app opens.",
+      "Season reward progress is tied to daily Base check-ins, not passive app opens.",
   },
   {
     id: "active-play",
@@ -1409,9 +1409,12 @@ export function BubbleDropShell() {
 
     const url = new URL(window.location.href);
     const skipIntro = url.searchParams.get("skipIntro") === "1";
-    setWelcomeIntroVisible(!skipIntro);
+    const introAlreadySeen =
+      window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
+    setWelcomeIntroVisible(!(skipIntro || introAlreadySeen));
 
     if (skipIntro) {
+      window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
       url.searchParams.delete("skipIntro");
       window.history.replaceState(null, "", url.toString());
     }
@@ -1847,10 +1850,10 @@ export function BubbleDropShell() {
       : "Sign in needed",
     authenticatedSessionToken ? "Signed in" : "Secure sign-in needed",
     isRareRewardAccessActive
-      ? "Rare glow live"
+      ? "Season chance live"
       : qualificationBadge
         ? qualificationBadge.label
-        : "Rare access off",
+        : "Season chance building",
   ];
   const canSyncProfile =
     !isSubmittingAction &&
@@ -1860,7 +1863,7 @@ export function BubbleDropShell() {
   let heroStatusLabel = "Wallet";
   let heroTitle = "Start here — then play, streak, earn.";
   let heroBody =
-    "Pop bubbles in runs, check in daily to grow your streak, and unlock shots at NFT profile cosmetics plus partner-pool rewards. Your first move: scroll to Daily mission and tap Sign in with Base — link your wallet and you’re in.";
+    "Pop bubbles in runs, check in daily to grow your streak, and build your season-end reward chance. Your first move: connect your wallet, sign in, and mark the day on Base.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
   let primaryActionLabel = "Sign in with Base";
@@ -1886,8 +1889,8 @@ export function BubbleDropShell() {
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
-      ? "Rare access is warm."
-      : "Rare access needs check-in.";
+      ? "Season chance is warm."
+      : "Season chance needs check-in.";
   const showDropRadar = Boolean(authenticatedSessionToken && profileId);
   const dropRadarPercent = !effectiveIsConnected
     ? 16
@@ -1909,7 +1912,7 @@ export function BubbleDropShell() {
         : isFirstEntry
           ? "Onboarding required"
           : isRareRewardAccessActive
-            ? "Rare lane detected"
+            ? "Season chance detected"
             : "XP lane detected";
   const dropRadarHeadline = !effectiveIsConnected
     ? "WALLET OFFLINE"
@@ -1920,7 +1923,7 @@ export function BubbleDropShell() {
         : isFirstEntry
           ? "ONBOARDING"
           : isRareRewardAccessActive
-            ? "RARE DETECTED"
+            ? "SEASON DETECTED"
             : "XP DETECTED";
   const introProgressCount = Math.min(REQUIRED_INTRO_POPS, introPoppedBubbleIds.length);
   const introBubblesRemaining = REQUIRED_INTRO_POPS - introProgressCount;
@@ -1972,7 +1975,7 @@ export function BubbleDropShell() {
     heroPortalCopy = "Base entry";
     heroTitle = "Start here — then play, streak, earn.";
     heroBody =
-      "Pop bubbles in runs, check in daily to grow your streak, and unlock shots at NFT profile cosmetics plus partner-pool rewards. Your first move: scroll to Daily mission and tap Sign in with Base — link your wallet and you’re in.";
+      "Pop bubbles in runs, check in daily to grow your streak, and build your season-end reward chance. Your first move: connect your wallet, sign in, and mark the day on Base.";
     primaryActionLabel = "Sign in with Base";
     primaryActionHandler = onConnectWallet;
     primaryActionKind = "button";
@@ -2039,31 +2042,31 @@ export function BubbleDropShell() {
     primaryActionDisabled = isSubmittingAction;
     heroPortalCopy = "Base check-in";
   } else if (qualificationStatus === "paused") {
-    heroStatusLabel = "Rewards paused";
-    heroTitle = "Your glow is still alive, but premium drops are resting.";
-    heroBody = "Play a warm-up run to move forward.";
+    heroStatusLabel = "Season paused";
+    heroTitle = "Your season chance paused after the streak broke.";
+    heroBody = "Check in again, rebuild momentum, and return to active runs.";
     heroAccentClass =
       "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
     primaryActionLabel = "Enter a warm-up run";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    heroPortalCopy = "Premium lane resting";
+    heroPortalCopy = "Season lane resting";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
-    heroTitle = "Your rare reward lane is glowing today.";
-    heroBody = "Rare rewards are active today.";
+    heroTitle = "Your profile is on pace for the season-end reward draw.";
+    heroBody = "Season-end reward chance is active today. Keep the streak alive and keep earning XP.";
     heroAccentClass =
       "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
     primaryActionLabel = "Tap to play";
     primaryActionKind = "link";
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
-    heroPortalCopy = "Rare lane live";
+    heroPortalCopy = "Season lane live";
   } else if (!isRareRewardAccessActive) {
-    heroStatusLabel = "XP-only mode";
-    heroTitle = "Today still moves your bubble forward.";
-    heroBody = "XP mode is active — jump into bubbles.";
+    heroStatusLabel = "Season build";
+    heroTitle = "Today still moves your bubble toward season-end rewards.";
+    heroBody = "XP progress is active. Keep the streak alive and bank more active-play XP.";
     heroAccentClass =
       "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
     primaryActionLabel = "Tap to play";
@@ -2121,7 +2124,7 @@ export function BubbleDropShell() {
     }
   };
 
-  let dailyMissionPrimaryLabel = "Tap to play";
+  let dailyMissionPrimaryLabel = "Open daily mission";
   let dailyMissionPrimaryDisabled = false;
   if (!effectiveIsConnected) {
     dailyMissionPrimaryLabel = isWalletFlowBusy ? "Signing in…" : "Sign in with Base";
@@ -2142,7 +2145,11 @@ export function BubbleDropShell() {
     dailyMissionPrimaryLabel = "Tap to play";
     dailyMissionPrimaryDisabled = !quickSessionHref;
   } else {
-    dailyMissionPrimaryLabel = isSubmittingAction ? "Checking in…" : "Tap to play";
+    dailyMissionPrimaryLabel = isSubmittingAction
+      ? "Checking in…"
+      : dailyCheckInCompletedToday
+        ? "Tap to play"
+        : "Daily check-in (+20 XP)";
     dailyMissionPrimaryDisabled =
       isSubmittingAction ||
       (dailyCheckInCompletedToday ? !quickSessionHref : false);
@@ -2814,9 +2821,8 @@ export function BubbleDropShell() {
                       Do this next
                     </span>
                     <span className="mt-2 block">
-                      Scroll to <strong className="text-[#1f3561]">Daily mission</strong>, tap{" "}
-                      <strong className="text-[#1f3561]">Sign in with Base</strong> — that’s how you
-                      connect and open your profile.
+                      Connect your wallet first, then continue through{" "}
+                      <strong className="text-[#1f3561]">Daily mission</strong> to open your profile.
                     </span>
                   </p>
                 ) : primaryActionKind === "link" && primaryActionHref ? (

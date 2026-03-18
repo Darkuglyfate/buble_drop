@@ -28,6 +28,8 @@ type InventoryNft = {
   key: string;
   label: string;
   tier: string;
+  owned: boolean;
+  previewOnly: boolean;
   acquiredAt: string;
 };
 
@@ -35,6 +37,8 @@ type InventoryCosmetic = {
   id: string;
   key: string;
   label: string;
+  owned: boolean;
+  previewOnly: boolean;
   unlockedAt: string;
 };
 
@@ -74,102 +78,9 @@ type InventoryCollectible = {
   slot: CosmeticSlot;
   rarity: RarityLevel;
   season: Exclude<SeasonFilter, "all">;
+  owned: boolean;
+  previewOnly: boolean;
   obtainedAt: string;
-};
-
-const QA_FALLBACK_COLLECTIBLES: InventoryCollectible[] = [
-  {
-    id: "qa-avatar-nebula-helm",
-    key: "qa.avatar.nebula-helm",
-    label: "Nebula Helm",
-    source: "cosmetic",
-    slot: "avatar",
-    rarity: "epic",
-    season: "core",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-avatar-royal-mask",
-    key: "qa.avatar.royal-mask",
-    label: "Royal Mask",
-    source: "nft",
-    slot: "avatar",
-    rarity: "legendary",
-    season: "genesis",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-bubble-neon-spectrum",
-    key: "qa.bubble.neon-spectrum",
-    label: "Neon Spectrum",
-    source: "cosmetic",
-    slot: "bubbleSkin",
-    rarity: "epic",
-    season: "core",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-bubble-gold-foil",
-    key: "qa.bubble.gold-foil",
-    label: "Gold Foil",
-    source: "nft",
-    slot: "bubbleSkin",
-    rarity: "legendary",
-    season: "genesis",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-trail-aurora-wave",
-    key: "qa.trail.aurora-wave",
-    label: "Aurora Wave",
-    source: "cosmetic",
-    slot: "trail",
-    rarity: "rare",
-    season: "core",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-trail-plasma-ribbon",
-    key: "qa.trail.plasma-ribbon",
-    label: "Plasma Ribbon",
-    source: "nft",
-    slot: "trail",
-    rarity: "epic",
-    season: "genesis",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-badge-orbit-star",
-    key: "qa.badge.orbit-star",
-    label: "Orbit Star",
-    source: "cosmetic",
-    slot: "badge",
-    rarity: "common",
-    season: "core",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "qa-badge-crown-sigil",
-    key: "qa.badge.crown-sigil",
-    label: "Crown Sigil",
-    source: "nft",
-    slot: "badge",
-    rarity: "legendary",
-    season: "genesis",
-    obtainedAt: "2026-01-01T00:00:00.000Z",
-  },
-];
-
-type EquipStyleResponse = {
-  profileId: string;
-  equippedStyle: {
-    rewardId: string;
-    rewardKey: string;
-    rarity: ProfileStyleRarity;
-    source: "nft" | "cosmetic";
-    variant: string;
-    appliedAt: string;
-  };
 };
 
 async function fetchOnboardingStateForProfile(
@@ -180,8 +91,6 @@ async function fetchOnboardingStateForProfile(
   currentAvatarId: string | null;
   equippedStyle: EquippedStyleSnapshot | null;
   equippedStyleRewardId: string | null;
-  rareAccessActive: boolean;
-  testingOverrideActive: boolean;
 } | null> {
   const payload = await fetchBackendProfileSummary(backendUrl, profileId);
   if (!payload) {
@@ -201,8 +110,6 @@ async function fetchOnboardingStateForProfile(
     currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
     equippedStyle: backendEquippedStyle,
     equippedStyleRewardId: primary?.rewardId ?? null,
-    rareAccessActive: payload.rareRewardAccess.active,
-    testingOverrideActive: payload.styleState?.testingOverrideActive ?? false,
   };
 }
 
@@ -286,25 +193,6 @@ function rarityLabel(rarity: RarityLevel): string {
 }
 
 const SLOT_ORDER: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
-const QA_FALLBACK_ID_PREFIX = "qa-";
-const STYLE_APPLY_TIMEOUT_MS = 12_000;
-
-async function postWithTimeout(
-  input: RequestInfo | URL,
-  init: RequestInit,
-  timeoutMs = STYLE_APPLY_TIMEOUT_MS,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
 
 export function RewardsInventoryScreen() {
   const { profileId, walletAddress } = useBubbleDropRuntime();
@@ -319,8 +207,6 @@ export function RewardsInventoryScreen() {
   const [isSwitchingAvatar, setIsSwitchingAvatar] = useState(false);
   const [isApplyingCollectibleId, setIsApplyingCollectibleId] = useState<string | null>(null);
   const [equippedStyleRewardId, setEquippedStyleRewardId] = useState<string | null>(null);
-  const [rareAccessActive, setRareAccessActive] = useState(false);
-  const [testingOverrideActive, setTestingOverrideActive] = useState(false);
   const [activeSlot, setActiveSlot] = useState<CosmeticSlot>("avatar");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [equippedBySlot, setEquippedBySlot] = useState<Record<CosmeticSlot, string | null>>({
@@ -395,6 +281,8 @@ export function RewardsInventoryScreen() {
         slot: inferSlot(nft.key, nft.label),
         rarity: inferRarity("nft", nft.key, nft.label, nft.tier),
         season: inferSeason(nft.key, nft.label),
+        owned: nft.owned,
+        previewOnly: nft.previewOnly,
         obtainedAt: nft.acquiredAt,
       })) ?? [];
     const cosmetics =
@@ -406,17 +294,14 @@ export function RewardsInventoryScreen() {
         slot: inferSlot(cosmetic.key, cosmetic.label),
         rarity: inferRarity("cosmetic", cosmetic.key, cosmetic.label),
         season: inferSeason(cosmetic.key, cosmetic.label),
+        owned: cosmetic.owned,
+        previewOnly: cosmetic.previewOnly,
         obtainedAt: cosmetic.unlockedAt,
       })) ?? [];
     return [...nfts, ...cosmetics];
   }, [inventory]);
 
-  const displayCollectibles = useMemo(() => {
-    if (testingOverrideActive && collectibles.length === 0) {
-      return QA_FALLBACK_COLLECTIBLES;
-    }
-    return collectibles;
-  }, [collectibles, testingOverrideActive]);
+  const displayCollectibles = useMemo(() => collectibles, [collectibles]);
 
   const collectibleMap = useMemo(
     () => new Map(displayCollectibles.map((item) => [item.id, item])),
@@ -445,6 +330,9 @@ export function RewardsInventoryScreen() {
         return false;
       }
       if (seasonFilter !== "all" && item.season !== seasonFilter) {
+        return false;
+      }
+      if (ownershipFilter === "obtained" && !item.owned) {
         return false;
       }
       if (ownershipFilter === "equipped") {
@@ -481,125 +369,10 @@ export function RewardsInventoryScreen() {
       void onSelectAvatar(item.id);
       return;
     }
-    const isQaFallbackItem = testingOverrideActive && item.id.startsWith(QA_FALLBACK_ID_PREFIX);
-    if (isQaFallbackItem) {
-      const qaSnapshot: EquippedStyleSnapshot = {
-        rewardId: item.id,
-        rewardKey: item.key,
-        rarity: item.rarity,
-        source: item.source,
-        variant: `${item.rarity.toUpperCase()} INVENTORY QA`,
-        appliedAt: new Date().toISOString(),
-      };
-      setErrorMessage(null);
-      setEquippedStyleRewardId(qaSnapshot.rewardId);
-      setEquippedBySlot((current) => ({
-        ...current,
-        [item.slot]: qaSnapshot.rewardId,
-      }));
-      if (item.slot === "avatar") {
-        setSelectedAvatarId(qaSnapshot.rewardId);
-      }
-      if (profileId) {
-        const current = loadPersistedEquippedStyles(profileId);
-        savePersistedEquippedStyles(profileId, { ...current, [item.slot]: qaSnapshot });
-      }
-      return;
-    }
-    if (!profileId || !authSessionToken || needsOnboarding) {
-      setErrorMessage("Sign in and finish onboarding before style apply.");
-      return;
-    }
-    if (!rareAccessActive && !testingOverrideActive) {
-      setErrorMessage(
-        "Style apply is locked. Reach qualification rules with daily streak and active bubble sessions.",
-      );
-      return;
-    }
-    const previousEquippedBySlot = { ...equippedBySlot };
-    const previousEquippedStyleRewardId = equippedStyleRewardId;
-    const previousSelectedAvatarId = selectedAvatarId;
-    const previousPersistedBySlot = profileId
-      ? loadPersistedEquippedStyles(profileId)
-      : undefined;
-    const optimisticSnapshot: EquippedStyleSnapshot = {
-      rewardId: item.id,
-      rewardKey: item.key,
-      rarity: item.rarity,
-      source: item.source,
-      variant: `${item.rarity.toUpperCase()} INVENTORY`,
-      appliedAt: new Date().toISOString(),
-    };
-    setEquippedStyleRewardId(item.id);
-    setEquippedBySlot((current) => ({
-      ...current,
-      [item.slot]: item.id,
-    }));
-    if (item.slot === "avatar") {
-      setSelectedAvatarId(item.id);
-    }
-    if (profileId) {
-      const current = loadPersistedEquippedStyles(profileId);
-      savePersistedEquippedStyles(profileId, {
-        ...current,
-        [item.slot]: optimisticSnapshot,
-      });
-    }
-    setIsApplyingCollectibleId(item.id);
-    setErrorMessage(null);
-    void (async () => {
-      try {
-        const response = await postWithTimeout(`${backendUrl}/profile/style/equip`, {
-          method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
-          body: JSON.stringify({
-            profileId,
-            rewardId: item.id,
-            rewardKey: item.key,
-            rarity: item.rarity,
-            source: item.source,
-            variant: `${item.rarity.toUpperCase()} INVENTORY`,
-          }),
-        });
-        if (!response.ok) {
-          setEquippedBySlot(previousEquippedBySlot);
-          setEquippedStyleRewardId(previousEquippedStyleRewardId);
-          setSelectedAvatarId(previousSelectedAvatarId);
-          if (profileId && previousPersistedBySlot !== undefined) {
-            savePersistedEquippedStyles(profileId, previousPersistedBySlot);
-          }
-          setErrorMessage("We couldn't apply this style right now.");
-          return;
-        }
-        const payload = (await response.json()) as EquipStyleResponse;
-        setEquippedStyleRewardId(payload.equippedStyle.rewardId);
-        setEquippedBySlot((current) => ({
-          ...current,
-          [item.slot]: item.id,
-        }));
-        const current = loadPersistedEquippedStyles(profileId);
-        savePersistedEquippedStyles(profileId, {
-          ...current,
-          [item.slot]: payload.equippedStyle,
-        });
-      } catch (error) {
-        setEquippedBySlot(previousEquippedBySlot);
-        setEquippedStyleRewardId(previousEquippedStyleRewardId);
-        setSelectedAvatarId(previousSelectedAvatarId);
-        if (profileId && previousPersistedBySlot !== undefined) {
-          savePersistedEquippedStyles(profileId, previousPersistedBySlot);
-        }
-        const isTimeoutAbort =
-          error instanceof DOMException && error.name === "AbortError";
-        if (isTimeoutAbort) {
-          setErrorMessage("Style apply timed out. Please tap Apply again.");
-          return;
-        }
-        setErrorMessage("We couldn't apply this style right now.");
-      } finally {
-        setIsApplyingCollectibleId(null);
-      }
-    })();
+    setErrorMessage(
+      "Seasonal collectibles are preview-only right now. Keep building streak and XP until the season-end reward distribution.",
+    );
+    return;
   };
 
   useEffect(() => {
@@ -647,8 +420,6 @@ export function RewardsInventoryScreen() {
       setNeedsOnboarding(onboardingState.needsOnboarding);
       setSelectedAvatarId(onboardingState.currentAvatarId);
       setEquippedStyleRewardId(onboardingState.equippedStyleRewardId);
-      setRareAccessActive(onboardingState.rareAccessActive);
-      setTestingOverrideActive(onboardingState.testingOverrideActive);
       const persistedBySlot = loadPersistedEquippedStyles(resolvedProfileId);
       const mergedBySlot = { ...persistedBySlot };
       if (onboardingState.equippedStyle) {
@@ -763,7 +534,8 @@ export function RewardsInventoryScreen() {
             </Link>
           </div>
           <p className="vault-drop-muted mt-3 text-sm">
-            Pick a slot, tap an item, apply instantly. Designed for quick mobile use.
+            Browse the full season collection. Skins stay visible as preview-only until season-end
+            reward distribution.
           </p>
           <div className="vault-drop-ceremony mt-4">
             <div className="vault-drop-flash" aria-hidden />
@@ -837,7 +609,7 @@ export function RewardsInventoryScreen() {
                 NFTs
               </p>
               <p className="vault-drop-title mt-1 font-semibold">
-                {testingOverrideActive ? displayCounts.nfts : (inventory?.nftCount ?? "—")}
+                {inventory?.nftCount ?? displayCounts.nfts ?? "—"}
               </p>
             </div>
             <div className="rounded-xl border border-white/15 bg-white/10 p-3">
@@ -846,9 +618,7 @@ export function RewardsInventoryScreen() {
                 Cosmetics
               </p>
               <p className="vault-drop-title mt-1 font-semibold">
-                {testingOverrideActive
-                  ? displayCounts.cosmetics
-                  : (inventory?.cosmeticCount ?? "—")}
+                {inventory?.cosmeticCount ?? displayCounts.cosmetics ?? "—"}
               </p>
             </div>
           </div>
@@ -892,7 +662,7 @@ export function RewardsInventoryScreen() {
                 >
                   <option value="all">All</option>
                   <option value="obtained">Obtained</option>
-                  <option value="equipped">Equipped</option>
+              <option value="equipped">Equipped</option>
                 </select>
               </label>
               <label className="rounded-xl border border-white/15 bg-white/[0.07] p-2">
@@ -933,7 +703,7 @@ export function RewardsInventoryScreen() {
           </h2>
           {needsOnboarding ? (
             <p className="vault-drop-muted mt-3 text-sm">
-              Finish onboarding first to unlock filtering, equip actions, and preview.
+              Finish onboarding first to unlock the season collection preview.
             </p>
           ) : null}
 
@@ -974,7 +744,9 @@ export function RewardsInventoryScreen() {
                 return (
                   <article
                     key={item.id}
-                    className={`inventory-item-card rarity-${item.rarity} relative mt-3 overflow-hidden rounded-3xl border p-0`}
+                    className={`inventory-item-card rarity-${item.rarity} relative mt-3 overflow-hidden rounded-3xl border p-0 ${
+                      item.previewOnly ? "inventory-item-card-preview" : ""
+                    }`}
                   >
                     <span className="drop-card-bubble-deco" aria-hidden />
                     <div className="drop-card-inner p-3 pt-3.5">
@@ -984,12 +756,21 @@ export function RewardsInventoryScreen() {
                           <p className="vault-drop-muted mt-1 text-xs font-semibold uppercase tracking-[0.08em]">
                             {rarityLabel(item.rarity)}
                           </p>
+                          <p className="vault-drop-muted mt-1 text-[11px]">
+                            {item.owned
+                              ? "Collected on this profile · Preview only"
+                              : "Season preview only"}
+                          </p>
                         </div>
-                        {isEquipped ? (
-                          <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-300">
-                            Equipped
-                          </span>
-                        ) : null}
+                        <span
+                          className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                            isEquipped
+                              ? "bg-emerald-500/20 text-emerald-300"
+                              : "border border-white/20 bg-white/10 text-[#d5def0]"
+                          }`}
+                        >
+                          {isEquipped ? "Equipped" : item.owned ? "Collected" : "Preview only"}
+                        </span>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-2">
                         <button
@@ -998,16 +779,18 @@ export function RewardsInventoryScreen() {
                           disabled={
                             (item.slot === "avatar" &&
                               (!authSessionToken || isSwitchingAvatar)) ||
-                            (item.slot !== "avatar" && !rareAccessActive && !testingOverrideActive) ||
+                            (item.slot !== "avatar" && item.previewOnly) ||
                             (item.slot !== "avatar" && isApplyingCollectibleId !== null)
                           }
                           className="vault-drop-btn-main min-h-11 px-3 py-2 text-xs disabled:opacity-60"
                         >
-                          {isEquipped
-                            ? "Equipped"
-                            : isApplyingCollectibleId === item.id
-                              ? "Applying..."
-                              : "Apply"}
+                          {item.slot === "avatar"
+                            ? isEquipped
+                              ? "Equipped"
+                              : "Apply avatar"
+                            : item.owned
+                              ? "Collected"
+                              : "Season preview"}
                         </button>
                       </div>
                     </div>
@@ -1035,23 +818,17 @@ export function RewardsInventoryScreen() {
             </div>
           ) : null}
 
-          {!needsOnboarding && !rareAccessActive && !testingOverrideActive ? (
+          {!needsOnboarding ? (
             <div className="mt-3 rounded-xl border border-amber-400/35 bg-amber-500/10 p-3 text-xs font-semibold text-amber-100/95">
-              Cosmetic apply is visible but locked. Keep daily streak active and complete qualified bubble
-              sessions to unlock apply.
-            </div>
-          ) : null}
-
-          {!needsOnboarding && testingOverrideActive ? (
-            <div className="mt-3 rounded-xl border border-cyan-400/35 bg-cyan-500/10 p-3 text-xs font-semibold text-cyan-100">
-              Test override active: all skins are visible and apply is unlocked for QA.
+              All collectible skins are visible for preview, but apply is locked during the seasonal
+              progression phase. Keep daily streak active, earn XP, and wait for season-end reward
+              distribution.
             </div>
           ) : null}
 
           {!needsOnboarding && !isLoading && !errorMessage && displayCollectibles.length === 0 ? (
             <div className="vault-drop-muted mt-3 rounded-xl border border-white/15 bg-white/[0.07] p-4 text-sm">
-              Your rewards vault is empty for now. New NFTs/cosmetics will appear after confirmed session
-              rewards.
+              The season collection is not available yet for this profile.
             </div>
           ) : null}
         </section>
@@ -1064,12 +841,8 @@ export function RewardsInventoryScreen() {
                 : errorMessage === "We couldn't load your reward access right now."
                   ? errorMessage
                   : errorMessage ===
-                      "Style apply is locked. Reach qualification rules with daily streak and active bubble sessions."
+                      "Seasonal collectibles are preview-only right now. Keep building streak and XP until the season-end reward distribution."
                     ? errorMessage
-                    : errorMessage === "Style apply timed out. Please tap Apply again."
-                      ? errorMessage
-                    : errorMessage === "We couldn't apply this style right now."
-                      ? errorMessage
                   : "We couldn't open your rewards inventory right now."}
             </p>
           </section>

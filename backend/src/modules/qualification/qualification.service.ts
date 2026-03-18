@@ -23,6 +23,17 @@ export interface QualificationSnapshot {
   rareRewardAccessActive: boolean;
 }
 
+export interface SeasonProgressSnapshot {
+  qualificationStatus: QualificationStatus;
+  eligibleAtSeasonEnd: boolean;
+  streak: number;
+  xp: number;
+  activeSessions: number;
+  requiredStreak: number;
+  requiredXp: number;
+  requiredActiveSessions: number;
+}
+
 @Injectable()
 export class QualificationService {
   constructor(
@@ -110,6 +121,44 @@ export class QualificationService {
     }
 
     return this.toSnapshot(state.status);
+  }
+
+  async getSeasonProgress(
+    profileId: string,
+  ): Promise<SeasonProgressSnapshot> {
+    const profile = await this.profileRepository.findOne({
+      where: { id: profileId },
+    });
+    if (!profile) {
+      return {
+        qualificationStatus: QualificationStatus.LOCKED,
+        eligibleAtSeasonEnd: false,
+        streak: 0,
+        xp: 0,
+        activeSessions: 0,
+        requiredStreak: REQUIRED_STREAK,
+        requiredXp: REQUIRED_XP,
+        requiredActiveSessions: REQUIRED_ACTIVE_SESSIONS,
+      };
+    }
+
+    const snapshot = await this.evaluateProgress(profileId);
+    const progress = await this.getQualificationProgress(
+      profileId,
+      undefined,
+      profile.currentStreak,
+    );
+
+    return {
+      qualificationStatus: snapshot.qualificationStatus,
+      eligibleAtSeasonEnd: this.meetsQualificationThreshold(progress),
+      streak: progress.streak,
+      xp: progress.xp,
+      activeSessions: progress.activeSessions,
+      requiredStreak: REQUIRED_STREAK,
+      requiredXp: REQUIRED_XP,
+      requiredActiveSessions: REQUIRED_ACTIVE_SESSIONS,
+    };
   }
 
   private async getQualificationProgress(

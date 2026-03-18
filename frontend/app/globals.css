@@ -1238,6 +1238,22 @@ button.gloss-pill:disabled {
   z-index: 1;
 }
 
+.vault-drop-surface .inventory-item-card.inventory-item-card-preview {
+  filter: grayscale(0.92) saturate(0.65);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    0 0 24px rgba(219, 228, 255, 0.16);
+}
+
+.vault-drop-surface .inventory-item-card.inventory-item-card-preview::after {
+  opacity: 0.28;
+}
+
+.vault-drop-surface .inventory-item-card.inventory-item-card-preview .drop-card-bubble-deco {
+  opacity: 0.52;
+}
+
 /* Ceremony hero — design-drop-cards-preview-v3 .flash + flashPulse */
 .vault-drop-flash {
   width: 100%;

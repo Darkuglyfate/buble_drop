@@ -34,9 +34,6 @@ const BUBBLE_COLLISION_RESTITUTION = 0.24;
 const BUBBLE_COLLISION_DEFORM_THRESHOLD_PX = 7;
 const BUBBLE_SPAWN_PADDING_PX = 14;
 const RUNTIME_DROP_DURATION_MS = 1320;
-const MEMECOIN_SYMBOLS = ["BUB", "MINT", "WAVE", "POP", "GEM"] as const;
-const COSMETIC_SET_LABELS = ["Pearl Set", "Neon Skin", "Glint Pack", "Soft Aura"] as const;
-const NFT_REWARD_LABELS = ["Solar Crown", "Aqua Flux", "Neon Tide", "Foam Starter"] as const;
 const SESSION_REWARD_BUBBLES_XP = 30;
 const SESSION_COMPLETION_BONUS_XP = 20;
 const SESSION_ACTIVE_PLAY_XP_MAX = 20;
@@ -171,6 +168,17 @@ type RareRewardOutcome = {
   cosmeticRewards: RareRewardCollectibleOutcome[];
 };
 
+type SeasonProgress = {
+  qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
+  eligibleAtSeasonEnd: boolean;
+  streak: number;
+  xp: number;
+  activeSessions: number;
+  requiredStreak: number;
+  requiredXp: number;
+  requiredActiveSessions: number;
+};
+
 type SessionCompleteResponse = {
   success: boolean;
   sessionId: string;
@@ -187,6 +195,7 @@ type SessionCompleteResponse = {
   totalXp: number;
   qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
   rareRewardAccessActive: boolean;
+  seasonProgress: SeasonProgress;
   rareRewardOutcome: RareRewardOutcome;
 };
 
@@ -1328,46 +1337,14 @@ export function BubbleSessionPlayScreen() {
     bottom: "calc(var(--session-footer-offset) + 0.55rem)",
   } satisfies CSSProperties;
 
-  const hasRareRewardOutcome = completionResult
-    ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
-    : false;
   const completedResult = sessionCompleted && completionResult ? completionResult : null;
-  const visualRewardCards: SkinRewardCard[] = completedResult
-    ? [
-        ...completedResult.rareRewardOutcome.nftRewards.map((reward) => {
-          const hash = hashValue(`${reward.id}:${reward.key}:nft`);
-          const rarity = getSkinRarityFromHash(hash);
-          return {
-            id: reward.id,
-            key: reward.key,
-            source: "nft" as const,
-            rarity,
-            layout: getSkinLayoutFromHash(hash),
-            variantLabel: `${rarity.toUpperCase()} ${hash % 3 === 0 ? "A" : hash % 3 === 1 ? "B" : "C"}`,
-          };
-        }),
-        ...completedResult.rareRewardOutcome.cosmeticRewards.map((reward) => {
-          const hash = hashValue(`${reward.id}:${reward.key}:cosmetic`);
-          const rarity = getSkinRarityFromHash(hash);
-          return {
-            id: reward.id,
-            key: reward.key,
-            source: "cosmetic" as const,
-            rarity,
-            layout: getSkinLayoutFromHash(hash),
-            variantLabel: `${rarity.toUpperCase()} ${hash % 3 === 0 ? "A" : hash % 3 === 1 ? "B" : "C"}`,
-          };
-        }),
-      ]
-    : [];
-  const hasVisualRewards = visualRewardCards.length > 0;
   const completedRunDurationLabel = completedResult
     ? formatDurationLabel(completedResult.sessionDurationSeconds)
     : null;
   const nextStepCopy = completedResult
-    ? completedResult.rareAccessActive
-      ? "Rare lane is active. Run another session or open vault."
-      : "Next step: complete daily check-in on Home to restore rare lane."
+    ? completedResult.seasonProgress.eligibleAtSeasonEnd
+      ? "Season-end chance is live for this profile. Keep the streak active and stack more XP."
+      : "Next step: keep daily streak alive and finish more active runs to reach season-end eligibility."
     : null;
   const backHomeHrefBase = withBubbleDropContext("/", {
     profileId: effectiveProfileId,
@@ -1393,46 +1370,10 @@ export function BubbleSessionPlayScreen() {
   };
 
   const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
-    if (!effectiveProfileId || !authSessionToken) {
-      setActionMessage("Finish wallet auth before applying this style.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setActionMessage(null);
-    void (async () => {
-      try {
-        const response = await fetch(`${backendUrl}/profile/style/equip`, {
-          method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
-          body: JSON.stringify({
-            profileId: effectiveProfileId,
-            rewardId: rewardCard.id,
-            rewardKey: rewardCard.key,
-            rarity: rewardCard.rarity,
-            source: rewardCard.source,
-            variant: rewardCard.variantLabel,
-          }),
-        });
-        if (!response.ok) {
-          setActionMessage(`Apply failed (code ${response.status}).`);
-          return;
-        }
-        const payload = (await response.json()) as EquipStyleResponse;
-        setEquippedSkinRewardId(payload.equippedStyle.rewardId);
-        setLastApplyMoment({
-          rewardId: payload.equippedStyle.rewardId,
-          rewardKey: payload.equippedStyle.rewardKey,
-          rarity: payload.equippedStyle.rarity,
-          source: payload.equippedStyle.source,
-        });
-        setActionMessage(`${payload.equippedStyle.rewardKey} equipped and synced.`);
-      } catch {
-        setActionMessage("Apply failed. Check network and try again.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    })();
+    void rewardCard;
+    setActionMessage(
+      "Seasonal skin rewards stay preview-only for now. Inventory apply is locked until season-end distribution.",
+    );
   };
 
   const onSaveRewardToInventory = (rewardCard: SkinRewardCard) => {
@@ -1578,7 +1519,7 @@ export function BubbleSessionPlayScreen() {
             isBonus: Boolean(tappedBubble?.isBonus),
           },
         ]);
-        // Runtime drop feedback is intentionally visual-only and does not mutate backend rewards.
+        // Runtime feedback is visual-only and represents season progress signals, not issued rewards.
         const shouldShowRuntimeDrop =
           Math.random() < (tappedBubble?.isBonus ? 0.42 : 0.16);
         if (shouldShowRuntimeDrop) {
@@ -1587,12 +1528,16 @@ export function BubbleSessionPlayScreen() {
           const feedbackId = Math.floor(Math.random() * 1_000_000_000);
           const label =
             kind === "memecoin"
-              ? MEMECOIN_SYMBOLS[Math.floor(Math.random() * MEMECOIN_SYMBOLS.length)]
+              ? "Season ping"
               : kind === "cosmetic"
-                ? COSMETIC_SET_LABELS[Math.floor(Math.random() * COSMETIC_SET_LABELS.length)]
-                : NFT_REWARD_LABELS[Math.floor(Math.random() * NFT_REWARD_LABELS.length)];
+                ? "Vault pulse"
+                : "Chance build";
           const accentLabel =
-            kind === "memecoin" ? "MEMECOIN" : kind === "cosmetic" ? "COSMETIC SET" : "NFT DROP";
+            kind === "memecoin"
+              ? "SEASON"
+              : kind === "cosmetic"
+                ? "PREVIEW"
+                : "XP BOOST";
           const dropHue =
             kind === "memecoin" ? 42 : kind === "cosmetic" ? tappedBubble?.hue ?? 284 : 38;
           setRuntimeDropFeedback((current) => [
@@ -1738,8 +1683,8 @@ export function BubbleSessionPlayScreen() {
           rare_reward_access_active: payload.rareAccessActive,
         });
         setActionMessage(
-          `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Rare access: ${
-            payload.rareAccessActive ? "active" : "inactive"
+          `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Season chance: ${
+            payload.seasonProgress.eligibleAtSeasonEnd ? "eligible" : "building"
           }.`,
         );
       } catch {
@@ -1957,7 +1902,7 @@ export function BubbleSessionPlayScreen() {
                       How the run works
                     </h1>
                     <p className="mt-2 text-[13px] leading-5 text-[#6077a6] sm:mt-3 sm:text-sm">
-                      Stay in the run, keep active play growing, and qualify the session for the full reward lane.
+                      Stay in the run, keep active play growing, and bank progress toward the season-end reward chance.
                     </p>
                     <div className="mt-3 grid gap-2 text-left sm:hidden">
                       <div className="rounded-[1.25rem] border border-white/44 bg-white/26 px-3 py-2">
@@ -2003,7 +1948,7 @@ export function BubbleSessionPlayScreen() {
                           Why
                         </p>
                         <p className="mt-1 text-sm font-medium text-[#385180]">
-                          Earn XP and unlock the partner drop roll for a qualified run.
+                          Earn XP, protect your streak, and build your season-end reward chance.
                         </p>
                       </div>
                     </div>
@@ -2297,8 +2242,8 @@ export function BubbleSessionPlayScreen() {
                           <span>Projected XP: {projectedXpAwarded}</span>
                           <span>
                             {localCompletionEstimateMet
-                              ? "Partner drop roll unlocked for this run"
-                              : "Qualify the run to unlock partner drop roll"}
+                              ? "Qualified progress added to this season"
+                              : "Finish the run to bank season progress"}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
@@ -2357,9 +2302,7 @@ export function BubbleSessionPlayScreen() {
                     Session result
                   </p>
                   <h1 className="mt-1 text-2xl font-bold text-[#273f74]">
-                    {hasRareRewardOutcome
-                      ? "Issued rewards for this session"
-                      : "No rare reward issued"}
+                    Season progress updated
                   </h1>
                 </div>
                 <div className="rounded-full bg-white/68 px-3 py-2 text-xs font-semibold text-[#6a548a]">
@@ -2367,11 +2310,9 @@ export function BubbleSessionPlayScreen() {
                 </div>
               </div>
               <p className="mt-3 text-sm text-[#526a96]">
-                {hasRareRewardOutcome
-                  ? "Backend confirmed reward outcome for this run."
-                  : completedResult.rareAccessActive
-                    ? "No rare reward was issued in this run."
-                    : "Rare reward lane was inactive in this run."}
+                {completedResult.seasonProgress.eligibleAtSeasonEnd
+                  ? "This run strengthened a profile that is already eligible for the season-end reward chance."
+                  : "This run banked XP and active-play progress toward the season-end reward chance."}
               </p>
               {nextStepCopy ? (
                 <p className="mt-2 text-xs font-semibold text-[#5f749f]">{nextStepCopy}</p>
@@ -2397,143 +2338,50 @@ export function BubbleSessionPlayScreen() {
                 <p className="mt-1 font-semibold text-[#334f82]">{completedResult.newStreak}</p>
               </div>
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                <p className="text-xs text-[#6077a6]">Rare access</p>
+                <p className="text-xs text-[#6077a6]">Season chance</p>
                 <p className="mt-1 font-semibold text-[#334f82]">
-                  {completedResult.rareAccessActive ? "Active" : "Inactive"}
+                  {completedResult.seasonProgress.eligibleAtSeasonEnd ? "Eligible" : "Building"}
                 </p>
               </div>
             </div>
           </section>
 
-          {completedResult.rareRewardOutcome.tokenReward ? (
-            <section className="bubble-card p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
-                Claimable token reward
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                  <p className="text-xs text-[#6077a6]">Token</p>
-                  <p className="mt-1 font-semibold text-[#334f82]">
-                    {completedResult.rareRewardOutcome.tokenReward.tokenSymbol}
-                  </p>
-                </div>
-                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                  <p className="text-xs text-[#6077a6]">Claimable increment</p>
-                  <p className="mt-1 font-semibold text-[#334f82]">
-                    {completedResult.rareRewardOutcome.tokenReward.tokenAmountAwarded}
-                  </p>
-                </div>
-                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                  <p className="text-xs text-[#6077a6]">Weekly tickets</p>
-                  <p className="mt-1 font-semibold text-[#334f82]">
-                    {completedResult.rareRewardOutcome.tokenReward.weeklyTicketsIssued}
-                  </p>
-                </div>
-                <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
-                  <p className="text-xs text-[#6077a6]">Week start</p>
-                  <p className="mt-1 font-semibold text-[#334f82]">
-                    {completedResult.rareRewardOutcome.tokenReward.weekStartDate}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-[#6077a6]">
-                Reward-event context: season{" "}
-                {completedResult.rareRewardOutcome.tokenReward.seasonId}
-              </p>
-            </section>
-          ) : null}
-
-          {hasVisualRewards ? (
-            <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Skin drops</h2>
-              <p className="mt-1 text-xs text-[#6077a6]">
-                Each drop has a unique style family and supports Apply Moment.
-              </p>
-              <div className="mt-3 space-y-3">
-                {visualRewardCards.map((rewardCard) => {
-                  const palette = getDropStylePalette(rewardCard.rarity);
-                  const isEquippedNow = equippedSkinRewardId === rewardCard.id;
-                  const isSavedToInventory = inventorySavedRewardIds.includes(rewardCard.id);
-                  return (
-                    <article
-                      key={`${rewardCard.source}-${rewardCard.id}`}
-                      className={`relative overflow-hidden rounded-2xl border border-white/40 bg-gradient-to-br ${palette.shell} ${palette.glow} p-3 text-white`}
-                    >
-                      {rewardCard.layout === "diagonal" ? (
-                        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(140deg,rgba(255,255,255,0.18),transparent_40%)]" />
-                      ) : null}
-                      {rewardCard.layout === "split" ? (
-                        <span className="pointer-events-none absolute inset-y-0 left-0 w-[34%] border-r border-white/20 bg-white/10" />
-                      ) : null}
-                      {rewardCard.layout === "frame" ? (
-                        <span className="pointer-events-none absolute inset-[7px] rounded-xl border border-white/30" />
-                      ) : null}
-                      {rewardCard.rarity === "legendary" ? (
-                        <span className="pointer-events-none absolute inset-[-30%] bg-[conic-gradient(from_40deg,rgba(255,227,140,0)_0deg,rgba(255,227,140,0.3)_70deg,rgba(255,155,83,0)_130deg,rgba(255,227,140,0.28)_210deg,rgba(255,227,140,0)_300deg)]" />
-                      ) : null}
-                      <div className="relative">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-black tracking-[0.08em] ${palette.chip}`}>
-                            {rewardCard.variantLabel}
-                          </span>
-                          <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/90">
-                            {rewardCard.source}
-                          </span>
-                        </div>
-                        <h3 className="mt-2 text-xl font-black leading-tight">{rewardCard.key}</h3>
-                        <p className="mt-1 text-xs text-white/85">
-                          Layout: {rewardCard.layout}. Rarity intensity:{" "}
-                          {getRarityIntensity(rewardCard.rarity)}.
-                        </p>
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onEquipRewardNow(rewardCard)}
-                            className="flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2 text-xs font-bold text-[#163157]"
-                          >
-                            {isEquippedNow ? "Applied" : "Equip now"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onSaveRewardToInventory(rewardCard)}
-                            className="rounded-xl border border-white/50 bg-white/15 px-3 py-2 text-xs font-bold text-white"
-                          >
-                            {isSavedToInventory ? "Saved" : "Inventory"}
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-
-          {lastApplyMoment ? (
-            <section className="bubble-card p-4">
-              <h2 className="text-sm font-semibold text-[#30466f]">Apply moment</h2>
-              <div className="mt-2 rounded-2xl border border-white/70 bg-white/70 p-3">
-                <div
-                  className={`h-24 rounded-xl border border-white/70 ${
-                    lastApplyMoment.rarity === "common"
-                      ? "bg-[radial-gradient(circle_at_center,rgba(163,198,255,0.44),rgba(131,175,247,0.18)_44%,rgba(131,175,247,0)_75%)]"
-                      : lastApplyMoment.rarity === "uncommon"
-                        ? "bg-[radial-gradient(circle_at_center,rgba(120,230,220,0.5),rgba(72,188,198,0.22)_44%,rgba(72,188,198,0)_75%)]"
-                        : lastApplyMoment.rarity === "rare"
-                          ? "bg-[radial-gradient(circle_at_center,rgba(112,214,255,0.56),rgba(82,186,255,0.22)_44%,rgba(82,186,255,0)_75%)]"
-                          : lastApplyMoment.rarity === "epic"
-                            ? "bg-[radial-gradient(circle_at_center,rgba(207,138,255,0.64),rgba(162,111,255,0.3)_44%,rgba(162,111,255,0)_75%)]"
-                            : "bg-[radial-gradient(circle_at_center,rgba(255,220,140,0.78),rgba(255,174,89,0.34)_40%,rgba(255,130,69,0)_75%)]"
-                  }`}
-                />
-                <p className="mt-2 text-xs text-[#6077a6]">
-                  {lastApplyMoment.rewardKey} applied. Intensity{" "}
-                  {getRarityIntensity(lastApplyMoment.rarity)} for{" "}
-                  {lastApplyMoment.rarity.toUpperCase()}.
+          <section className="bubble-card p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
+              Season progress
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Streak</p>
+                <p className="mt-1 font-semibold text-[#334f82]">
+                  {completedResult.seasonProgress.streak}/{completedResult.seasonProgress.requiredStreak}
                 </p>
               </div>
-            </section>
-          ) : null}
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Season XP</p>
+                <p className="mt-1 font-semibold text-[#334f82]">
+                  {completedResult.seasonProgress.xp}/{completedResult.seasonProgress.requiredXp}
+                </p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Qualified runs</p>
+                <p className="mt-1 font-semibold text-[#334f82]">
+                  {completedResult.seasonProgress.activeSessions}/
+                  {completedResult.seasonProgress.requiredActiveSessions}
+                </p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Status</p>
+                <p className="mt-1 font-semibold capitalize text-[#334f82]">
+                  {completedResult.seasonProgress.qualificationStatus.replaceAll("_", " ")}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-[#6077a6]">
+              Memecoin, NFT, and cosmetic rewards no longer roll instantly per run. This session only
+              updates the season-end chance model.
+            </p>
+          </section>
 
           <section className="bubble-card p-4">
             <div className="flex gap-2">

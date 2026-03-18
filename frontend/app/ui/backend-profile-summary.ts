@@ -43,6 +43,16 @@ export type BackendProfileSummary = {
   qualificationState: {
     status: "locked" | "in_progress" | "qualified" | "paused" | "restored";
   };
+  seasonProgress: {
+    qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
+    eligibleAtSeasonEnd: boolean;
+    streak: number;
+    xp: number;
+    activeSessions: number;
+    requiredStreak: number;
+    requiredXp: number;
+    requiredActiveSessions: number;
+  };
   rareRewardAccess: {
     active: boolean;
   };
@@ -64,6 +74,7 @@ export type BackendProfileSummary = {
       appliedAt: string;
     } | null;
     testingOverrideActive: boolean;
+    previewOnly: boolean;
   };
 };
 

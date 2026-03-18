@@ -138,13 +138,11 @@ export function ClaimScreen() {
 
   const canUseBackend = !!backendUrl && !!profileId;
   const qualificationStatus = profileSummary?.qualificationState.status;
-  const rareRewardAccessActive = profileSummary?.rareRewardAccess.active ?? false;
   const canRequestClaims =
     canUseBackend &&
     !needsOnboarding &&
     !isResolvingOnboardingState &&
-    !!authSessionToken &&
-    rareRewardAccessActive;
+    !!authSessionToken;
   const qualificationBadge = qualificationStatus
     ? QUALIFICATION_BADGE_COPY[qualificationStatus]
     : {
@@ -232,7 +230,7 @@ export function ClaimScreen() {
   }, [backendUrl, profileId]);
 
   const onClaimToken = async (tokenSymbol: string, amount: string) => {
-    if (!backendUrl || !profileId || needsOnboarding || !rareRewardAccessActive) {
+    if (!backendUrl || !profileId || needsOnboarding) {
       return;
     }
     if (!authSessionToken) {
@@ -257,7 +255,7 @@ export function ClaimScreen() {
 
       if (!response.ok) {
         if (response.status === 403) {
-          setErrorMessage("Rare reward access is inactive. Claim requests are unavailable while this profile is in XP-only mode.");
+          setErrorMessage("Claim requests are currently unavailable for this balance.");
           return;
         }
         setErrorMessage("Claim request failed. Check pending claims or requested amount.");
@@ -295,7 +293,7 @@ export function ClaimScreen() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP claims</p>
-              <h1 className="mt-1 text-xl font-bold text-[#27457b]">Meme-token reward claims</h1>
+              <h1 className="mt-1 text-xl font-bold text-[#27457b]">Legacy token claims</h1>
             </div>
             <Link
               href={withBubbleDropContext("/", {
@@ -309,7 +307,8 @@ export function ClaimScreen() {
             </Link>
           </div>
           <p className="mt-3 text-sm text-[#5d76a5]">
-            Claim-based rewards only. Dedicated reward wallet handles payout off this UI flow.
+            Season rewards no longer mint per run. This screen only handles any already-issued legacy
+            token balances still waiting to be claimed.
           </p>
         </section>
 
@@ -341,10 +340,12 @@ export function ClaimScreen() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">
-                Claim eligibility
+                Season status
               </p>
               <h2 className="mt-1 text-lg font-bold text-[#27457b]">
-                {rareRewardAccessActive ? "Rare reward access active" : "XP-only mode"}
+                {profileSummary?.seasonProgress.eligibleAtSeasonEnd
+                  ? "Season-end chance active"
+                  : "Season chance building"}
               </h2>
             </div>
             <span
@@ -355,12 +356,10 @@ export function ClaimScreen() {
           </div>
           <p className="mt-3 text-sm text-[#5d76a5]">
             {isResolvingOnboardingState
-              ? "Loading backend-owned claim eligibility state."
+              ? "Loading season status."
               : needsOnboarding
                 ? "Claim requests stay locked until backend confirms onboarding completion."
-                : rareRewardAccessActive
-                  ? "Backend currently allows claim requests for this profile."
-                  : "Backend currently keeps this profile in XP-only mode, so claim requests are unavailable before submit."}
+                : "Legacy token claims stay available when a balance already exists. New season rewards are decided at season end."}
           </p>
           {profileSummary ? (
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -371,34 +370,23 @@ export function ClaimScreen() {
               <div className="gloss-pill rounded-xl bg-white/80 p-3">
                 <p className="text-xs text-[#6074a0]">Claim requests</p>
                 <p className="mt-1 font-semibold">
-                  {needsOnboarding
-                    ? "Locked"
-                    : rareRewardAccessActive
-                      ? "Available"
-                      : "Blocked"}
+                  {needsOnboarding ? "Locked" : "Legacy only"}
                 </p>
               </div>
             </div>
           ) : null}
         </section>
 
-        <section
-          className={`bubble-card p-4 ${
-            needsOnboarding || (!rareRewardAccessActive && !isResolvingOnboardingState)
-              ? "opacity-60"
-              : ""
-          }`}
-        >
+        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
           <div className="gloss-pill rounded-2xl bg-gradient-to-r from-[#ffe39f] via-[#ffcdea] to-[#d8d0ff] p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6c4b1c]">
-              Rare reward bubble
+              Season reward flow
             </p>
             <div className="mt-2 flex items-center gap-3">
               <span className="h-10 w-10 rounded-full bg-gradient-to-br from-[#fff0b9] to-[#ffb5e7] shadow-[0_0_20px_rgba(255,191,123,0.8)]" />
               <p className="text-sm font-semibold text-[#5b3f1f]">
-                {rareRewardAccessActive
-                  ? "Premium reveal style for rare reward moments"
-                  : "Rare reward visuals stay preview-only while backend keeps this profile in XP-only mode"}
+                Daily check-in, streak, and XP now feed a season-end chance instead of instant run-by-run
+                token issuance.
               </p>
             </div>
           </div>
@@ -444,16 +432,10 @@ export function ClaimScreen() {
           ) : null}
         </section>
 
-        <section
-          className={`bubble-card p-4 ${
-            needsOnboarding || (!rareRewardAccessActive && !isResolvingOnboardingState)
-              ? "opacity-60"
-              : ""
-          }`}
-        >
+        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
             <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
-            Claimable meme-token balances
+            Claimable legacy balances
           </h2>
 
           {isResolvingOnboardingState ? (
@@ -491,7 +473,7 @@ export function ClaimScreen() {
                         ? "Submitting claim..."
                         : canRequestClaims
                           ? "Request full claim amount"
-                          : "Claim unavailable in XP-only mode"}
+                          : "Sign in to claim"}
                     </button>
                   </div>
                 );
@@ -506,15 +488,6 @@ export function ClaimScreen() {
           {canUseBackend && needsOnboarding ? (
             <p className="mt-3 text-sm text-[#6074a0]">
               Claim flow is locked until backend confirms onboarding completion.
-            </p>
-          ) : null}
-          {canUseBackend &&
-          !needsOnboarding &&
-          !isResolvingOnboardingState &&
-          !rareRewardAccessActive ? (
-            <p className="mt-3 text-sm text-[#6074a0]">
-              Claim requests are blocked before submit because backend currently reports no active rare reward access for
-              this profile.
             </p>
           ) : null}
         </section>

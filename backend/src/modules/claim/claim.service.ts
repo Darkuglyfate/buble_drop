@@ -10,7 +10,6 @@ import { DataSource, Repository } from 'typeorm';
 import { Profile } from '../profile/entities/profile.entity';
 import { UserWallet } from '../profile/entities/user-wallet.entity';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
-import { QualificationService } from '../qualification/qualification.service';
 import { CreateTokenClaimDto } from './dto/create-token-claim.dto';
 import { ClaimableTokenBalance } from './entities/claimable-token-balance.entity';
 import { TokenClaim, TokenClaimStatus } from './entities/token-claim.entity';
@@ -47,7 +46,6 @@ export class ClaimService {
     private readonly claimableBalanceRepository: Repository<ClaimableTokenBalance>,
     @InjectRepository(TokenClaim)
     private readonly tokenClaimRepository: Repository<TokenClaim>,
-    private readonly qualificationService: QualificationService,
     private readonly payoutService: RewardWalletPayoutService,
   ) {}
 
@@ -77,15 +75,6 @@ export class ClaimService {
     this.assertUuid(dto.profileId, 'Invalid profileId format');
     const profile = await this.getProfileOrThrow(dto.profileId);
     this.assertOnboardingCompleted(profile);
-
-    const qualification = await this.qualificationService.evaluateProgress(
-      dto.profileId,
-    );
-    if (!qualification.rareRewardAccessActive) {
-      throw new ForbiddenException(
-        'Rare reward access is not active. Claim requests are unavailable in XP-only mode',
-      );
-    }
 
     const tokenSymbol = dto.tokenSymbol.trim().toUpperCase();
     if (!tokenSymbol) {

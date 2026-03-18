@@ -90,7 +90,8 @@ export function SeasonHubScreen() {
             </Link>
           </div>
           <p className="mt-3 text-sm text-[#5d76a5]">
-            Follow the current season, track featured tokens, and open the details that matter.
+            Follow the current season window, track featured partners, and understand what can be
+            awarded at season end.
           </p>
         </section>
 
@@ -128,7 +129,10 @@ export function SeasonHubScreen() {
               <p className="mt-1 text-xs text-[#6074a0]">
                 {hub.season.startDate} - {hub.season.endDate}
               </p>
-              <p className="mt-1 text-xs text-[#6074a0]">Tokens: {hub.tokenCount}</p>
+              <p className="mt-1 text-xs text-[#6074a0]">
+                Featured partners: {hub.tokenCount}. Rewards are distributed by season outcome, not
+                per single run.
+              </p>
             </div>
           ) : (
             <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
@@ -175,7 +179,7 @@ export function SeasonHubScreen() {
           ) : (
             !isLoading ? (
               <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
-                Featured season tokens will appear here when the lineup is live.
+                Featured season partners will appear here when the lineup is live.
               </div>
             ) : null
           )}

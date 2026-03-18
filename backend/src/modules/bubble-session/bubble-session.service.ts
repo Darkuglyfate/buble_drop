@@ -10,12 +10,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
-import { QualificationService } from '../qualification/qualification.service';
-import { RedisService } from '../../redis/redis.service';
 import {
-  RareRewardService,
-  type RareRewardIssueResult,
-} from '../rewards/rare-reward.service';
+  QualificationService,
+  type SeasonProgressSnapshot,
+} from '../qualification/qualification.service';
+import { RedisService } from '../../redis/redis.service';
+import { type RareRewardIssueResult } from '../rewards/rare-reward.service';
 import { XpService, XpSource } from '../rewards/xp.service';
 import { BubbleSession } from './entities/bubble-session.entity';
 
@@ -27,6 +27,16 @@ const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 180;
 const SESSION_ACTIVE_SECONDS_XP_CAP = 600; // 10 minutes
 const ACTIVE_SECONDS_PER_SIGNAL = 12;
 const SESSION_ACTIVITY_TTL_SECONDS = 24 * 60 * 60;
+const EMPTY_RARE_REWARD_OUTCOME: RareRewardIssueResult = {
+  tokenSymbolAwarded: null,
+  tokenAmountAwarded: '0',
+  weeklyTicketsIssued: 0,
+  nftIdsAwarded: [],
+  cosmeticIdsAwarded: [],
+  tokenReward: null,
+  nftRewards: [],
+  cosmeticRewards: [],
+};
 
 export interface BubbleSessionStartResult {
   sessionId: string;
@@ -50,6 +60,7 @@ export interface BubbleSessionCompleteResult {
   totalXp: number;
   qualificationStatus: QualificationStatus;
   rareRewardAccessActive: boolean;
+  seasonProgress: SeasonProgressSnapshot;
   rareRewardOutcome: RareRewardIssueResult;
 }
 
@@ -70,7 +81,6 @@ export class BubbleSessionService {
     private readonly profileRepository: Repository<Profile>,
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
-    private readonly rareRewardService: RareRewardService,
     private readonly redisService: RedisService,
   ) {}
 
@@ -231,13 +241,8 @@ export class BubbleSessionService {
 
     const qualification =
       await this.qualificationService.evaluateProgress(profileId);
-    const rareRewardOutcome =
-      await this.rareRewardService.issueSessionRareRewards({
-        profile,
-        session,
-        rareRewardAccessActive: qualification.rareRewardAccessActive,
-        isCompletionEligible,
-      });
+    const seasonProgress =
+      await this.qualificationService.getSeasonProgress(profileId);
 
     return {
       success: true,
@@ -255,7 +260,8 @@ export class BubbleSessionService {
       totalXp: profile.totalXp,
       qualificationStatus: qualification.qualificationStatus,
       rareRewardAccessActive: qualification.rareRewardAccessActive,
-      rareRewardOutcome,
+      seasonProgress,
+      rareRewardOutcome: EMPTY_RARE_REWARD_OUTCOME,
     };
   }
 
