@@ -1298,7 +1298,7 @@ export function BubbleSessionPlayScreen() {
     minHeight: "100dvh",
     "--session-header-offset": `${headerHeightPx}px`,
     "--session-footer-offset": `${footerHeightPx}px`,
-  } satisfies CSSProperties;
+  } as CSSProperties;
   const runtimeHeaderStyle = {
     paddingTop: compactRuntimeLayout
       ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.35rem))"
