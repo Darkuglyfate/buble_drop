@@ -98,9 +98,20 @@ $ npm run start
 # watch mode
 $ npm run start:dev
 
-# production mode
+# production mode (runs DB migrations first, then API)
 $ npm run start:prod
+
+# production without migrations (emergency only)
+$ npm run start:prod:skip-migrate
 ```
+
+### Production deploy (Render, Railway, VPS)
+
+1. Set `NODE_ENV=production`, `FRONTEND_ORIGIN`, `DB_*` (or compatible Postgres URL via env your host provides), `AUTH_SESSION_SECRET`, etc.
+2. Build: `npm ci && npm run build`
+3. Start: **`npm run start:prod`** — on each deploy this **applies pending TypeORM migrations** then starts Nest. No manual `db:migration:run` on the server unless you prefer it.
+4. After **first** production DB setup, run reference seed once if your checklist requires it: `npm run db:seed:reference-data` (needs DB env; may use Render shell).
+5. To disable auto-migrate: `RUN_MIGRATIONS_ON_START=0 npm run start:prod` (not recommended).
 
 ## Run tests
 
