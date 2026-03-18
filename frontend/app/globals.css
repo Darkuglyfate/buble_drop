@@ -1828,6 +1828,7 @@ body.glass-strong .bubble {
     sessionBubbleFloat calc(var(--bubble-morph-duration, 2400ms) + 1200ms) ease-in-out infinite;
   will-change: transform, opacity;
   transform: translateZ(0);
+  transition-property: opacity, box-shadow, border-color;
 }
 
 .session-active-bubble-spawning {
@@ -1976,13 +1977,23 @@ body.glass-strong .bubble {
     border-color: rgba(255, 255, 255, 0.28);
   }
 
+  .session-runtime-shell .session-runtime-hud-card {
+    padding: 0.65rem 0.75rem;
+  }
+
   .session-runtime-shell .session-runtime-start-card {
+    max-width: 16.75rem;
+    padding: 1.125rem 1rem;
     background: rgba(255, 255, 255, 0.18);
     border-color: rgba(255, 255, 255, 0.34);
   }
 
   .session-runtime-shell .session-runtime-toast-card {
     background: rgba(255, 255, 255, 0.14);
+  }
+
+  .session-runtime-shell .session-runtime-footer-card {
+    padding: 0.8rem 0.9rem;
   }
 }
 

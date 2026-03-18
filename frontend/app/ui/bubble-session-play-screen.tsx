@@ -26,10 +26,12 @@ const TAP_FEEDBACK_XP_PER_UNIT = 12;
 const BUBBLE_POP_DURATION_MS = 260;
 const BUBBLE_RESPAWN_DELAY_MS = 440;
 const BUBBLE_SPAWN_DURATION_MS = 320;
-const BUBBLE_DEFORM_DURATION_MS = 150;
-const BUBBLE_COLLISION_SOLVER_PASSES = 3;
-const BUBBLE_COLLISION_PENETRATION_SLOP_PX = 3;
-const BUBBLE_COLLISION_CORRECTION_PERCENT = 0.76;
+const BUBBLE_DEFORM_DURATION_MS = 132;
+const BUBBLE_COLLISION_SOLVER_PASSES = 5;
+const BUBBLE_COLLISION_PENETRATION_SLOP_PX = 1.25;
+const BUBBLE_COLLISION_CORRECTION_PERCENT = 0.94;
+const BUBBLE_COLLISION_RESTITUTION = 0.24;
+const BUBBLE_COLLISION_DEFORM_THRESHOLD_PX = 7;
 const BUBBLE_SPAWN_PADDING_PX = 14;
 const RUNTIME_DROP_DURATION_MS = 1320;
 const MEMECOIN_SYMBOLS = ["BUB", "MINT", "WAVE", "POP", "GEM"] as const;
@@ -1091,18 +1093,21 @@ export function BubbleSessionPlayScreen() {
               second.left = secondClampedPosition.left;
               second.top = secondClampedPosition.top;
 
-              const firstVelocityXPx = (first.velocityX / 100) * playfieldWidth;
-              const firstVelocityYPx = (first.velocityY / 100) * playfieldHeight;
-              const secondVelocityXPx = (second.velocityX / 100) * playfieldWidth;
-              const secondVelocityYPx = (second.velocityY / 100) * playfieldHeight;
+              const firstEffectiveVelocityXPx =
+                ((first.velocityX + currentDriftX * first.currentFactor) / 100) * playfieldWidth;
+              const firstEffectiveVelocityYPx =
+                ((first.velocityY + currentDriftY * first.currentFactor) / 100) * playfieldHeight;
+              const secondEffectiveVelocityXPx =
+                ((second.velocityX + currentDriftX * second.currentFactor) / 100) * playfieldWidth;
+              const secondEffectiveVelocityYPx =
+                ((second.velocityY + currentDriftY * second.currentFactor) / 100) * playfieldHeight;
               const relativeVelocityAlongNormal =
-                (secondVelocityXPx - firstVelocityXPx) * normalX +
-                (secondVelocityYPx - firstVelocityYPx) * normalY;
+                (secondEffectiveVelocityXPx - firstEffectiveVelocityXPx) * normalX +
+                (secondEffectiveVelocityYPx - firstEffectiveVelocityYPx) * normalY;
 
-              if (relativeVelocityAlongNormal < 0) {
-                const restitution = 0.74;
+              if (relativeVelocityAlongNormal < -0.6) {
                 const impulse =
-                  (-(1 + restitution) * relativeVelocityAlongNormal) /
+                  (-(1 + BUBBLE_COLLISION_RESTITUTION) * relativeVelocityAlongNormal) /
                   (1 / firstMass + 1 / secondMass);
 
                 const impulseX = impulse * normalX;
@@ -1128,19 +1133,26 @@ export function BubbleSessionPlayScreen() {
               const impactStrength = Math.min(
                 0.28,
                 Math.max(
-                  0.08,
-                  correctionPx / combinedRadiusPx + Math.abs(relativeVelocityAlongNormal) / 240,
+                  0.05,
+                  correctionPx / combinedRadiusPx + Math.abs(relativeVelocityAlongNormal) / 320,
                 ),
               );
               const impactRotationDeg = (Math.atan2(normalY, normalX) * 180) / Math.PI;
+              const shouldRefreshDeform =
+                correctionPx > BUBBLE_COLLISION_DEFORM_THRESHOLD_PX ||
+                Math.abs(relativeVelocityAlongNormal) > BUBBLE_COLLISION_DEFORM_THRESHOLD_PX;
 
-              first.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 24;
-              first.deformRotationDeg = impactRotationDeg;
-              first.deformStretch = Math.max(first.deformStretch, impactStrength);
+              if (shouldRefreshDeform && impactStrength > first.deformStretch + 0.02) {
+                first.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 18;
+                first.deformRotationDeg = impactRotationDeg;
+                first.deformStretch = impactStrength;
+              }
 
-              second.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 24;
-              second.deformRotationDeg = impactRotationDeg;
-              second.deformStretch = Math.max(second.deformStretch, impactStrength);
+              if (shouldRefreshDeform && impactStrength > second.deformStretch + 0.02) {
+                second.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 18;
+                second.deformRotationDeg = impactRotationDeg;
+                second.deformStretch = impactStrength;
+              }
             }
           }
         }
@@ -1771,7 +1783,7 @@ export function BubbleSessionPlayScreen() {
                 Back
               </Link>
               <div
-                className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all min-[420px]:max-w-[17rem] ${
+                className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all max-[419px]:max-w-[15.5rem] min-[420px]:max-w-[17rem] ${
                   compactRuntimeLayout
                     ? "rounded-[1.2rem] border border-white/34 bg-white/14 px-3 py-2"
                     : "rounded-[1.3rem] border border-white/48 bg-white/24 px-3 py-2"
@@ -1821,7 +1833,7 @@ export function BubbleSessionPlayScreen() {
                   </>
                 ) : (
                   <>
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 hidden min-[420px]:flex items-center gap-2">
                       <div className="h-2 flex-1 rounded-full bg-[#e4ecff]">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
@@ -1835,7 +1847,15 @@ export function BubbleSessionPlayScreen() {
                         />
                       </div>
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] min-[420px]:hidden">
+                      <span className="rounded-full border border-white/40 bg-white/20 px-2 py-1 font-semibold text-[#47608f]">
+                        Target {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)}m
+                      </span>
+                      <span className="rounded-full border border-white/40 bg-white/20 px-2 py-1 font-semibold text-[#47608f]">
+                        Goals {runObjectiveCompletedCount}/{runObjectives.length}
+                      </span>
+                    </div>
+                    <div className="mt-2 hidden min-[420px]:grid grid-cols-3 gap-1.5 text-[10px]">
                       <div className="rounded-lg border border-white/48 bg-white/22 px-2 py-2 text-[#486294]">
                         <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Combo</p>
                         <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{tapCombo}</p>
@@ -1929,17 +1949,37 @@ export function BubbleSessionPlayScreen() {
                 style={playfieldLayoutStyle}
               >
                 {!isActive ? (
-                  <div className="session-runtime-start-card w-full max-w-[19rem] rounded-[2.25rem] border border-white/46 bg-white/24 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.09)] backdrop-blur-[10px]">
+                  <div className="session-runtime-start-card w-full max-w-[16.75rem] rounded-[1.85rem] border border-white/46 bg-white/24 px-4 py-[1.125rem] text-center shadow-[0_20px_54px_rgba(99,131,195,0.09)] backdrop-blur-[10px] sm:max-w-[19rem] sm:rounded-[2.25rem] sm:px-6 sm:py-7">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
                       Bubble session
                     </p>
-                    <h1 className="mt-2 text-[2rem] font-bold leading-tight text-[#2b467c]">
+                    <h1 className="mt-1.5 text-[1.65rem] font-bold leading-[1.02] text-[#2b467c] sm:mt-2 sm:text-[2rem] sm:leading-tight">
                       How the run works
                     </h1>
-                    <p className="mt-3 text-sm text-[#6077a6]">
+                    <p className="mt-2 text-[13px] leading-5 text-[#6077a6] sm:mt-3 sm:text-sm">
                       Stay in the run, keep active play growing, and qualify the session for the full reward lane.
                     </p>
-                    <div className="mt-4 space-y-2 text-left">
+                    <div className="mt-3 grid gap-2 text-left sm:hidden">
+                      <div className="rounded-[1.25rem] border border-white/44 bg-white/26 px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                          Goal
+                        </p>
+                        <p className="mt-1 text-[13px] font-medium leading-5 text-[#385180]">
+                          Hold the session and build active play.
+                        </p>
+                      </div>
+                      <div className="rounded-[1.25rem] border border-white/44 bg-white/26 px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                          Minimum
+                        </p>
+                        <p className="mt-1 text-[13px] font-medium leading-5 text-[#385180]">
+                          {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min run and {Math.round(
+                            ACTIVE_SECONDS_FOR_COMPLETION_BONUS / 60,
+                          )} min active play.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 hidden space-y-2 text-left sm:block">
                       <div className="rounded-2xl border border-white/44 bg-white/26 px-3 py-2.5">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
                           Goal
@@ -1971,7 +2011,7 @@ export function BubbleSessionPlayScreen() {
                       type="button"
                       onClick={onStartSession}
                       disabled={!canStartSession}
-                      className="gloss-pill mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-4 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                      className="gloss-pill mt-4 inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-semibold text-[#1f3561] disabled:opacity-60 sm:mt-5 sm:py-4"
                     >
                       {isSubmitting && !isActive ? "Starting..." : "Start session"}
                     </button>
@@ -2024,7 +2064,7 @@ export function BubbleSessionPlayScreen() {
                                 onRecordActivePlay(bubble.id, event);
                               }}
                               disabled={!isActive || sessionCompleted || bubble.poppedUntilMs > now}
-                              className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[transform,border-radius,opacity,box-shadow] ease-out disabled:opacity-70 ${
+                              className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[opacity,box-shadow,border-color] ease-out disabled:opacity-70 ${
                                 bubble.poppedUntilMs > now ? "session-active-bubble-popping" : ""
                               } ${
                                 bubble.spawnedUntilMs > now ? "session-active-bubble-spawning" : ""
@@ -2042,7 +2082,7 @@ export function BubbleSessionPlayScreen() {
                                   bubble.roundness
                                 }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
                                 transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg + deformRotation}deg) scale(${bubble.scale * deformStretch}, ${bubble.scale * deformSquash})`,
-                                transitionDuration: `${bubble.poppedUntilMs > now ? 150 : bubble.sizeTier === "small" ? 90 : bubble.sizeTier === "medium" ? 120 : 150}ms`,
+                                transitionDuration: `${bubble.poppedUntilMs > now ? 150 : 110}ms`,
                                 "--bubble-morph-duration": `${Math.max(1800, bubble.driftMs + 400)}ms`,
                                 "--bubble-sheen-duration": `${Math.max(1800, bubble.driftMs - 200)}ms`,
                                 "--bubble-current-factor": `${bubble.currentFactor}`,
@@ -2240,52 +2280,65 @@ export function BubbleSessionPlayScreen() {
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2 text-xs text-[#6178a7]">
-                      <div className="flex items-center justify-between">
-                        <span>Projected XP: {projectedXpAwarded}</span>
-                        <span>
-                          {localCompletionEstimateMet
-                            ? "Partner drop roll unlocked for this run"
-                            : "Qualify the run to unlock partner drop roll"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Run target: {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min</span>
-                        <span>{readinessCopy}</span>
-                      </div>
-                      <div className="rounded-xl border border-white/52 bg-white/30 px-3 py-2">
-                        <div className="mb-1 flex items-center justify-between">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#50689a]">
-                            Run objectives
-                          </p>
-                          <p className="text-[11px] font-semibold text-[#415b90]">
-                            {runObjectiveCompletedCount}/{runObjectives.length}
-                          </p>
+                    <>
+                      <div className="flex flex-col gap-2 text-[11px] text-[#6178a7] sm:hidden">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-white/48 bg-white/26 px-2.5 py-1 font-semibold text-[#4d6595]">
+                            Target {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min
+                          </span>
+                          <span className="rounded-full border border-white/48 bg-white/26 px-2.5 py-1 font-semibold text-[#4d6595]">
+                            Goals {runObjectiveCompletedCount}/{runObjectives.length}
+                          </span>
                         </div>
-                        <div className="space-y-1">
-                          {runObjectives.map((objective) => (
-                            <div
-                              key={objective.id}
-                              className="flex items-center justify-between gap-2 text-[11px]"
-                            >
-                              <span>{objective.label}</span>
-                              <span
-                                className={
-                                  objective.done
-                                    ? "rounded-md bg-[#dbffe9] px-2 py-0.5 font-semibold text-[#2e7f57]"
-                                    : "rounded-md bg-[#edf2ff] px-2 py-0.5 font-semibold text-[#5c6f99]"
-                                }
+                        <p className="leading-5 text-[#6277a5]">{readinessCopy}</p>
+                      </div>
+                      <div className="hidden flex-col gap-2 text-xs text-[#6178a7] sm:flex">
+                        <div className="flex items-center justify-between">
+                          <span>Projected XP: {projectedXpAwarded}</span>
+                          <span>
+                            {localCompletionEstimateMet
+                              ? "Partner drop roll unlocked for this run"
+                              : "Qualify the run to unlock partner drop roll"}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Run target: {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min</span>
+                          <span>{readinessCopy}</span>
+                        </div>
+                        <div className="rounded-xl border border-white/52 bg-white/30 px-3 py-2">
+                          <div className="mb-1 flex items-center justify-between">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#50689a]">
+                              Run objectives
+                            </p>
+                            <p className="text-[11px] font-semibold text-[#415b90]">
+                              {runObjectiveCompletedCount}/{runObjectives.length}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            {runObjectives.map((objective) => (
+                              <div
+                                key={objective.id}
+                                className="flex items-center justify-between gap-2 text-[11px]"
                               >
-                                {objective.done ? "Done" : "In run"}
-                              </span>
-                            </div>
-                          ))}
+                                <span>{objective.label}</span>
+                                <span
+                                  className={
+                                    objective.done
+                                      ? "rounded-md bg-[#dbffe9] px-2 py-0.5 font-semibold text-[#2e7f57]"
+                                      : "rounded-md bg-[#edf2ff] px-2 py-0.5 font-semibold text-[#5c6f99]"
+                                  }
+                                >
+                                  {objective.done ? "Done" : "In run"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </>
                   )}
                   {!compactRuntimeLayout && !startSessionStatusMessage ? (
-                    <p className="mt-2 text-center text-[11px] font-medium text-[#5c6f99]">
+                    <p className="mt-2 hidden text-center text-[11px] font-medium text-[#5c6f99] sm:block">
                       Review the rules above, then start when you are ready.
                     </p>
                   ) : null}
