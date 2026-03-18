@@ -26,7 +26,6 @@ const TAP_FEEDBACK_XP_PER_UNIT = 12;
 const BUBBLE_POP_DURATION_MS = 260;
 const BUBBLE_RESPAWN_DELAY_MS = 440;
 const BUBBLE_SPAWN_DURATION_MS = 320;
-const BUBBLE_COLLISION_TICK_MS = 40;
 const BUBBLE_DEFORM_DURATION_MS = 150;
 const BUBBLE_COLLISION_SOLVER_PASSES = 3;
 const BUBBLE_COLLISION_PENETRATION_SLOP_PX = 3;
@@ -67,6 +66,7 @@ const POP_SPARKLE_OFFSETS = [
 ] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
+const BUBBLE_MAX_FRAME_DT_MS = 32;
 const PLAYFIELD_ASSIST_EXTRA_PX_SMALL = 18;
 const PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM = 14;
 const PLAYFIELD_ASSIST_EXTRA_PX_LARGE = 10;
@@ -708,13 +708,21 @@ export function BubbleSessionPlayScreen() {
     source: "nft" | "cosmetic";
   } | null>(null);
   const playfieldRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const footerRef = useRef<HTMLDivElement | null>(null);
   const popAudioContextRef = useRef<AudioContext | null>(null);
   const popAudioUnavailableRef = useRef(false);
+  const playfieldMetricsRef = useRef({
+    width: DEFAULT_PLAYFIELD_WIDTH_PX,
+    height: DEFAULT_PLAYFIELD_HEIGHT_PX,
+  });
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [headerHeightPx, setHeaderHeightPx] = useState(116);
+  const [footerHeightPx, setFooterHeightPx] = useState(156);
   const connectedWalletAddress = normalizeWalletAddress(address);
   const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
   const effectiveProfileId = profileId;
@@ -796,6 +804,60 @@ export function BubbleSessionPlayScreen() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const observers: ResizeObserver[] = [];
+    const observeElement = (
+      element: Element | null,
+      onMeasure: (height: number) => void,
+    ) => {
+      if (!element) {
+        return;
+      }
+      const measure = () => {
+        const height = Math.round(element.getBoundingClientRect().height);
+        if (height > 0) {
+          onMeasure(height);
+        }
+      };
+      measure();
+      const observer = new ResizeObserver(() => {
+        measure();
+      });
+      observer.observe(element);
+      observers.push(observer);
+    };
+
+    observeElement(headerRef.current, setHeaderHeightPx);
+    observeElement(footerRef.current, setFooterHeightPx);
+
+    const playfieldElement = playfieldRef.current;
+    if (playfieldElement) {
+      const measurePlayfield = () => {
+        const bounds = playfieldElement.getBoundingClientRect();
+        if (bounds.width > 0 && bounds.height > 0) {
+          playfieldMetricsRef.current = {
+            width: bounds.width,
+            height: bounds.height,
+          };
+        }
+      };
+      measurePlayfield();
+      const playfieldObserver = new ResizeObserver(() => {
+        measurePlayfield();
+      });
+      playfieldObserver.observe(playfieldElement);
+      observers.push(playfieldObserver);
+    }
+
+    return () => {
+      observers.forEach((observer) => observer.disconnect());
+    };
+  }, [isActive]);
+
+  useEffect(() => {
     setIsResolvingOnboardingState(true);
 
     if (profileId) {
@@ -846,12 +908,16 @@ export function BubbleSessionPlayScreen() {
       return;
     }
 
-    const intervalId = window.setInterval(() => {
+    let animationFrameId = 0;
+    let previousFrameAt = performance.now();
+
+    const tick = (frameAt: number) => {
+      const frameDeltaMs = Math.min(BUBBLE_MAX_FRAME_DT_MS, Math.max(8, frameAt - previousFrameAt));
+      previousFrameAt = frameAt;
       const now = Date.now();
-      const playfieldRect = playfieldRef.current?.getBoundingClientRect();
-      const playfieldWidth = playfieldRect?.width ?? 390;
-      const playfieldHeight = playfieldRect?.height ?? 760;
-      const dt = BUBBLE_COLLISION_TICK_MS / 1000;
+      const playfieldWidth = playfieldMetricsRef.current.width;
+      const playfieldHeight = playfieldMetricsRef.current.height;
+      const dt = frameDeltaMs / 1000;
       const currentDriftX = Math.sin(now / 1800) * 4.6;
       const currentDriftY = Math.cos(now / 2500) * 2.6;
 
@@ -1081,10 +1147,14 @@ export function BubbleSessionPlayScreen() {
 
         return prepared;
       });
-    }, BUBBLE_COLLISION_TICK_MS);
+
+      animationFrameId = window.requestAnimationFrame(tick);
+    };
+
+    animationFrameId = window.requestAnimationFrame(tick);
 
     return () => {
-      window.clearInterval(intervalId);
+      window.cancelAnimationFrame(animationFrameId);
     };
   }, [isActive, sessionCompleted]);
 
@@ -1212,7 +1282,11 @@ export function BubbleSessionPlayScreen() {
   const showTapFeedback =
     lastTapFeedbackAtMs !== null && Date.now() - lastTapFeedbackAtMs < 850;
   const compactRuntimeLayout = isActive && !sessionCompleted;
-  const runtimeFrameStyle = { minHeight: "100dvh" } satisfies CSSProperties;
+  const runtimeFrameStyle = {
+    minHeight: "100dvh",
+    "--session-header-offset": `${headerHeightPx}px`,
+    "--session-footer-offset": `${footerHeightPx}px`,
+  } satisfies CSSProperties;
   const runtimeHeaderStyle = {
     paddingTop: compactRuntimeLayout
       ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.35rem))"
@@ -1222,19 +1296,24 @@ export function BubbleSessionPlayScreen() {
   } satisfies CSSProperties;
   const playfieldLayoutStyle = {
     minHeight: "100dvh",
-    paddingTop: compactRuntimeLayout
-      ? "max(6rem, calc(env(safe-area-inset-top) + 5rem))"
-      : "max(6.5rem, calc(env(safe-area-inset-top) + 5.5rem))",
-    paddingBottom: compactRuntimeLayout
-      ? "max(7.5rem, calc(env(safe-area-inset-bottom) + 6.5rem))"
-      : "max(11rem, calc(env(safe-area-inset-bottom) + 10rem))",
+    paddingTop: "calc(var(--session-header-offset) + 0.75rem)",
+    paddingBottom: "calc(var(--session-footer-offset) + 0.75rem)",
     paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
     paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+  } satisfies CSSProperties;
+  const playfieldBoundariesStyle = {
+    top: "calc(var(--session-header-offset) + 0.4rem)",
+    bottom: "calc(var(--session-footer-offset) + 0.4rem)",
+    left: "max(0.75rem, calc(env(safe-area-inset-left) + 0.5rem))",
+    right: "max(0.75rem, calc(env(safe-area-inset-right) + 0.5rem))",
   } satisfies CSSProperties;
   const runtimeFooterStyle = {
     paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))",
     paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
     paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+  } satisfies CSSProperties;
+  const gameplayToastStyle = {
+    bottom: "calc(var(--session-footer-offset) + 0.55rem)",
   } satisfies CSSProperties;
 
   const hasRareRewardOutcome = completionResult
@@ -1661,7 +1740,9 @@ export function BubbleSessionPlayScreen() {
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#edf7ff_0%,#e9f2ff_28%,#f8ecff_66%,#fff6fb_100%)]"
+      className={`session-runtime-shell relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,#edf7ff_0%,#e9f2ff_28%,#f8ecff_66%,#fff6fb_100%)] ${
+        compactRuntimeLayout ? "session-runtime-active" : ""
+      }`}
       style={runtimeFrameStyle}
     >
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -1674,13 +1755,14 @@ export function BubbleSessionPlayScreen() {
       {!sessionCompleted ? (
         <main className="relative z-10 min-h-screen" style={runtimeFrameStyle}>
           <header
+            ref={headerRef}
             className="pointer-events-none absolute inset-x-0 top-0 z-20 sm:p-5"
             style={runtimeHeaderStyle}
           >
-            <div className="mx-auto flex w-full max-w-md items-start justify-between gap-3">
+            <div className="mx-auto flex w-full max-w-md flex-col items-stretch gap-2 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
               <Link
                 href={backHomeHref}
-                className={`pointer-events-auto rounded-full border text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
+                className={`session-runtime-back-button pointer-events-auto self-start rounded-full border text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
                   compactRuntimeLayout
                     ? "border-white/34 bg-white/16 px-4 py-2.5"
                     : "border-white/48 bg-white/28 px-4 py-2"
@@ -1689,13 +1771,13 @@ export function BubbleSessionPlayScreen() {
                 Back
               </Link>
               <div
-                className={`pointer-events-auto min-w-0 shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
+                className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all min-[420px]:max-w-[17rem] ${
                   compactRuntimeLayout
                     ? "rounded-[1.2rem] border border-white/34 bg-white/14 px-3 py-2"
                     : "rounded-[1.3rem] border border-white/48 bg-white/24 px-3 py-2"
                 }`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Bubble session
@@ -1725,7 +1807,7 @@ export function BubbleSessionPlayScreen() {
                         style={{ width: `${elapsedProgressPercent}%` }}
                       />
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] min-[420px]:justify-end">
                       <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
                         Combo x{tapCombo}
                       </span>
@@ -1841,13 +1923,13 @@ export function BubbleSessionPlayScreen() {
               </div>
 
               <div
-                ref={playfieldRef}
-                onClick={onPlayfieldTap}
-                className="relative flex min-h-screen items-center justify-center sm:px-6 sm:pt-28"
+                className={`relative min-h-screen sm:px-6 ${
+                  isActive ? "" : "flex items-start justify-center"
+                }`}
                 style={playfieldLayoutStyle}
               >
                 {!isActive ? (
-                  <div className="w-full max-w-[19rem] rounded-[2.25rem] border border-white/46 bg-white/24 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.09)] backdrop-blur-[10px]">
+                  <div className="session-runtime-start-card w-full max-w-[19rem] rounded-[2.25rem] border border-white/46 bg-white/24 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.09)] backdrop-blur-[10px]">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
                       Bubble session
                     </p>
@@ -1900,222 +1982,231 @@ export function BubbleSessionPlayScreen() {
                     ) : null}
                   </div>
                 ) : (
-                  <div className="session-current-layer absolute inset-0">
-                    {activePlayBubbles.map((bubble) => (
-                      (() => {
-                        const now = Date.now();
-                        if (bubble.poppedUntilMs <= now && bubble.respawnAtMs > now) {
-                          return null;
-                        }
-                        const deformProgress =
-                          bubble.deformUntilMs > now
-                            ? (bubble.deformUntilMs - now) / BUBBLE_DEFORM_DURATION_MS
-                            : 0;
-                        const deformStretch = 1 + bubble.deformStretch * deformProgress;
-                        const deformSquash = Math.max(
-                          0.78,
-                          1 - bubble.deformStretch * 0.82 * deformProgress,
-                        );
-                        const deformRotation = bubble.deformRotationDeg * deformProgress;
-                        const hitSizeRem =
-                          bubble.sizeRem +
-                          (bubble.sizeTier === "small"
-                            ? 0.9
-                            : bubble.sizeTier === "medium"
-                              ? 0.5
-                              : 0.24);
+                  <div
+                    ref={playfieldRef}
+                    onClick={onPlayfieldTap}
+                    className="absolute"
+                    style={playfieldBoundariesStyle}
+                  >
+                    <div className="session-current-layer absolute inset-0">
+                      {activePlayBubbles.map((bubble) => (
+                        (() => {
+                          const now = Date.now();
+                          if (bubble.poppedUntilMs <= now && bubble.respawnAtMs > now) {
+                            return null;
+                          }
+                          const deformProgress =
+                            bubble.deformUntilMs > now
+                              ? (bubble.deformUntilMs - now) / BUBBLE_DEFORM_DURATION_MS
+                              : 0;
+                          const deformStretch = 1 + bubble.deformStretch * deformProgress;
+                          const deformSquash = Math.max(
+                            0.78,
+                            1 - bubble.deformStretch * 0.82 * deformProgress,
+                          );
+                          const deformRotation = bubble.deformRotationDeg * deformProgress;
+                          const hitSizeRem =
+                            bubble.sizeRem +
+                            (bubble.sizeTier === "small"
+                              ? 0.9
+                              : bubble.sizeTier === "medium"
+                                ? 0.5
+                                : 0.24);
 
-                        return (
-                      <button
-                        key={bubble.id}
-                        type="button"
-                        data-bubble-button="true"
-                        aria-label="Pop bubble"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onRecordActivePlay(bubble.id, event);
-                        }}
-                        disabled={!isActive || sessionCompleted || bubble.poppedUntilMs > now}
-                        className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[transform,border-radius,opacity,box-shadow] ease-out disabled:opacity-70 ${
-                          bubble.poppedUntilMs > now ? "session-active-bubble-popping" : ""
-                        } ${
-                          bubble.spawnedUntilMs > now ? "session-active-bubble-spawning" : ""
-                        } ${
-                          bubble.isBonus ? "session-active-bubble-bonus" : ""
-                        }`}
-                        style={{
-                          top: `${bubble.top}%`,
-                          left: `${bubble.left}%`,
-                          width: `${hitSizeRem}rem`,
-                          height: `${hitSizeRem}rem`,
-                          borderRadius: `${bubble.roundness}% ${100 - bubble.roundness}% ${
-                            bubble.roundness
-                          }% ${100 - bubble.roundness}% / ${100 - bubble.roundness}% ${
-                            bubble.roundness
-                          }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
-                          transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg + deformRotation}deg) scale(${bubble.scale * deformStretch}, ${bubble.scale * deformSquash})`,
-                          transitionDuration: `${bubble.poppedUntilMs > now ? 150 : bubble.sizeTier === "small" ? 90 : bubble.sizeTier === "medium" ? 120 : 150}ms`,
-                          "--bubble-morph-duration": `${Math.max(1800, bubble.driftMs + 400)}ms`,
-                          "--bubble-sheen-duration": `${Math.max(1800, bubble.driftMs - 200)}ms`,
-                          "--bubble-current-factor": `${bubble.currentFactor}`,
-                          "--bubble-rim-hue": `${bubble.isBonus ? 42 : bubble.hue + 28}`,
-                          "--bubble-rim-hue-2": `${bubble.isBonus ? 330 : bubble.hue + 102}`,
-                          opacity:
-                            bubble.poppedUntilMs > now
-                              ? 0.06
-                              : bubble.spawnedUntilMs > now
-                                ? 0.42
-                              : bubble.isBonus
-                                ? 0.98
-                                : bubble.sizeTier === "small"
-                                  ? 0.74
-                                  : bubble.sizeTier === "medium"
-                                    ? 0.84
-                                    : 0.91,
-                          borderColor: bubble.isBonus
-                            ? "rgba(255, 242, 188, 0.9)"
-                            : `hsla(${bubble.hue + 34}, 80%, 96%, 0.72)`,
-                          boxShadow: bubble.isBonus
-                            ? "0 22px 58px rgba(255,201,108,0.42), 0 0 26px rgba(255,236,182,0.44), inset 0 0 0 1px rgba(255,248,218,0.58)"
-                            : bubble.sizeTier === "large"
-                              ? "0 20px 52px rgba(122,136,201,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)"
-                              : "0 14px 36px rgba(122,136,201,0.18), inset 0 0 0 1px rgba(255,255,255,0.14)",
-                          background: bubble.isBonus
-                            ? "radial-gradient(circle at 30% 22%, rgba(255,255,255,0.92), rgba(255,255,255,0.22) 34%, transparent 56%), radial-gradient(circle at 72% 72%, rgba(255,238,185,0.96), rgba(255,205,126,0.54) 42%, transparent 68%), radial-gradient(circle at 50% 50%, rgba(255,246,214,0.96), rgba(255,219,150,0.82) 48%, rgba(255,183,118,0.58) 100%)"
-                            : `radial-gradient(circle at 32% 24%, rgba(255,255,255,0.62), rgba(255,255,255,0.1) 35%, transparent 56%), radial-gradient(circle at 68% 72%, hsla(${
-                                bubble.hue + 14
-                              }, 82%, 70%, ${bubble.alpha * 0.5}), transparent 62%), radial-gradient(circle at 50% 50%, hsla(${
-                                bubble.hue
-                              }, 78%, 68%, ${bubble.alpha}), hsla(${bubble.hue + 10}, 74%, 84%, ${
-                                bubble.alpha * 0.56
-                              }))`,
-                        } as CSSProperties}
-                      >
-                        <span className="session-bubble-edge-rim" />
-                        <span className="session-bubble-core" />
-                        <span className="session-bubble-highlight session-bubble-highlight-a" />
-                        <span className="session-bubble-highlight session-bubble-highlight-b" />
-                        <span className="session-bubble-sheen-band" />
-                        {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
-                      </button>
-                        );
-                      })()
-                    ))}
-                    {popBursts.map((burst) => (
-                      <span key={burst.id}>
-                        <span
-                          className="session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
-                          style={{
-                            left: `${burst.xPercent}%`,
-                            top: `${burst.yPercent}%`,
-                            width: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
-                            height: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
-                            borderColor: `hsla(${burst.hue}, 94%, 78%, ${burst.isBonus ? 0.88 : 0.72})`,
-                            boxShadow: `0 0 0 8px hsla(${burst.hue}, 92%, 76%, 0.16), 0 0 24px hsla(${burst.hue}, 94%, 74%, ${
-                              burst.isBonus ? 0.34 : 0.22
-                            })`,
-                          }}
-                        />
-                        <span
-                          className="session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
-                          style={{
-                            left: `${burst.xPercent}%`,
-                            top: `${burst.yPercent}%`,
-                            width: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
-                            height: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
-                            background: "rgba(255,255,255,0.92)",
-                          }}
-                        />
-                        {POP_SPARKLE_OFFSETS.map((sparkle, index) => (
+                          return (
+                            <button
+                              key={bubble.id}
+                              type="button"
+                              data-bubble-button="true"
+                              aria-label="Pop bubble"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onRecordActivePlay(bubble.id, event);
+                              }}
+                              disabled={!isActive || sessionCompleted || bubble.poppedUntilMs > now}
+                              className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[transform,border-radius,opacity,box-shadow] ease-out disabled:opacity-70 ${
+                                bubble.poppedUntilMs > now ? "session-active-bubble-popping" : ""
+                              } ${
+                                bubble.spawnedUntilMs > now ? "session-active-bubble-spawning" : ""
+                              } ${
+                                bubble.isBonus ? "session-active-bubble-bonus" : ""
+                              }`}
+                              style={{
+                                top: `${bubble.top}%`,
+                                left: `${bubble.left}%`,
+                                width: `${hitSizeRem}rem`,
+                                height: `${hitSizeRem}rem`,
+                                borderRadius: `${bubble.roundness}% ${100 - bubble.roundness}% ${
+                                  bubble.roundness
+                                }% ${100 - bubble.roundness}% / ${100 - bubble.roundness}% ${
+                                  bubble.roundness
+                                }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
+                                transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg + deformRotation}deg) scale(${bubble.scale * deformStretch}, ${bubble.scale * deformSquash})`,
+                                transitionDuration: `${bubble.poppedUntilMs > now ? 150 : bubble.sizeTier === "small" ? 90 : bubble.sizeTier === "medium" ? 120 : 150}ms`,
+                                "--bubble-morph-duration": `${Math.max(1800, bubble.driftMs + 400)}ms`,
+                                "--bubble-sheen-duration": `${Math.max(1800, bubble.driftMs - 200)}ms`,
+                                "--bubble-current-factor": `${bubble.currentFactor}`,
+                                "--bubble-rim-hue": `${bubble.isBonus ? 42 : bubble.hue + 28}`,
+                                "--bubble-rim-hue-2": `${bubble.isBonus ? 330 : bubble.hue + 102}`,
+                                opacity:
+                                  bubble.poppedUntilMs > now
+                                    ? 0.06
+                                    : bubble.spawnedUntilMs > now
+                                      ? 0.42
+                                      : bubble.isBonus
+                                        ? 0.98
+                                        : bubble.sizeTier === "small"
+                                          ? 0.74
+                                          : bubble.sizeTier === "medium"
+                                            ? 0.84
+                                            : 0.91,
+                                borderColor: bubble.isBonus
+                                  ? "rgba(255, 242, 188, 0.9)"
+                                  : `hsla(${bubble.hue + 34}, 80%, 96%, 0.72)`,
+                                boxShadow: bubble.isBonus
+                                  ? "0 22px 58px rgba(255,201,108,0.42), 0 0 26px rgba(255,236,182,0.44), inset 0 0 0 1px rgba(255,248,218,0.58)"
+                                  : bubble.sizeTier === "large"
+                                    ? "0 20px 52px rgba(122,136,201,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)"
+                                    : "0 14px 36px rgba(122,136,201,0.18), inset 0 0 0 1px rgba(255,255,255,0.14)",
+                                background: bubble.isBonus
+                                  ? "radial-gradient(circle at 30% 22%, rgba(255,255,255,0.92), rgba(255,255,255,0.22) 34%, transparent 56%), radial-gradient(circle at 72% 72%, rgba(255,238,185,0.96), rgba(255,205,126,0.54) 42%, transparent 68%), radial-gradient(circle at 50% 50%, rgba(255,246,214,0.96), rgba(255,219,150,0.82) 48%, rgba(255,183,118,0.58) 100%)"
+                                  : `radial-gradient(circle at 32% 24%, rgba(255,255,255,0.62), rgba(255,255,255,0.1) 35%, transparent 56%), radial-gradient(circle at 68% 72%, hsla(${
+                                      bubble.hue + 14
+                                    }, 82%, 70%, ${bubble.alpha * 0.5}), transparent 62%), radial-gradient(circle at 50% 50%, hsla(${
+                                      bubble.hue
+                                    }, 78%, 68%, ${bubble.alpha}), hsla(${bubble.hue + 10}, 74%, 84%, ${
+                                      bubble.alpha * 0.56
+                                    }))`,
+                              } as CSSProperties}
+                            >
+                              <span className="session-bubble-edge-rim" />
+                              <span className="session-bubble-core" />
+                              <span className="session-bubble-highlight session-bubble-highlight-a" />
+                              <span className="session-bubble-highlight session-bubble-highlight-b" />
+                              <span className="session-bubble-sheen-band" />
+                              {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
+                            </button>
+                          );
+                        })()
+                      ))}
+                      {popBursts.map((burst) => (
+                        <span key={burst.id}>
                           <span
-                            key={`${burst.id}-sparkle-${index}`}
-                            className="session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                            className="session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
                             style={{
-                              left: `calc(${burst.xPercent}% + ${sparkle.xRem * burst.sizeRem}rem)`,
-                              top: `calc(${burst.yPercent}% + ${sparkle.yRem * burst.sizeRem}rem)`,
-                              width: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
-                              height: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
-                              background: burst.isBonus
-                                ? "rgba(255, 236, 175, 0.92)"
-                                : `hsla(${burst.hue + 18}, 96%, 84%, 0.88)`,
-                              boxShadow: burst.isBonus
-                                ? "0 0 12px rgba(255,223,140,0.7)"
-                                : `0 0 10px hsla(${burst.hue + 22}, 96%, 80%, 0.44)`,
-                              animationDelay: `${index * 40}ms`,
+                              left: `${burst.xPercent}%`,
+                              top: `${burst.yPercent}%`,
+                              width: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
+                              height: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
+                              borderColor: `hsla(${burst.hue}, 94%, 78%, ${burst.isBonus ? 0.88 : 0.72})`,
+                              boxShadow: `0 0 0 8px hsla(${burst.hue}, 92%, 76%, 0.16), 0 0 24px hsla(${burst.hue}, 94%, 74%, ${
+                                burst.isBonus ? 0.34 : 0.22
+                              })`,
                             }}
                           />
-                        ))}
-                      </span>
-                    ))}
-                    {runtimeDropFeedback.map((feedback) => (
-                      <span
-                        key={feedback.id}
-                        className={`session-runtime-drop session-runtime-drop-${feedback.kind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
-                          feedback.isBonusSource ? "session-runtime-drop-bonus" : ""
-                        }`}
-                        style={
-                          {
-                            left: `${feedback.xPercent}%`,
-                            top: `${feedback.yPercent}%`,
-                            "--runtime-drop-hue": `${feedback.hue}`,
-                          } as CSSProperties
-                        }
-                      >
-                        <span className="session-runtime-drop-orbit" />
-                        <span className="session-runtime-drop-core" />
-                        <span className="session-runtime-drop-foil" />
-                        <span className="session-runtime-drop-ribbon" />
-                        <span className="session-runtime-drop-chip">{feedback.accentLabel}</span>
-                        <span className="session-runtime-drop-label">{feedback.label}</span>
-                      </span>
-                    ))}
-                    {showTapFeedback && tapFeedbackPoint ? (
-                      <div
-                        className="session-touch-feedback session-touch-feedback-xp pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
-                        style={{
-                          top: `${tapFeedbackPoint.topPercent}%`,
-                          left: `${tapFeedbackPoint.leftPercent}%`,
-                          marginTop: "-4.4rem",
-                        }}
-                      >
-                        <span className="session-touch-feedback-badge">
-                          +{lastTapRewardXp} XP
-                          {lastTapComboValue > 1 ? ` · x${lastTapComboValue}` : ""}
+                          <span
+                            className="session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                            style={{
+                              left: `${burst.xPercent}%`,
+                              top: `${burst.yPercent}%`,
+                              width: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
+                              height: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
+                              background: "rgba(255,255,255,0.92)",
+                            }}
+                          />
+                          {POP_SPARKLE_OFFSETS.map((sparkle, index) => (
+                            <span
+                              key={`${burst.id}-sparkle-${index}`}
+                              className="session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                              style={{
+                                left: `calc(${burst.xPercent}% + ${sparkle.xRem * burst.sizeRem}rem)`,
+                                top: `calc(${burst.yPercent}% + ${sparkle.yRem * burst.sizeRem}rem)`,
+                                width: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
+                                height: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
+                                background: burst.isBonus
+                                  ? "rgba(255, 236, 175, 0.92)"
+                                  : `hsla(${burst.hue + 18}, 96%, 84%, 0.88)`,
+                                boxShadow: burst.isBonus
+                                  ? "0 0 12px rgba(255,223,140,0.7)"
+                                  : `0 0 10px hsla(${burst.hue + 22}, 96%, 80%, 0.44)`,
+                                animationDelay: `${index * 40}ms`,
+                              }}
+                            />
+                          ))}
                         </span>
-                      </div>
-                    ) : null}
-                    {playfieldTouchCue ? (
-                      <div
-                        className={`session-touch-feedback pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
-                          playfieldTouchCue.tone === "assist"
-                            ? "session-touch-feedback-assist"
-                            : "session-touch-feedback-miss"
-                        }`}
-                        style={{
-                          top: `${playfieldTouchCue.topPercent}%`,
-                          left: `${playfieldTouchCue.leftPercent}%`,
-                        }}
-                      >
-                        <span className="session-touch-feedback-ring" />
-                      </div>
-                    ) : null}
+                      ))}
+                      {runtimeDropFeedback.map((feedback) => (
+                        <span
+                          key={feedback.id}
+                          className={`session-runtime-drop session-runtime-drop-${feedback.kind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
+                            feedback.isBonusSource ? "session-runtime-drop-bonus" : ""
+                          }`}
+                          style={
+                            {
+                              left: `${feedback.xPercent}%`,
+                              top: `${feedback.yPercent}%`,
+                              "--runtime-drop-hue": `${feedback.hue}`,
+                            } as CSSProperties
+                          }
+                        >
+                          <span className="session-runtime-drop-orbit" />
+                          <span className="session-runtime-drop-core" />
+                          <span className="session-runtime-drop-foil" />
+                          <span className="session-runtime-drop-ribbon" />
+                          <span className="session-runtime-drop-chip">{feedback.accentLabel}</span>
+                          <span className="session-runtime-drop-label">{feedback.label}</span>
+                        </span>
+                      ))}
+                      {showTapFeedback && tapFeedbackPoint ? (
+                        <div
+                          className="session-touch-feedback session-touch-feedback-xp pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                          style={{
+                            top: `${tapFeedbackPoint.topPercent}%`,
+                            left: `${tapFeedbackPoint.leftPercent}%`,
+                            marginTop: "-4.4rem",
+                          }}
+                        >
+                          <span className="session-touch-feedback-badge">
+                            +{lastTapRewardXp} XP
+                            {lastTapComboValue > 1 ? ` · x${lastTapComboValue}` : ""}
+                          </span>
+                        </div>
+                      ) : null}
+                      {playfieldTouchCue ? (
+                        <div
+                          className={`session-touch-feedback pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
+                            playfieldTouchCue.tone === "assist"
+                              ? "session-touch-feedback-assist"
+                              : "session-touch-feedback-miss"
+                          }`}
+                          style={{
+                            top: `${playfieldTouchCue.topPercent}%`,
+                            left: `${playfieldTouchCue.leftPercent}%`,
+                          }}
+                        >
+                          <span className="session-touch-feedback-ring" />
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </div>
 
               {gameplayToastMessage && isActive ? (
-                <div className="pointer-events-none absolute inset-x-0 z-20 px-4 sm:px-6" style={{
-                  bottom: "max(6.3rem, calc(env(safe-area-inset-bottom) + 5.2rem))",
-                }}>
-                  <div className="mx-auto w-full max-w-sm rounded-full border border-white/38 bg-white/18 px-4 py-2 text-center text-[11px] font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.09)] backdrop-blur-[10px]">
+                <div className="pointer-events-none absolute inset-x-0 z-20 px-4 sm:px-6" style={gameplayToastStyle}>
+                  <div className="session-runtime-toast-card mx-auto w-full max-w-sm rounded-full border border-white/38 bg-white/18 px-4 py-2 text-center text-[11px] font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.09)] backdrop-blur-[10px]">
                     {gameplayToastMessage}
                   </div>
                 </div>
               ) : null}
 
-              <div className="absolute inset-x-0 bottom-0 z-20 sm:px-6 sm:pb-5" style={runtimeFooterStyle}>
+              <div
+                ref={footerRef}
+                className="absolute inset-x-0 bottom-0 z-20 sm:px-6 sm:pb-5"
+                style={runtimeFooterStyle}
+              >
                 <div
-                  className={`mx-auto w-full max-w-md shadow-[0_18px_48px_rgba(95,130,199,0.09)] backdrop-blur-[10px] transition-all ${
+                  className={`session-runtime-footer-card mx-auto w-full max-w-md shadow-[0_18px_48px_rgba(95,130,199,0.09)] backdrop-blur-[10px] transition-all ${
                     compactRuntimeLayout
                       ? "rounded-[1.55rem] border border-white/38 bg-white/14 p-3.5"
                       : "rounded-[1.9rem] border border-white/48 bg-white/24 p-4"

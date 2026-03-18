@@ -1816,6 +1816,8 @@ body.glass-strong .bubble {
 .session-current-layer {
   pointer-events: none;
   animation: sessionCurrentDrift 10.5s ease-in-out infinite alternate;
+  contain: layout paint;
+  transform: translateZ(0);
 }
 
 .session-active-bubble {
@@ -1825,6 +1827,7 @@ body.glass-strong .bubble {
     sessionBubbleMorph var(--bubble-morph-duration, 2400ms) ease-in-out infinite alternate,
     sessionBubbleFloat calc(var(--bubble-morph-duration, 2400ms) + 1200ms) ease-in-out infinite;
   will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .session-active-bubble-spawning {
@@ -1916,6 +1919,71 @@ body.glass-strong .bubble {
   transform: translateX(-130%) rotate(12deg);
   animation: sessionBubbleBandSlide var(--bubble-sheen-duration, 2200ms) linear infinite;
   pointer-events: none;
+}
+
+@media (pointer: coarse), (max-width: 640px) {
+  .session-runtime-shell .session-current-layer {
+    animation: none;
+  }
+
+  .session-runtime-shell .session-active-bubble {
+    animation: none;
+    box-shadow:
+      0 10px 24px rgba(122, 136, 201, 0.12),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  }
+
+  .session-runtime-shell .session-active-bubble-spawning {
+    animation: sessionBubbleSpawn 260ms ease-out both;
+  }
+
+  .session-runtime-shell .session-active-bubble-popping {
+    filter: none;
+  }
+
+  .session-runtime-shell .session-bubble-edge-rim {
+    background: linear-gradient(
+      135deg,
+      hsla(var(--bubble-rim-hue, 220), 100%, 95%, 0.34),
+      hsla(var(--bubble-rim-hue-2, 310), 100%, 88%, 0.14)
+    );
+    opacity: 0.72;
+  }
+
+  .session-runtime-shell .session-bubble-core,
+  .session-runtime-shell .session-bubble-highlight,
+  .session-runtime-shell .session-bubble-glint {
+    animation: none;
+  }
+
+  .session-runtime-shell .session-bubble-sheen-band {
+    display: none;
+  }
+
+  .session-runtime-shell .session-runtime-back-button,
+  .session-runtime-shell .session-runtime-hud-card,
+  .session-runtime-shell .session-runtime-start-card,
+  .session-runtime-shell .session-runtime-toast-card,
+  .session-runtime-shell .session-runtime-footer-card {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 10px 24px rgba(95, 130, 199, 0.08);
+  }
+
+  .session-runtime-shell .session-runtime-hud-card,
+  .session-runtime-shell .session-runtime-footer-card {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+
+  .session-runtime-shell .session-runtime-start-card {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.34);
+  }
+
+  .session-runtime-shell .session-runtime-toast-card {
+    background: rgba(255, 255, 255, 0.14);
+  }
 }
 
 .session-bubble-glint {
