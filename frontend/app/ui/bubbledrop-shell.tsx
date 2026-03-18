@@ -605,26 +605,29 @@ function getSmokeWalletOverride():
   };
 }
 
+type IntroBubbleRole = "ambient" | "interactive" | "heroTarget";
+
 type IntroBubbleSpec = {
   id: string;
-  top: string;
-  left: string;
+  role: IntroBubbleRole;
+  topPct: number;
+  leftPct: number;
   sizeRem: number;
   delayMs: number;
-  roamDurationMs: number;
-  wobbleDurationMs: number;
-  roamX1: string;
-  roamY1: string;
-  roamX2: string;
-  roamY2: string;
-  roamX3: string;
-  roamY3: string;
+  driftDurationMs: number;
+  pulseDurationMs: number;
+  driftX1: string;
+  driftY1: string;
+  driftX2: string;
+  driftY2: string;
+  driftX3: string;
+  driftY3: string;
+  driftX4: string;
+  driftY4: string;
   hue: number;
   alpha: number;
-  hasTapSignal: boolean;
 };
-const REQUIRED_INTRO_POPS = 6;
-const INTRO_TAP_LABEL_COUNT = 12;
+const REQUIRED_INTRO_POPS = 4;
 const INTRO_SEEN_STORAGE_KEY = "bubbledrop:intro-seen:v1";
 
 function seededUnit(seed: number): number {
@@ -632,7 +635,7 @@ function seededUnit(seed: number): number {
   return value - Math.floor(value);
 }
 
-function createIntroBubbles(count = 34, patternSeed = 0): IntroBubbleSpec[] {
+function createIntroBubbles(count = 26, patternSeed = 0): IntroBubbleSpec[] {
   return Array.from({ length: count }, (_, index) => {
     const idx = index + 1;
     const seedOffset = patternSeed * 0.61803398875;
@@ -640,48 +643,78 @@ function createIntroBubbles(count = 34, patternSeed = 0): IntroBubbleSpec[] {
     const speedSeed = seededUnit(idx * 2.31 + seedOffset);
     const directionSeed = seededUnit(idx * 3.17 + seedOffset);
     const toneSeed = seededUnit(idx * 4.09 + seedOffset);
-    const signalSeed = seededUnit(idx * 5.67 + seedOffset);
+    const roleSeed = seededUnit(idx * 5.67 + seedOffset);
     const pathSeedA = seededUnit(idx * 10.11 + seedOffset);
     const pathSeedB = seededUnit(idx * 11.17 + seedOffset);
     const pathSeedC = seededUnit(idx * 12.23 + seedOffset);
-
-    const hue = toneSeed > 0.86 ? 276 : toneSeed > 0.94 ? 328 : 206 + Math.round(toneSeed * 34);
-    const hasTapSignal = signalSeed > 0.76 || idx % 9 === 0;
+    const pathSeedD = seededUnit(idx * 13.19 + seedOffset);
+    const pathSeedE = seededUnit(idx * 14.27 + seedOffset);
+    const role: IntroBubbleRole =
+      roleSeed > 0.88 || idx % 11 === 0
+        ? "heroTarget"
+        : roleSeed > 0.42
+          ? "interactive"
+          : "ambient";
+    const rolePalette =
+      role === "heroTarget"
+        ? [202, 214, 224, 272, 316]
+        : role === "interactive"
+          ? [198, 208, 220, 266, 308]
+          : [192, 204, 214, 258, 294];
+    const hue = rolePalette[Math.floor(toneSeed * rolePalette.length) % rolePalette.length];
+    const baseTop =
+      role === "heroTarget"
+        ? 26 + majorSeed * 56
+        : role === "interactive"
+          ? 18 + majorSeed * 70
+          : 12 + majorSeed * 82;
+    const baseLeft = 7 + seededUnit(idx * 9.13 + seedOffset) * 86;
+    const sizeRem =
+      role === "heroTarget"
+        ? 3.55 + majorSeed * 1.35
+        : role === "interactive"
+          ? 2.2 + majorSeed * 1.3
+          : 1.2 + majorSeed * 1.5;
+    const driftDurationMs =
+      role === "heroTarget"
+        ? 7600 + Math.round(speedSeed * 2800)
+        : role === "interactive"
+          ? 9800 + Math.round(speedSeed * 3600)
+          : 14000 + Math.round(speedSeed * 5200);
+    const pulseDurationMs =
+      role === "heroTarget"
+        ? 1900 + Math.round(pathSeedA * 900)
+        : role === "interactive"
+          ? 2400 + Math.round(pathSeedA * 1200)
+          : 3200 + Math.round(pathSeedA * 1400);
+    const driftScale = role === "ambient" ? 0.45 : role === "interactive" ? 0.8 : 1;
 
     return {
       id: `intro-${idx}`,
-      top: `${6 + Math.round(majorSeed * 86)}%`,
-      left: `${4 + Math.round(seededUnit(idx * 9.13 + seedOffset) * 92)}%`,
-      sizeRem: 1.9 + majorSeed * 4.1,
+      role,
+      topPct: Number(baseTop.toFixed(2)),
+      leftPct: Number(baseLeft.toFixed(2)),
+      sizeRem,
       delayMs: Math.round(speedSeed * 1600),
-      roamDurationMs: 14000 + Math.round(speedSeed * 16000),
-      wobbleDurationMs: 2200 + Math.round(seededUnit(idx * 6.71 + seedOffset) * 3200),
-      roamX1: `${Math.round((pathSeedA - 0.5) * 120)}vw`,
-      roamY1: `${Math.round((pathSeedB - 0.5) * 120)}vh`,
-      roamX2: `${Math.round((pathSeedB - 0.5) * 120)}vw`,
-      roamY2: `${Math.round((pathSeedC - 0.5) * 120)}vh`,
-      roamX3: `${Math.round((directionSeed - 0.5) * 120)}vw`,
-      roamY3: `${Math.round((seededUnit(idx * 7.49 + seedOffset) - 0.5) * 120)}vh`,
+      driftDurationMs,
+      pulseDurationMs,
+      driftX1: `${Math.round((pathSeedA - 0.5) * 44 * driftScale)}vw`,
+      driftY1: `${Math.round((pathSeedB - 0.5) * 32 * driftScale)}vh`,
+      driftX2: `${Math.round((directionSeed - 0.5) * 40 * driftScale)}vw`,
+      driftY2: `${Math.round((pathSeedC - 0.5) * 28 * driftScale)}vh`,
+      driftX3: `${Math.round((pathSeedD - 0.5) * 36 * driftScale)}vw`,
+      driftY3: `${Math.round((pathSeedE - 0.5) * 34 * driftScale)}vh`,
+      driftX4: `${Math.round((pathSeedB - 0.5) * 26 * driftScale)}vw`,
+      driftY4: `${Math.round((pathSeedD - 0.5) * 22 * driftScale)}vh`,
       hue,
-      alpha: 0.38 + seededUnit(idx * 8.21 + seedOffset) * 0.28,
-      hasTapSignal,
+      alpha:
+        role === "ambient"
+          ? 0.22 + seededUnit(idx * 8.21 + seedOffset) * 0.12
+          : role === "interactive"
+            ? 0.34 + seededUnit(idx * 8.21 + seedOffset) * 0.18
+            : 0.46 + seededUnit(idx * 8.21 + seedOffset) * 0.2,
     };
   });
-}
-
-function pickIntroTapTargets(
-  bubbleIds: string[],
-  patternSeed: number,
-  requiredCount: number,
-): string[] {
-  const shuffled = [...bubbleIds].sort((leftId, rightId) => {
-    const leftScore = seededUnit(leftId.length * 17.31 + patternSeed * 1.17 + Number(leftId.slice(6)));
-    const rightScore = seededUnit(
-      rightId.length * 17.31 + patternSeed * 1.17 + Number(rightId.slice(6)),
-    );
-    return leftScore - rightScore;
-  });
-  return shuffled.slice(0, Math.min(requiredCount, shuffled.length));
 }
 
 export function BubbleDropShell() {
@@ -719,13 +752,19 @@ export function BubbleDropShell() {
   const [cosmeticTierPreviewActive, setCosmeticTierPreviewActive] = useState(false);
   const [cosmeticPreviewIndex, setCosmeticPreviewIndex] = useState(0);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
+  const [introPoppingBubbleIds, setIntroPoppingBubbleIds] = useState<string[]>([]);
+  const [introNudgedBubbleIds, setIntroNudgedBubbleIds] = useState<string[]>([]);
   const [introPopBursts, setIntroPopBursts] = useState<
-    Array<{ id: string; x: number; y: number }>
+    Array<{ id: string; x: number; y: number; hue: number }>
   >([]);
   const [introPatternSeed, setIntroPatternSeed] = useState(0);
   const introBubbles = useMemo(
-    () => createIntroBubbles(34, introPatternSeed),
+    () => createIntroBubbles(26, introPatternSeed),
     [introPatternSeed],
+  );
+  const introBubbleMap = useMemo(
+    () => new Map(introBubbles.map((bubble) => [bubble.id, bubble])),
+    [introBubbles],
   );
   const introAudioContextRef = useRef<AudioContext | null>(null);
   const introAudioUnavailableRef = useRef(false);
@@ -1883,26 +1922,8 @@ export function BubbleDropShell() {
           : isRareRewardAccessActive
             ? "RARE DETECTED"
             : "XP DETECTED";
-  const introTapBubbleIds = useMemo(
-    () =>
-      pickIntroTapTargets(
-        introBubbles.map((bubble) => bubble.id),
-        introPatternSeed,
-        INTRO_TAP_LABEL_COUNT,
-      ),
-    [introBubbles, introPatternSeed],
-  );
-  const introRequiredBubbleIds = useMemo(
-    () => introTapBubbleIds.slice(0, REQUIRED_INTRO_POPS),
-    [introTapBubbleIds],
-  );
-  const introTapBubbleSet = useMemo(
-    () => new Set(introTapBubbleIds),
-    [introTapBubbleIds],
-  );
-  const introBubblesRemaining = introRequiredBubbleIds.filter(
-    (id) => !introPoppedBubbleIds.includes(id),
-  ).length;
+  const introProgressCount = Math.min(REQUIRED_INTRO_POPS, introPoppedBubbleIds.length);
+  const introBubblesRemaining = REQUIRED_INTRO_POPS - introProgressCount;
   useEffect(() => {
     if (!welcomeIntroVisible) {
       return;
@@ -2185,15 +2206,18 @@ export function BubbleDropShell() {
     if (!welcomeIntroVisible) {
       return;
     }
-    if (!introTapBubbleSet.has(bubbleId)) {
+    const bubble = introBubbleMap.get(bubbleId);
+    if (!bubble) {
       return;
     }
-    setIntroPoppedBubbleIds((current) => {
-      if (current.includes(bubbleId)) {
-        return current;
-      }
-      return [...current, bubbleId];
-    });
+    if (
+      introPoppedBubbleIds.includes(bubbleId) ||
+      introPoppingBubbleIds.includes(bubbleId) ||
+      introPoppedBubbleIds.length + introPoppingBubbleIds.length >= REQUIRED_INTRO_POPS
+    ) {
+      return;
+    }
+    setIntroPoppingBubbleIds((current) => [...current, bubbleId]);
     if ("vibrate" in navigator) {
       navigator.vibrate(12);
     }
@@ -2206,10 +2230,37 @@ export function BubbleDropShell() {
       ? rect.top - playfieldRect.top + rect.height / 2
       : rect.height / 2;
     const burstId = `${bubbleId}-${Date.now()}`;
-    setIntroPopBursts((current) => [...current, { id: burstId, x: burstX, y: burstY }]);
+    setIntroPopBursts((current) => [
+      ...current,
+      { id: burstId, x: burstX, y: burstY, hue: bubble.hue },
+    ]);
+    const nudgedIds = introBubbles
+      .filter((candidate) => candidate.id !== bubbleId)
+      .filter((candidate) => {
+        const dx = candidate.leftPct - bubble.leftPct;
+        const dy = candidate.topPct - bubble.topPct;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < 24;
+      })
+      .map((candidate) => candidate.id);
+    setIntroNudgedBubbleIds(nudgedIds);
+    window.setTimeout(() => {
+      setIntroPoppingBubbleIds((current) => current.filter((id) => id !== bubbleId));
+      setIntroPoppedBubbleIds((current) => {
+        if (current.includes(bubbleId)) {
+          return current;
+        }
+        return [...current, bubbleId];
+      });
+    }, 220);
     window.setTimeout(() => {
       setIntroPopBursts((current) => current.filter((burst) => burst.id !== burstId));
     }, 550);
+    window.setTimeout(() => {
+      setIntroNudgedBubbleIds((current) =>
+        current.filter((candidateId) => !nudgedIds.includes(candidateId)),
+      );
+    }, 420);
     playIntroPopSound();
   };
 
@@ -2243,18 +2294,27 @@ export function BubbleDropShell() {
       {welcomeIntroVisible ? (
         <section className="intro-welcome-overlay">
           <div className="intro-welcome-card">
-            <p className="intro-welcome-kicker">BubbleDrop</p>
-            <h1 className="intro-welcome-title">Hi, welcome to the Bubble World</h1>
-            <p className="intro-welcome-subtitle">
-              Pop only bubbles marked with TAP to continue.
-            </p>
-            <button
-              type="button"
-              onClick={onSkipIntro}
-              className="pointer-events-auto mt-2 rounded-lg bg-white/60 px-3 py-1.5 text-xs font-semibold text-[#4f668f] hover:bg-white/80"
-            >
-              Skip
-            </button>
+            <div className="intro-welcome-head">
+              <p className="intro-welcome-kicker">BubbleDrop</p>
+              <button
+                type="button"
+                onClick={onSkipIntro}
+                className="intro-welcome-skip"
+              >
+                Skip
+              </button>
+            </div>
+            <h1 className="intro-welcome-title">Pop the glowing bubbles to enter</h1>
+            <div className="intro-welcome-meta">
+              <span className="intro-welcome-progress">
+                {introProgressCount}/{REQUIRED_INTRO_POPS}
+              </span>
+              <p className="intro-welcome-helper">
+                {introBubblesRemaining > 0
+                  ? "Pop any marked bubbles to enter"
+                  : "Entering Bubble World..."}
+              </p>
+            </div>
           </div>
           <div className="intro-welcome-playfield" aria-hidden="false">
             {introBubbles.map((bubble) => {
@@ -2262,35 +2322,39 @@ export function BubbleDropShell() {
               if (popped) {
                 return null;
               }
+              const isPopping = introPoppingBubbleIds.includes(bubble.id);
               return (
                 <button
                   key={bubble.id}
                   type="button"
                   onClick={(event) => onPopIntroBubble(bubble.id, event)}
-                  className="intro-bubble"
+                  className={`intro-bubble intro-bubble-${bubble.role} ${
+                    introNudgedBubbleIds.includes(bubble.id) ? "intro-bubble-nudged" : ""
+                  } ${isPopping ? "intro-bubble-popping" : ""}`}
+                  aria-label="Tap bubble to enter Bubble World"
                   style={
                     {
-                      top: bubble.top,
-                      left: bubble.left,
+                      top: `${bubble.topPct}%`,
+                      left: `${bubble.leftPct}%`,
                       width: `${bubble.sizeRem}rem`,
                       height: `${bubble.sizeRem}rem`,
                       "--intro-delay": `${bubble.delayMs}ms`,
-                      "--intro-roam-duration": `${bubble.roamDurationMs}ms`,
-                      "--intro-wobble-duration": `${bubble.wobbleDurationMs}ms`,
-                      "--intro-roam-x1": bubble.roamX1,
-                      "--intro-roam-y1": bubble.roamY1,
-                      "--intro-roam-x2": bubble.roamX2,
-                      "--intro-roam-y2": bubble.roamY2,
-                      "--intro-roam-x3": bubble.roamX3,
-                      "--intro-roam-y3": bubble.roamY3,
+                      "--intro-drift-duration": `${bubble.driftDurationMs}ms`,
+                      "--intro-pulse-duration": `${bubble.pulseDurationMs}ms`,
+                      "--intro-drift-x1": bubble.driftX1,
+                      "--intro-drift-y1": bubble.driftY1,
+                      "--intro-drift-x2": bubble.driftX2,
+                      "--intro-drift-y2": bubble.driftY2,
+                      "--intro-drift-x3": bubble.driftX3,
+                      "--intro-drift-y3": bubble.driftY3,
+                      "--intro-drift-x4": bubble.driftX4,
+                      "--intro-drift-y4": bubble.driftY4,
                       "--intro-bubble-hue": `${bubble.hue}`,
                       "--intro-bubble-alpha": `${bubble.alpha}`,
                     } as CSSProperties
                   }
                 >
-                  {introTapBubbleSet.has(bubble.id) ? (
-                    <span className="intro-bubble-signal">TAP</span>
-                  ) : null}
+                  <span className="intro-bubble-signal">TAP</span>
                 </button>
               );
             })}
@@ -2298,10 +2362,13 @@ export function BubbleDropShell() {
               <span
                 key={burst.id}
                 className="intro-pop-burst"
-                style={{
-                  left: `${burst.x}px`,
-                  top: `${burst.y}px`,
-                }}
+                style={
+                  {
+                    left: `${burst.x}px`,
+                    top: `${burst.y}px`,
+                    "--intro-burst-hue": `${burst.hue}`,
+                  } as CSSProperties
+                }
               />
             ))}
           </div>
