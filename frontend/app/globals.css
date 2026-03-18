@@ -1994,7 +1994,25 @@ body.glass-strong .bubble {
   }
 
   .session-runtime-shell .session-runtime-hud-card {
-    padding: 0.65rem 0.75rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .session-runtime-shell .session-finish-badge {
+    min-width: min(15.5rem, calc(100vw - 2.4rem));
+    padding: 0.9rem 1rem 1rem;
+  }
+
+  .session-runtime-shell .session-finish-badge-title {
+    font-size: 1.55rem;
+  }
+
+  .session-runtime-shell .session-finish-badge-copy {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .session-runtime-shell .session-finish-ring {
+    opacity: 0.72;
   }
 
   .session-runtime-shell .session-runtime-start-card {
@@ -2010,6 +2028,21 @@ body.glass-strong .bubble {
 
   .session-runtime-shell .session-runtime-footer-card {
     padding: 0.8rem 0.9rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .session-runtime-shell .session-runtime-back-button {
+    font-size: 0.7rem;
+  }
+
+  .session-runtime-shell .session-runtime-hud-card {
+    border-radius: 1rem;
+    padding: 0.5rem 0.58rem;
+  }
+
+  .session-runtime-shell .session-runtime-footer-card {
+    padding: 0.72rem 0.78rem;
   }
 }
 
@@ -2046,6 +2079,107 @@ body.glass-strong .bubble {
   min-height: 4.6rem;
   transform-origin: center;
   animation: sessionRuntimeDropRise 1320ms cubic-bezier(0.2, 0.9, 0.24, 1) forwards;
+}
+
+.session-finish-celebration-glow {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(255, 245, 196, 0.22), transparent 18rem),
+    radial-gradient(circle at 50% 50%, rgba(255, 219, 238, 0.18), transparent 26rem);
+  animation: sessionFinishGlowFade 1480ms ease-out forwards;
+}
+
+.session-finish-celebration-core {
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.88), rgba(255, 244, 204, 0.34) 42%, rgba(255, 215, 236, 0.12) 66%, transparent 100%);
+  filter: blur(0.1rem);
+  animation: sessionFinishCorePulse 1280ms cubic-bezier(0.18, 0.84, 0.24, 1) forwards;
+}
+
+.session-finish-ring {
+  width: 7.5rem;
+  height: 7.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 0 0 8px rgba(255, 241, 192, 0.1),
+    0 0 22px rgba(255, 215, 150, 0.28);
+  transform: translate(-50%, -50%) scale(0.58);
+  opacity: 0;
+}
+
+.session-finish-ring-a {
+  animation: sessionFinishRingExpand 1280ms cubic-bezier(0.16, 0.82, 0.22, 1) forwards;
+}
+
+.session-finish-ring-b {
+  animation: sessionFinishRingExpand 1280ms cubic-bezier(0.16, 0.82, 0.22, 1) 110ms forwards;
+}
+
+.session-finish-ring-c {
+  animation: sessionFinishRingExpand 1280ms cubic-bezier(0.16, 0.82, 0.22, 1) 220ms forwards;
+}
+
+.session-finish-particle {
+  width: var(--session-finish-size, 0.45rem);
+  height: var(--session-finish-size, 0.45rem);
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.96), rgba(255, 247, 214, 0.72) 42%, rgba(255, 206, 148, 0.18) 100%);
+  box-shadow:
+    0 0 16px rgba(255, 223, 171, 0.42),
+    0 0 32px rgba(255, 217, 236, 0.18);
+  transform: translate(-50%, -50%) translate(0, 0) scale(0.45);
+  opacity: 0;
+  animation: sessionFinishParticleBurst 1020ms cubic-bezier(0.14, 0.86, 0.22, 1) forwards;
+}
+
+.session-finish-badge {
+  position: relative;
+  display: flex;
+  min-width: 18.75rem;
+  max-width: 21rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.42rem;
+  border-radius: 1.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 248, 255, 0.62)),
+    radial-gradient(circle at top, rgba(255, 246, 204, 0.58), transparent 60%);
+  padding: 1rem 1.2rem 1.15rem;
+  text-align: center;
+  box-shadow:
+    0 18px 48px rgba(109, 133, 197, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.24) inset;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  animation: sessionFinishBadgeRise 1120ms cubic-bezier(0.18, 0.84, 0.24, 1) forwards;
+}
+
+.session-finish-badge-chip {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 0.24rem 0.6rem;
+  color: #5870a1;
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  box-shadow: 0 8px 18px rgba(97, 118, 170, 0.1);
+}
+
+.session-finish-badge-title {
+  color: #2a4478;
+  font-size: 1.85rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.session-finish-badge-copy {
+  max-width: 15.5rem;
+  color: #536b9a;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .session-runtime-drop-orbit {
@@ -2277,6 +2411,79 @@ body.glass-strong .bubble {
   100% {
     border-radius: 42% 58% 46% 54% / 57% 43% 58% 42%;
     filter: saturate(1.02) brightness(0.99);
+  }
+}
+
+@keyframes sessionFinishGlowFade {
+  0% {
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sessionFinishCorePulse {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.62);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+}
+
+@keyframes sessionFinishRingExpand {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+  12% {
+    opacity: 0.96;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.3);
+  }
+}
+
+@keyframes sessionFinishParticleBurst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(0, 0) scale(0.42);
+  }
+  18% {
+    opacity: 0.96;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--session-finish-x), var(--session-finish-y)) scale(1);
+  }
+}
+
+@keyframes sessionFinishBadgeRise {
+  0% {
+    opacity: 0;
+    transform: translateY(1.2rem) scale(0.9);
+    filter: blur(8px);
+  }
+  16% {
+    opacity: 1;
+    transform: translateY(0) scale(1.02);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.7rem) scale(0.98);
+    filter: blur(1px);
   }
 }
 

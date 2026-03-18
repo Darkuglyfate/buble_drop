@@ -41,6 +41,10 @@ import {
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
 import {
+  loadSelectedAvatarOverride,
+  saveSelectedAvatarOverride,
+} from "./avatar-selection-sync";
+import {
   getPrimaryEquippedStyle,
   inferSlotFromRewardKey,
   loadPersistedEquippedStyles,
@@ -749,6 +753,7 @@ export function BubbleDropShell() {
   const [welcomeIntroVisible, setWelcomeIntroVisible] = useState(true);
   const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
     useState<EquippedStyleSnapshot | null>(null);
+  const [selectedAvatarOverrideId, setSelectedAvatarOverrideId] = useState<string | null>(null);
   const [cosmeticTierPreviewActive, setCosmeticTierPreviewActive] = useState(false);
   const [cosmeticPreviewIndex, setCosmeticPreviewIndex] = useState(0);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
@@ -852,6 +857,7 @@ export function BubbleDropShell() {
   const profileVisualSeed =
     profileCardEquippedStyle?.rewardKey ??
     profileCardEquippedStyle?.rewardId ??
+    selectedAvatarOverrideId ??
     profileSummary?.avatarState.currentAvatar?.id ??
     profileSummary?.avatarState.currentAvatar?.key ??
     "bubble-default";
@@ -1110,6 +1116,26 @@ export function BubbleDropShell() {
     const primary = getPrimaryEquippedStyle(merged);
     setEquippedStyleSnapshot(primary);
   }, [profileId, profileSummary]);
+
+  useEffect(() => {
+    if (!profileId) {
+      setSelectedAvatarOverrideId(null);
+      return;
+    }
+    setSelectedAvatarOverrideId(loadSelectedAvatarOverride(profileId));
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!profileId) {
+      return;
+    }
+    const currentAvatarId = profileSummary?.avatarState.currentAvatar?.id ?? null;
+    if (!currentAvatarId) {
+      return;
+    }
+    saveSelectedAvatarOverride(profileId, currentAvatarId);
+    setSelectedAvatarOverrideId(currentAvatarId);
+  }, [profileId, profileSummary?.avatarState.currentAvatar?.id]);
 
   useEffect(() => {
     const resolveFirstEntry = async () => {

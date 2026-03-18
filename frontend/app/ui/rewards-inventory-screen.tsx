@@ -13,6 +13,7 @@ import {
   loadBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
+import { saveSelectedAvatarOverride } from "./avatar-selection-sync";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import {
   getPrimaryEquippedStyle,
@@ -419,6 +420,9 @@ export function RewardsInventoryScreen() {
 
       setNeedsOnboarding(onboardingState.needsOnboarding);
       setSelectedAvatarId(onboardingState.currentAvatarId);
+      if (onboardingState.currentAvatarId) {
+        saveSelectedAvatarOverride(resolvedProfileId, onboardingState.currentAvatarId);
+      }
       setEquippedStyleRewardId(onboardingState.equippedStyleRewardId);
       const persistedBySlot = loadPersistedEquippedStyles(resolvedProfileId);
       const mergedBySlot = { ...persistedBySlot };
@@ -485,7 +489,18 @@ export function RewardsInventoryScreen() {
       }
 
       const payload = (await response.json()) as AvatarSelectionResponse;
-      setSelectedAvatarId(payload.avatarId);
+      const refreshedOnboardingState = await fetchOnboardingStateForProfile(
+        backendUrl,
+        profileId,
+      );
+      const resolvedAvatarId =
+        refreshedOnboardingState?.currentAvatarId ?? payload.avatarId;
+      setSelectedAvatarId(resolvedAvatarId);
+      setEquippedBySlot((current) => ({
+        ...current,
+        avatar: resolvedAvatarId,
+      }));
+      saveSelectedAvatarOverride(profileId, resolvedAvatarId);
     } catch {
       setErrorMessage("We couldn't switch avatar right now.");
     } finally {

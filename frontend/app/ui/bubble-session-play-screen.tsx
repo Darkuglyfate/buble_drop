@@ -33,7 +33,6 @@ const BUBBLE_COLLISION_CORRECTION_PERCENT = 0.94;
 const BUBBLE_COLLISION_RESTITUTION = 0.24;
 const BUBBLE_COLLISION_DEFORM_THRESHOLD_PX = 7;
 const BUBBLE_SPAWN_PADDING_PX = 14;
-const RUNTIME_DROP_DURATION_MS = 1320;
 const SESSION_REWARD_BUBBLES_XP = 30;
 const SESSION_COMPLETION_BONUS_XP = 20;
 const SESSION_ACTIVE_PLAY_XP_MAX = 20;
@@ -70,6 +69,20 @@ const PLAYFIELD_ASSIST_EXTRA_PX_SMALL = 18;
 const PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM = 14;
 const PLAYFIELD_ASSIST_EXTRA_PX_LARGE = 10;
 const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
+const FINISH_CELEBRATION_DURATION_MS = 1480;
+const FINISH_CELEBRATION_PARTICLES = [
+  { x: "-7.2rem", y: "-3.8rem", size: "0.52rem", delayMs: 0 },
+  { x: "-5.1rem", y: "-5.2rem", size: "0.4rem", delayMs: 70 },
+  { x: "-2.4rem", y: "-6.2rem", size: "0.34rem", delayMs: 120 },
+  { x: "2.1rem", y: "-5.8rem", size: "0.4rem", delayMs: 160 },
+  { x: "5.6rem", y: "-4.2rem", size: "0.54rem", delayMs: 80 },
+  { x: "7.3rem", y: "-0.9rem", size: "0.34rem", delayMs: 190 },
+  { x: "5.1rem", y: "3.7rem", size: "0.42rem", delayMs: 240 },
+  { x: "1.6rem", y: "5.5rem", size: "0.5rem", delayMs: 130 },
+  { x: "-2.8rem", y: "5.9rem", size: "0.36rem", delayMs: 220 },
+  { x: "-5.8rem", y: "3.4rem", size: "0.48rem", delayMs: 110 },
+  { x: "-7.4rem", y: "0.2rem", size: "0.34rem", delayMs: 170 },
+] as const;
 
 type SessionStartResponse = {
   sessionId: string;
@@ -111,18 +124,6 @@ type PopBurst = {
   hue: number;
   sizeRem: number;
   isBonus: boolean;
-};
-
-type RuntimeDropFeedback = {
-  id: number;
-  kind: "memecoin" | "cosmetic" | "nft";
-  xPercent: number;
-  yPercent: number;
-  hue: number;
-  label: string;
-  accentLabel: string;
-  createdAtMs: number;
-  isBonusSource: boolean;
 };
 
 type PlayfieldTouchCue = {
@@ -708,8 +709,9 @@ export function BubbleSessionPlayScreen() {
     () => createActivePlayBubbleSet(),
   );
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
-  const [runtimeDropFeedback, setRuntimeDropFeedback] = useState<RuntimeDropFeedback[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
+  const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
+  const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
   const [equippedSkinRewardId, setEquippedSkinRewardId] = useState<string | null>(null);
   const [inventorySavedRewardIds, setInventorySavedRewardIds] = useState<string[]>([]);
   const [lastApplyMoment, setLastApplyMoment] = useState<{
@@ -721,6 +723,9 @@ export function BubbleSessionPlayScreen() {
   const playfieldRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const footerRef = useRef<HTMLDivElement | null>(null);
+  const finishCelebrationTimeoutRef = useRef<number | null>(null);
+  const hasShownMinimumCelebrationRef = useRef(false);
+  const hasShownTimerChoiceRef = useRef(false);
   const popAudioContextRef = useRef<AudioContext | null>(null);
   const popAudioUnavailableRef = useRef(false);
   const playfieldMetricsRef = useRef({
@@ -806,6 +811,10 @@ export function BubbleSessionPlayScreen() {
 
   useEffect(() => {
     return () => {
+      if (finishCelebrationTimeoutRef.current !== null) {
+        window.clearTimeout(finishCelebrationTimeoutRef.current);
+        finishCelebrationTimeoutRef.current = null;
+      }
       const currentAudioContext = popAudioContextRef.current;
       if (currentAudioContext) {
         void currentAudioContext.close();
@@ -1146,7 +1155,7 @@ export function BubbleSessionPlayScreen() {
                   correctionPx / combinedRadiusPx + Math.abs(relativeVelocityAlongNormal) / 320,
                 ),
               );
-              const impactRotationDeg = (Math.atan2(normalY, normalX) * 180) / Math.PI;
+              const impactRotationDeg = Math.max(-4.5, Math.min(4.5, normalX * 7));
               const shouldRefreshDeform =
                 correctionPx > BUBBLE_COLLISION_DEFORM_THRESHOLD_PX ||
                 Math.abs(relativeVelocityAlongNormal) > BUBBLE_COLLISION_DEFORM_THRESHOLD_PX;
@@ -1189,6 +1198,7 @@ export function BubbleSessionPlayScreen() {
     return Math.max(0, Math.floor((nowMs - sessionStartedAtMs) / 1000));
   }, [completionResult, nowMs, sessionStartedAtMs]);
   const displayElapsedSeconds = Math.min(elapsedSeconds, SESSION_DURATION_SECONDS);
+  const sessionTimerGoalReached = elapsedSeconds >= SESSION_DURATION_SECONDS;
   const rawActiveSeconds = activeTapCount * ACTIVE_SECONDS_PER_TAP;
   const backendCountableActiveSeconds = Math.min(rawActiveSeconds, elapsedSeconds);
   const elapsedProgressPercent = Math.min(
@@ -1248,15 +1258,21 @@ export function BubbleSessionPlayScreen() {
   const readinessLabel = sessionCompleted
     ? "Session finished"
     : isActive
-      ? localCompletionEstimateMet
+      ? sessionTimerGoalReached
+        ? "Timed goal complete"
+        : localCompletionEstimateMet
         ? "Ready to submit"
         : "Active run"
       : "Ready to start";
   const readinessCopy = sessionCompleted
     ? "Backend result is locked in below."
     : isActive
-      ? localCompletionEstimateMet
-        ? `You can submit this run now. Projected reward: ${projectedXpAwarded} XP.`
+      ? sessionTimerGoalReached
+        ? localCompletionEstimateMet
+          ? "Today's 10-minute target is complete. Finish now or keep popping to stack more XP."
+          : "The 10-minute timer is over. Finish now, or keep popping to close the active-play gap."
+        : localCompletionEstimateMet
+        ? `You can submit this run now. Projected XP: ${projectedXpAwarded}.`
         : `Stay in the run to build activity and time. ${formatTime(
             elapsedSecondsRemaining,
           )} min time and ${formatTime(activeSecondsRemaining)} play target remain.`
@@ -1303,6 +1319,7 @@ export function BubbleSessionPlayScreen() {
   const showTapFeedback =
     lastTapFeedbackAtMs !== null && Date.now() - lastTapFeedbackAtMs < 850;
   const compactRuntimeLayout = isActive && !sessionCompleted;
+  const showFinishCelebration = finishCelebrationVisible && isActive && !sessionCompleted;
   const runtimeFrameStyle = {
     minHeight: "100dvh",
     "--session-header-offset": `${headerHeightPx}px`,
@@ -1310,23 +1327,43 @@ export function BubbleSessionPlayScreen() {
   } as CSSProperties;
   const runtimeHeaderStyle = {
     paddingTop: compactRuntimeLayout
-      ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.35rem))"
+      ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.32rem))"
       : "max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem))",
-    paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
-    paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+    paddingLeft: compactRuntimeLayout
+      ? "max(0.75rem, calc(env(safe-area-inset-left) + 0.45rem))"
+      : "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
+    paddingRight: compactRuntimeLayout
+      ? "max(0.75rem, calc(env(safe-area-inset-right) + 0.45rem))"
+      : "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
   } satisfies CSSProperties;
   const playfieldLayoutStyle = {
     minHeight: "100dvh",
-    paddingTop: "calc(var(--session-header-offset) + 0.75rem)",
-    paddingBottom: "calc(var(--session-footer-offset) + 0.75rem)",
-    paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
-    paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+    paddingTop: compactRuntimeLayout
+      ? "calc(var(--session-header-offset) + 1.45rem)"
+      : "calc(var(--session-header-offset) + 0.75rem)",
+    paddingBottom: compactRuntimeLayout
+      ? "calc(var(--session-footer-offset) + 0.9rem)"
+      : "calc(var(--session-footer-offset) + 0.75rem)",
+    paddingLeft: compactRuntimeLayout
+      ? "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))"
+      : "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
+    paddingRight: compactRuntimeLayout
+      ? "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))"
+      : "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
   } satisfies CSSProperties;
   const playfieldBoundariesStyle = {
-    top: "calc(var(--session-header-offset) + 0.4rem)",
-    bottom: "calc(var(--session-footer-offset) + 0.4rem)",
-    left: "max(0.75rem, calc(env(safe-area-inset-left) + 0.5rem))",
-    right: "max(0.75rem, calc(env(safe-area-inset-right) + 0.5rem))",
+    top: compactRuntimeLayout
+      ? "calc(var(--session-header-offset) + 1.35rem)"
+      : "calc(var(--session-header-offset) + 0.4rem)",
+    bottom: compactRuntimeLayout
+      ? "calc(var(--session-footer-offset) + 0.55rem)"
+      : "calc(var(--session-footer-offset) + 0.4rem)",
+    left: compactRuntimeLayout
+      ? "max(1.15rem, calc(env(safe-area-inset-left) + 0.85rem))"
+      : "max(0.75rem, calc(env(safe-area-inset-left) + 0.5rem))",
+    right: compactRuntimeLayout
+      ? "max(1.05rem, calc(env(safe-area-inset-right) + 0.75rem))"
+      : "max(0.75rem, calc(env(safe-area-inset-right) + 0.5rem))",
   } satisfies CSSProperties;
   const runtimeFooterStyle = {
     paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))",
@@ -1353,6 +1390,72 @@ export function BubbleSessionPlayScreen() {
   const backHomeHref = backHomeHrefBase.includes("?")
     ? `${backHomeHrefBase}&skipIntro=1`
     : `${backHomeHrefBase}?skipIntro=1`;
+  useEffect(() => {
+    if (!isActive || sessionCompleted) {
+      setFinishCelebrationVisible(false);
+      return;
+    }
+    if (!localCompletionEstimateMet || hasShownMinimumCelebrationRef.current) {
+      return;
+    }
+
+    hasShownMinimumCelebrationRef.current = true;
+    setFinishCelebrationVisible(true);
+    setActionMessage("Minimum run complete. You can bank season progress now.");
+    playPopSound(true);
+    if ("vibrate" in navigator) {
+      navigator.vibrate([18, 32, 18]);
+    }
+    if (finishCelebrationTimeoutRef.current !== null) {
+      window.clearTimeout(finishCelebrationTimeoutRef.current);
+    }
+    finishCelebrationTimeoutRef.current = window.setTimeout(() => {
+      setFinishCelebrationVisible(false);
+      finishCelebrationTimeoutRef.current = null;
+    }, FINISH_CELEBRATION_DURATION_MS);
+  }, [isActive, localCompletionEstimateMet, sessionCompleted]);
+
+  useEffect(() => {
+    if (!isActive || sessionCompleted) {
+      setPostTimerChoiceVisible(false);
+      return;
+    }
+    if (!sessionTimerGoalReached || hasShownTimerChoiceRef.current) {
+      return;
+    }
+
+    hasShownTimerChoiceRef.current = true;
+    setPostTimerChoiceVisible(true);
+    setFinishCelebrationVisible(localCompletionEstimateMet);
+    setActionMessage(
+      localCompletionEstimateMet
+        ? "Today's timed goal is complete. Finish now or keep popping for more XP."
+        : "10 minutes reached. Finish now or keep popping to complete the active-play target.",
+    );
+    playPopSound(localCompletionEstimateMet);
+    if ("vibrate" in navigator) {
+      navigator.vibrate(localCompletionEstimateMet ? [22, 32, 22] : [14, 22, 14]);
+    }
+    if (localCompletionEstimateMet) {
+      if (finishCelebrationTimeoutRef.current !== null) {
+        window.clearTimeout(finishCelebrationTimeoutRef.current);
+      }
+      finishCelebrationTimeoutRef.current = window.setTimeout(() => {
+        setFinishCelebrationVisible(false);
+        finishCelebrationTimeoutRef.current = null;
+      }, FINISH_CELEBRATION_DURATION_MS);
+    }
+  }, [isActive, localCompletionEstimateMet, sessionCompleted, sessionTimerGoalReached]);
+
+  const onKeepPopping = () => {
+    setPostTimerChoiceVisible(false);
+    setActionMessage(
+      localCompletionEstimateMet
+        ? "Timed goal complete. Keep popping to stack more XP and strengthen season progress."
+        : "Keep popping to finish the active-play target and strengthen season progress.",
+    );
+  };
+
   const showPlayfieldTouchCue = (
     tone: PlayfieldTouchCue["tone"],
     point: { topPercent: number; leftPercent: number },
@@ -1428,6 +1531,14 @@ export function BubbleSessionPlayScreen() {
         setLastTapAtMs(null);
         setLastTapFeedbackAtMs(null);
         setPopBursts([]);
+        if (finishCelebrationTimeoutRef.current !== null) {
+          window.clearTimeout(finishCelebrationTimeoutRef.current);
+          finishCelebrationTimeoutRef.current = null;
+        }
+        hasShownMinimumCelebrationRef.current = false;
+        hasShownTimerChoiceRef.current = false;
+        setFinishCelebrationVisible(false);
+        setPostTimerChoiceVisible(false);
         setSessionCompleted(false);
         setCompletionResult(null);
         setEquippedSkinRewardId(null);
@@ -1519,47 +1630,6 @@ export function BubbleSessionPlayScreen() {
             isBonus: Boolean(tappedBubble?.isBonus),
           },
         ]);
-        // Runtime feedback is visual-only and represents season progress signals, not issued rewards.
-        const shouldShowRuntimeDrop =
-          Math.random() < (tappedBubble?.isBonus ? 0.42 : 0.16);
-        if (shouldShowRuntimeDrop) {
-          const rewardRoll = Math.random();
-          const kind = rewardRoll < 0.54 ? "memecoin" : rewardRoll < 0.82 ? "cosmetic" : "nft";
-          const feedbackId = Math.floor(Math.random() * 1_000_000_000);
-          const label =
-            kind === "memecoin"
-              ? "Season ping"
-              : kind === "cosmetic"
-                ? "Vault pulse"
-                : "Chance build";
-          const accentLabel =
-            kind === "memecoin"
-              ? "SEASON"
-              : kind === "cosmetic"
-                ? "PREVIEW"
-                : "XP BOOST";
-          const dropHue =
-            kind === "memecoin" ? 42 : kind === "cosmetic" ? tappedBubble?.hue ?? 284 : 38;
-          setRuntimeDropFeedback((current) => [
-            ...current,
-            {
-              id: feedbackId,
-              kind,
-              xPercent,
-              yPercent,
-              hue: dropHue,
-              label,
-              accentLabel,
-              createdAtMs: now,
-              isBonusSource: Boolean(tappedBubble?.isBonus),
-            },
-          ]);
-          window.setTimeout(() => {
-            setRuntimeDropFeedback((current) =>
-              current.filter((feedback) => feedback.id !== feedbackId),
-            );
-          }, RUNTIME_DROP_DURATION_MS);
-        }
         window.setTimeout(() => {
           setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
         }, 520);
@@ -1708,6 +1778,74 @@ export function BubbleSessionPlayScreen() {
         <span className="absolute left-[12%] bottom-[18%] h-28 w-28 rounded-full bg-[#ffe4f0]/70 blur-[1px]" />
         <span className="absolute right-[12%] bottom-[12%] h-20 w-20 rounded-full bg-[#ddffea]/68 blur-[1px]" />
       </div>
+      {showFinishCelebration ? (
+        <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+          <div className="session-finish-celebration-glow absolute inset-0" />
+          <div className="session-finish-celebration-core absolute left-1/2 top-[46%] h-[11.5rem] w-[11.5rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          <span className="session-finish-ring session-finish-ring-a absolute left-1/2 top-[46%]" />
+          <span className="session-finish-ring session-finish-ring-b absolute left-1/2 top-[46%]" />
+          <span className="session-finish-ring session-finish-ring-c absolute left-1/2 top-[46%]" />
+          {FINISH_CELEBRATION_PARTICLES.map((particle, index) => (
+            <span
+              key={`finish-particle-${index}`}
+              className="session-finish-particle absolute left-1/2 top-[46%] rounded-full"
+              style={
+                {
+                  "--session-finish-x": particle.x,
+                  "--session-finish-y": particle.y,
+                  "--session-finish-size": particle.size,
+                  animationDelay: `${particle.delayMs}ms`,
+                } as CSSProperties
+              }
+            />
+          ))}
+          <div className="absolute inset-x-0 top-[46%] flex -translate-y-1/2 justify-center px-5">
+            <div className="session-finish-badge">
+              <span className="session-finish-badge-chip">RUN READY</span>
+              <h2 className="session-finish-badge-title">Well done</h2>
+              <p className="session-finish-badge-copy">
+                Minimum run complete. Bank this session and lock in season progress.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {postTimerChoiceVisible ? (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.18),rgba(237,247,255,0.42),rgba(233,242,255,0.74))] px-5 backdrop-blur-[10px]">
+          <div className="w-full max-w-sm rounded-[2rem] border border-white/54 bg-white/76 p-5 text-center shadow-[0_28px_72px_rgba(92,122,189,0.18)]">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7084ae]">
+              Timed milestone
+            </p>
+            <h2 className="mt-2 text-[1.9rem] font-black tracking-[-0.04em] text-[#263f74]">
+              {localCompletionEstimateMet ? "Well done" : "Time goal reached"}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-[#546c99]">
+              {localCompletionEstimateMet
+                ? "You completed today's 10-minute target. Finish the run now or keep popping to bank more XP and strengthen your season-end chance."
+                : "The 10-minute timer is over. Finish now, or keep popping to close the active-play gap before you bank this run."}
+            </p>
+            <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPostTimerChoiceVisible(false);
+                  onCompleteSession();
+                }}
+                className="gloss-pill rounded-2xl bg-gradient-to-r from-[#ffe1ef] to-[#e5dfff] px-4 py-3 text-sm font-semibold text-[#3f3167]"
+              >
+                Finish run
+              </button>
+              <button
+                type="button"
+                onClick={onKeepPopping}
+                className="gloss-pill rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
+              >
+                Keep popping
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {!sessionCompleted ? (
         <main className="relative z-10 min-h-screen" style={runtimeFrameStyle}>
@@ -1716,32 +1854,32 @@ export function BubbleSessionPlayScreen() {
             className="pointer-events-none absolute inset-x-0 top-0 z-20 sm:p-5"
             style={runtimeHeaderStyle}
           >
-            <div className="mx-auto flex w-full max-w-md flex-col items-stretch gap-2 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between">
+            <div className="mx-auto flex w-full max-w-md flex-col items-stretch gap-2 min-[520px]:flex-row min-[520px]:items-start min-[520px]:justify-between">
               <Link
                 href={backHomeHref}
                 className={`session-runtime-back-button pointer-events-auto self-start rounded-full border text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
                   compactRuntimeLayout
-                    ? "border-white/34 bg-white/16 px-4 py-2.5"
+                    ? "border-white/30 bg-white/14 px-3.5 py-2"
                     : "border-white/48 bg-white/28 px-4 py-2"
                 }`}
               >
                 Back
               </Link>
               <div
-                className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all max-[419px]:max-w-[15.5rem] min-[420px]:max-w-[17rem] ${
+                className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full self-stretch shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all max-w-full min-[520px]:max-w-[17rem] ${
                   compactRuntimeLayout
-                    ? "rounded-[1.2rem] border border-white/34 bg-white/14 px-3 py-2"
+                    ? "rounded-[1.1rem] border border-white/30 bg-white/12 px-2.5 py-1.5"
                     : "rounded-[1.3rem] border border-white/48 bg-white/24 px-3 py-2"
                 }`}
               >
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Bubble session
                     </p>
                     <p
                       className={`mt-1 font-bold leading-none text-[#2d477f] ${
-                        compactRuntimeLayout ? "text-[1.15rem]" : "text-xl"
+                        compactRuntimeLayout ? "text-[1.05rem]" : "text-xl"
                       }`}
                     >
                       {formatTime(displayElapsedSeconds)}
@@ -1751,27 +1889,27 @@ export function BubbleSessionPlayScreen() {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Status
                     </p>
-                    <p className="mt-1 text-xs font-semibold text-[#3a4f86]">
+                    <p className="mt-1 text-[11px] font-semibold text-[#3a4f86]">
                       {readinessLabel}
                     </p>
                   </div>
                 </div>
                 {compactRuntimeLayout ? (
                   <>
-                    <div className="mt-2 h-1.5 rounded-full bg-[#e7eeff]/82">
+                    <div className="mt-1.5 h-1.5 rounded-full bg-[#e7eeff]/76">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
                         style={{ width: `${elapsedProgressPercent}%` }}
                       />
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] min-[420px]:justify-end">
-                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                    <div className="mt-1.5 grid grid-cols-3 gap-1 text-[9px]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
                         Combo x{tapCombo}
                       </span>
-                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
                         Hunt {huntReadinessPercent}%
                       </span>
-                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
                         Goals {runObjectiveCompletedCount}/{runObjectives.length}
                       </span>
                     </div>
@@ -1989,7 +2127,10 @@ export function BubbleSessionPlayScreen() {
                             0.78,
                             1 - bubble.deformStretch * 0.82 * deformProgress,
                           );
-                          const deformRotation = bubble.deformRotationDeg * deformProgress;
+                          const deformRotation = Math.max(
+                            -5,
+                            Math.min(5, bubble.deformRotationDeg * deformProgress),
+                          );
                           const hitSizeRem =
                             bubble.sizeRem +
                             (bubble.sizeTier === "small"
@@ -2118,28 +2259,6 @@ export function BubbleSessionPlayScreen() {
                               }}
                             />
                           ))}
-                        </span>
-                      ))}
-                      {runtimeDropFeedback.map((feedback) => (
-                        <span
-                          key={feedback.id}
-                          className={`session-runtime-drop session-runtime-drop-${feedback.kind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
-                            feedback.isBonusSource ? "session-runtime-drop-bonus" : ""
-                          }`}
-                          style={
-                            {
-                              left: `${feedback.xPercent}%`,
-                              top: `${feedback.yPercent}%`,
-                              "--runtime-drop-hue": `${feedback.hue}`,
-                            } as CSSProperties
-                          }
-                        >
-                          <span className="session-runtime-drop-orbit" />
-                          <span className="session-runtime-drop-core" />
-                          <span className="session-runtime-drop-foil" />
-                          <span className="session-runtime-drop-ribbon" />
-                          <span className="session-runtime-drop-chip">{feedback.accentLabel}</span>
-                          <span className="session-runtime-drop-label">{feedback.label}</span>
                         </span>
                       ))}
                       {showTapFeedback && tapFeedbackPoint ? (
@@ -2388,6 +2507,14 @@ export function BubbleSessionPlayScreen() {
               <button
                 type="button"
                 onClick={() => {
+                  if (finishCelebrationTimeoutRef.current !== null) {
+                    window.clearTimeout(finishCelebrationTimeoutRef.current);
+                    finishCelebrationTimeoutRef.current = null;
+                  }
+                  hasShownMinimumCelebrationRef.current = false;
+                  hasShownTimerChoiceRef.current = false;
+                  setFinishCelebrationVisible(false);
+                  setPostTimerChoiceVisible(false);
                   setSessionCompleted(false);
                   setCompletionResult(null);
                   setEquippedSkinRewardId(null);

@@ -596,9 +596,25 @@ test("completes session and reveals confirmed season progress", async ({
 
   await page.getByRole("button", { name: "Start session" }).click();
   await page.getByRole("button", { name: "Pop bubble" }).first().click({ force: true });
-  await page.getByRole("button", { name: "Complete" }).click();
+  const seasonProgressUpdatedHeading = page.getByText("Season progress updated");
+  const finishRunButton = page.getByRole("button", { name: "Finish run" });
+  const finishRunVisible = await finishRunButton
+    .waitFor({ state: "visible", timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  if (finishRunVisible) {
+    await finishRunButton.click();
+  } else {
+    const resultAlreadyVisible = await seasonProgressUpdatedHeading
+      .waitFor({ state: "visible", timeout: 1500 })
+      .then(() => true)
+      .catch(() => false);
+    if (!resultAlreadyVisible) {
+      await page.getByRole("button", { name: "Complete" }).first().click({ force: true });
+    }
+  }
 
-  await expect(page.getByText("Season progress updated")).toBeVisible();
+  await expect(seasonProgressUpdatedHeading).toBeVisible();
   await expect(page.getByText("XP awarded")).toBeVisible();
   await expect(page.getByText("Season chance", { exact: true })).toBeVisible();
   await expect(page.getByText("Season progress", { exact: true })).toBeVisible();
