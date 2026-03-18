@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BubbleDrop Card Concepts</title>
+    <style>
+      :root {
+        --bg-a: #25386e;
+        --bg-b: #0c1022;
+        --text: #eaf2ff;
+        --muted: #a9bfdf;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--text);
+        background: radial-gradient(1200px 800px at 18% -12%, var(--bg-a) 0%, var(--bg-b) 48%, #080c19 100%);
+      }
+      .wrap {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 32px 18px 54px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+      }
+      .lead {
+        margin: 0 0 18px;
+        color: #bfd2ef;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
+        padding: 16px 16px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.33);
+        background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+        backdrop-filter: blur(10px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+      }
+      .tag {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .title {
+        margin: 12px 0 6px;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.1;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.35;
+        min-height: 34px;
+      }
+      .actions {
+        margin-top: 14px;
+        display: flex;
+        gap: 8px;
+      }
+      button {
+        border: 0;
+        border-radius: 12px;
+        padding: 10px 12px;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .equip {
+        background: linear-gradient(90deg, #a7efff, #c0ccff);
+        color: #1a315a;
+        flex: 1;
+      }
+      .inventory {
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.12);
+        color: #e5f1ff;
+      }
+      .bubble {
+        position: absolute;
+        right: -24px;
+        top: -24px;
+        width: 132px;
+        height: 132px;
+        opacity: 0.86;
+        border-radius: 54% 46% 48% 52% / 43% 57% 46% 54%;
+        animation: drift 3.8s ease-in-out infinite alternate;
+      }
+      .card:before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(140deg, rgba(255, 255, 255, 0.18), transparent 34%);
+      }
+      .common .tag {
+        background: #dde7ff;
+        color: #35508a;
+      }
+      .common .bubble {
+        background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.76), rgba(140, 182, 255, 0.36) 55%, rgba(86, 148, 246, 0.3));
+      }
+      .rare .tag {
+        background: #d4efff;
+        color: #165f8b;
+      }
+      .rare .bubble {
+        background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.78), rgba(86, 216, 255, 0.38) 55%, rgba(64, 158, 255, 0.31));
+      }
+      .epic .tag {
+        background: #f1ddff;
+        color: #6a3f9e;
+      }
+      .epic .bubble {
+        background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.8), rgba(214, 117, 255, 0.42) 55%, rgba(140, 94, 255, 0.33));
+      }
+      .legendary .tag {
+        background: #fff0ca;
+        color: #875800;
+      }
+      .legendary .bubble {
+        background: radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.84), rgba(255, 202, 88, 0.5) 55%, rgba(255, 152, 52, 0.36));
+        box-shadow: 0 0 22px rgba(255, 185, 84, 0.42);
+      }
+      .note {
+        margin-top: 14px;
+        color: #a9c2e8;
+        font-size: 12px;
+      }
+      @keyframes drift {
+        0% {
+          transform: translateY(-2px) rotate(-5deg);
+        }
+        100% {
+          transform: translateY(7px) rotate(5deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Drop Card Concepts</h1>
+      <p class="lead">Сценарий после дропа: игрок выбирает «Экипировать сейчас» или «В инвентарь».</p>
+      <section class="grid">
+        <article class="card common">
+          <span class="tag">Common Set</span>
+          <h2 class="title">Foam Starter</h2>
+          <p class="meta">Avatar frame + bubble skin + mini badge</p>
+          <div class="actions">
+            <button class="equip">Экипировать</button>
+            <button class="inventory">Инвентарь</button>
+          </div>
+          <span class="bubble"></span>
+        </article>
+
+        <article class="card rare">
+          <span class="tag">Rare Set</span>
+          <h2 class="title">Aqua Flux</h2>
+          <p class="meta">Shimmer trail + profile badge + icon pulse</p>
+          <div class="actions">
+            <button class="equip">Экипировать</button>
+            <button class="inventory">Инвентарь</button>
+          </div>
+          <span class="bubble"></span>
+        </article>
+
+        <article class="card epic">
+          <span class="tag">Epic Set</span>
+          <h2 class="title">Neon Tide</h2>
+          <p class="meta">Animated rim + exclusive bubble shape</p>
+          <div class="actions">
+            <button class="equip">Экипировать</button>
+            <button class="inventory">Инвентарь</button>
+          </div>
+          <span class="bubble"></span>
+        </article>
+
+        <article class="card legendary">
+          <span class="tag">Legendary Set</span>
+          <h2 class="title">Solar Pearl</h2>
+          <p class="meta">Golden glint + premium profile aura</p>
+          <div class="actions">
+            <button class="equip">Экипировать</button>
+            <button class="inventory">Инвентарь</button>
+          </div>
+          <span class="bubble"></span>
+        </article>
+      </section>
+      <p class="note">Вариант A: стеклянные карточки с меткой редкости и единым CTA-паттерном.</p>
+    </main>
+  </body>
+</html>

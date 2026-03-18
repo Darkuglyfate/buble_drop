@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BubbleDrop Variants System</title>
+    <style>
+      :root {
+        --bgA: #2b4a93;
+        --bgB: #121f43;
+        --bgC: #090f22;
+        --text: #edf3ff;
+        --muted: #afc3e5;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--text);
+        background: radial-gradient(1200px 900px at 14% -16%, var(--bgA) 0%, var(--bgB) 44%, var(--bgC) 100%);
+      }
+      .wrap { max-width: 1220px; margin: 0 auto; padding: 28px 16px 60px; }
+      h1 { margin: 0; font-size: 32px; }
+      .lead { margin: 8px 0 0; color: #c4d5f2; line-height: 1.35; }
+      .section-title {
+        margin: 28px 0 10px;
+        font-size: 18px;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+      }
+      .group-title {
+        margin: 18px 0 10px;
+        font-size: 14px;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #d4e3ff;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px;
+        padding: 14px 13px 12px;
+        border: 1px solid rgba(255,255,255,.3);
+        box-shadow: 0 14px 40px rgba(0,0,0,.35);
+        backdrop-filter: blur(10px);
+      }
+      .variant-name {
+        margin: 9px 0 5px;
+        font-size: 34px;
+        font-weight: 900;
+        line-height: 1.02;
+      }
+      .meta {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+        min-height: 34px;
+      }
+      .tag {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .actions { display: flex; gap: 8px; margin-top: 11px; }
+      .btn {
+        border: 0;
+        border-radius: 11px;
+        padding: 9px 10px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .main { flex: 1; background: linear-gradient(90deg, #a8edff, #bfd0ff); color: #173359; }
+      .alt { border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.12); color: #e8f1ff; }
+      .bubble {
+        position: absolute;
+        right: -18px;
+        top: -18px;
+        width: 126px;
+        height: 126px;
+        border-radius: 56% 44% 50% 50% / 45% 55% 42% 58%;
+        opacity: .9;
+        animation: bubbleMove 4.2s ease-in-out infinite alternate;
+      }
+      .soft { background: linear-gradient(160deg, rgba(255,255,255,.2), rgba(255,255,255,.05)); }
+      .bold { background: linear-gradient(130deg, rgba(255,255,255,.24), rgba(255,255,255,.04) 42%, rgba(255,255,255,.01)); }
+
+      .common {
+        border-color: rgba(183, 206, 252, .65);
+      }
+      .common .tag {
+        background: #dce7ff;
+        color: #3b588f;
+      }
+      .common .bubble {
+        background: radial-gradient(circle at 30% 24%, rgba(255,255,255,.8), rgba(133,182,255,.38) 56%, rgba(84,147,244,.3));
+      }
+      .common.bold {
+        box-shadow: 0 14px 40px rgba(0,0,0,.35), 0 0 10px rgba(133,182,255,.2);
+      }
+
+      .rare {
+        border-color: rgba(155, 228, 255, .75);
+      }
+      .rare .tag {
+        background: #d5f0ff;
+        color: #115e88;
+      }
+      .rare .bubble {
+        background: radial-gradient(circle at 30% 24%, rgba(255,255,255,.82), rgba(88,218,255,.42) 56%, rgba(64,158,255,.34));
+      }
+      .rare.bold {
+        box-shadow: 0 14px 40px rgba(0,0,0,.35), 0 0 14px rgba(102,209,255,.3);
+      }
+
+      .epic {
+        border-color: rgba(217, 167, 255, .78);
+      }
+      .epic .tag {
+        background: #f1ddff;
+        color: #703fa9;
+      }
+      .epic .bubble {
+        background: radial-gradient(circle at 30% 24%, rgba(255,255,255,.84), rgba(210,122,255,.46) 56%, rgba(140,90,255,.36));
+      }
+      .epic.bold {
+        box-shadow: 0 14px 40px rgba(0,0,0,.35), 0 0 18px rgba(191,122,255,.34);
+      }
+
+      .legendary {
+        border-color: rgba(255, 230, 146, .9);
+        background:
+          linear-gradient(145deg, rgba(255,251,223,.22), rgba(255,177,82,.14) 42%, rgba(255,114,61,.14)),
+          linear-gradient(160deg, rgba(255,255,255,.24), rgba(255,255,255,.05));
+      }
+      .legendary .tag {
+        background: linear-gradient(90deg, #fff2c5, #ffd98a);
+        color: #6f4100;
+      }
+      .legendary .bubble {
+        background: radial-gradient(circle at 30% 23%, rgba(255,255,255,.9), rgba(255,242,194,.58) 38%, rgba(255,204,105,.44) 56%, rgba(255,132,58,.4));
+      }
+      .legendary::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1px;
+        background: conic-gradient(from 0deg, #ffe7a8, #ffd180, #ffb86a, #ffe7a8);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: foilSpin 4.8s linear infinite;
+        pointer-events: none;
+      }
+      .legendary.soft {
+        box-shadow: 0 14px 40px rgba(0,0,0,.35), 0 0 20px rgba(255,193,84,.34);
+      }
+      .legendary.bold {
+        box-shadow: 0 14px 40px rgba(0,0,0,.35), 0 0 30px rgba(255,193,84,.5);
+      }
+
+      .matrix {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .moment {
+        border-radius: 18px;
+        padding: 12px;
+        border: 1px solid rgba(255,255,255,.26);
+        background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.04));
+        box-shadow: 0 12px 34px rgba(0,0,0,.34);
+      }
+      .moment h4 {
+        margin: 0 0 9px;
+        font-size: 14px;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+      }
+      .flash {
+        height: 92px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,.2);
+        animation: flashPulse 1.4s ease-in-out infinite;
+      }
+      .moment p {
+        margin: 8px 0 6px;
+        font-size: 12px;
+        color: #c8d9f6;
+        line-height: 1.35;
+      }
+      .moment ul {
+        margin: 0;
+        padding-left: 16px;
+        color: #b7ccf0;
+        font-size: 11px;
+      }
+      .moment-common .flash {
+        background: radial-gradient(circle at 50% 50%, rgba(163,198,255,.42), rgba(131,175,247,.22) 40%, rgba(131,175,247,0) 76%);
+        box-shadow: 0 0 8px rgba(131,175,247,.25);
+      }
+      .moment-rare .flash {
+        background: radial-gradient(circle at 50% 50%, rgba(112,214,255,.5), rgba(82,186,255,.28) 40%, rgba(82,186,255,0) 76%);
+        box-shadow: 0 0 10px rgba(92,200,255,.3);
+      }
+      .moment-epic .flash {
+        background: radial-gradient(circle at 50% 50%, rgba(207,138,255,.58), rgba(162,111,255,.3) 40%, rgba(162,111,255,0) 76%);
+        box-shadow: 0 0 12px rgba(183,121,255,.34);
+      }
+      .moment-legendary .flash {
+        background: radial-gradient(circle at 50% 50%, rgba(255,220,140,.76), rgba(255,174,89,.36) 35%, rgba(255,130,69,.2) 54%, rgba(255,130,69,0) 75%);
+        box-shadow: 0 0 18px rgba(255,186,86,.42);
+      }
+
+      .profile-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .profile {
+        border-radius: 18px;
+        padding: 12px;
+        border: 1px solid rgba(255,255,255,.28);
+        background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.04));
+      }
+      .profile .name {
+        margin: 0;
+        font-size: 20px;
+      }
+      .profile .line {
+        margin-top: 7px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255,255,255,.14);
+      }
+      .profile .line::before {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 72%;
+        border-radius: inherit;
+      }
+      .profile .badge {
+        margin-top: 9px;
+        display: inline-block;
+        padding: 6px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .profile-common .line::before { background: linear-gradient(90deg, rgba(140,182,255,.28), rgba(140,182,255,.72)); }
+      .profile-common .badge { background: #dce7ff; color: #3b588f; }
+      .profile-rare .line::before { background: linear-gradient(90deg, rgba(95,208,255,.32), rgba(95,208,255,.82)); }
+      .profile-rare .badge { background: #d5f0ff; color: #115e88; }
+      .profile-epic .line::before { background: linear-gradient(90deg, rgba(199,131,255,.34), rgba(199,131,255,.84)); }
+      .profile-epic .badge { background: #f1ddff; color: #703fa9; }
+      .profile-legendary {
+        border-color: rgba(255,226,146,.78);
+        box-shadow: 0 0 16px rgba(255,192,84,.3);
+      }
+      .profile-legendary .line::before { background: linear-gradient(90deg, rgba(255,214,124,.35), rgba(255,194,87,.92)); }
+      .profile-legendary .badge { background: linear-gradient(90deg, #fff2c5, #ffd98a); color: #6f4100; }
+
+      @keyframes bubbleMove {
+        0% { transform: translateY(-2px) rotate(-5deg); }
+        100% { transform: translateY(8px) rotate(5deg); }
+      }
+      @keyframes foilSpin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes flashPulse {
+        0%, 100% { filter: brightness(1); }
+        50% { filter: brightness(1.15); }
+      }
+
+      @media (max-width: 1060px) {
+        .matrix, .profile-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+      }
+      @media (max-width: 620px) {
+        .matrix, .profile-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Drop System Variants V1</h1>
+      <p class="lead">
+        3 варианта на каждую редкость (2 soft + 1 bold). Apply Moment есть у всех: от Common до Legendary.
+        Переход силы эффектов плавный, без резких разрывов.
+      </p>
+
+      <h2 class="section-title">Карточки по редкостям</h2>
+
+      <h3 class="group-title">Common — 3 варианта</h3>
+      <section class="cards">
+        <article class="card soft common">
+          <span class="tag">Common A / Soft</span>
+          <h4 class="variant-name">Mist</h4>
+          <p class="meta">Чистый базовый сет без перегруза.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card soft common">
+          <span class="tag">Common B / Soft</span>
+          <h4 class="variant-name">Cloud</h4>
+          <p class="meta">Более холодный оттенок и мягкий блик.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card bold common">
+          <span class="tag">Common C / Bold</span>
+          <h4 class="variant-name">Wave</h4>
+          <p class="meta">Смелее по контрасту, но все еще стартовый тон.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+      </section>
+
+      <h3 class="group-title">Rare — 3 варианта</h3>
+      <section class="cards">
+        <article class="card soft rare">
+          <span class="tag">Rare A / Soft</span>
+          <h4 class="variant-name">Aqua</h4>
+          <p class="meta">Небольшой буст сияния и глубины.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card soft rare">
+          <span class="tag">Rare B / Soft</span>
+          <h4 class="variant-name">Tide</h4>
+          <p class="meta">Более насыщенный голубой след.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card bold rare">
+          <span class="tag">Rare C / Bold</span>
+          <h4 class="variant-name">Jet</h4>
+          <p class="meta">Акцентный стиль внутри редкости.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+      </section>
+
+      <h3 class="group-title">Epic — 3 варианта</h3>
+      <section class="cards">
+        <article class="card soft epic">
+          <span class="tag">Epic A / Soft</span>
+          <h4 class="variant-name">Violet</h4>
+          <p class="meta">Фирменный фиолетовый с контролируемым glow.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card soft epic">
+          <span class="tag">Epic B / Soft</span>
+          <h4 class="variant-name">Pulse</h4>
+          <p class="meta">Мягкий перелив и глубже градиент.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card bold epic">
+          <span class="tag">Epic C / Bold</span>
+          <h4 class="variant-name">Nova</h4>
+          <p class="meta">Более дерзкий стиль внутри Epic.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+      </section>
+
+      <h3 class="group-title">Legendary — 3 варианта</h3>
+      <section class="cards">
+        <article class="card soft legendary">
+          <span class="tag">Legendary A / Soft</span>
+          <h4 class="variant-name">Crown</h4>
+          <p class="meta">Премиальный, но аккуратный золотой стиль.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card soft legendary">
+          <span class="tag">Legendary B / Soft</span>
+          <h4 class="variant-name">Solar</h4>
+          <p class="meta">Теплый foil и элитный профильный тон.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card bold legendary">
+          <span class="tag">Legendary C / Bold</span>
+          <h4 class="variant-name">Apex</h4>
+          <p class="meta">Самый акцентный внутри Legendary.</p>
+          <div class="actions"><button class="btn main">Equip now</button><button class="btn alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+      </section>
+
+      <h2 class="section-title">Apply Moment у всех редкостей</h2>
+      <section class="matrix">
+        <article class="moment moment-common">
+          <h4>Common Apply</h4>
+          <div class="flash"></div>
+          <p>Короткий мягкий flash и метка Applied.</p>
+          <ul>
+            <li>Интенсивность: 1/4</li>
+            <li>Длительность: 320ms</li>
+            <li>FX: light glow</li>
+          </ul>
+        </article>
+        <article class="moment moment-rare">
+          <h4>Rare Apply</h4>
+          <div class="flash"></div>
+          <p>Немного сильнее свет и заметнее след.</p>
+          <ul>
+            <li>Интенсивность: 2/4</li>
+            <li>Длительность: 360ms</li>
+            <li>FX: glow + trail</li>
+          </ul>
+        </article>
+        <article class="moment moment-epic">
+          <h4>Epic Apply</h4>
+          <div class="flash"></div>
+          <p>Выраженный flash и статус с акцентом.</p>
+          <ul>
+            <li>Интенсивность: 3/4</li>
+            <li>Длительность: 420ms</li>
+            <li>FX: glow + ripple</li>
+          </ul>
+        </article>
+        <article class="moment moment-legendary">
+          <h4>Legendary Apply</h4>
+          <div class="flash"></div>
+          <p>Пиковый, но контролируемый эффект без перебора.</p>
+          <ul>
+            <li>Интенсивность: 4/4</li>
+            <li>Длительность: 500ms</li>
+            <li>FX: glow + ripple + foil pulse</li>
+          </ul>
+        </article>
+      </section>
+
+      <h2 class="section-title">Профиль после применения</h2>
+      <section class="profile-grid">
+        <article class="profile profile-common">
+          <h4 class="name">Player_182</h4>
+          <p class="meta">Current loadout: Common</p>
+          <div class="line"></div>
+          <span class="badge">Common Applied</span>
+        </article>
+        <article class="profile profile-rare">
+          <h4 class="name">Player_182</h4>
+          <p class="meta">Current loadout: Rare</p>
+          <div class="line"></div>
+          <span class="badge">Rare Applied</span>
+        </article>
+        <article class="profile profile-epic">
+          <h4 class="name">Player_182</h4>
+          <p class="meta">Current loadout: Epic</p>
+          <div class="line"></div>
+          <span class="badge">Epic Applied</span>
+        </article>
+        <article class="profile profile-legendary">
+          <h4 class="name">Player_182</h4>
+          <p class="meta">Current loadout: Legendary</p>
+          <div class="line"></div>
+          <span class="badge">Legendary Applied</span>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

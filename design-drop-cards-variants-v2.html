@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BubbleDrop Variants V2</title>
+    <style>
+      :root {
+        --bgA: #2f4f97;
+        --bgB: #121f43;
+        --bgC: #090f22;
+        --text: #eef4ff;
+        --muted: #b4c8e8;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--text);
+        background: radial-gradient(1300px 900px at 10% -15%, var(--bgA), var(--bgB) 45%, var(--bgC));
+      }
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 28px 16px 56px; }
+      h1 { margin: 0; font-size: 34px; }
+      .lead { margin: 8px 0 0; color: #c9d9f3; line-height: 1.35; }
+      .section-title {
+        margin: 24px 0 10px;
+        font-size: 18px;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+      }
+      .group-title {
+        margin: 18px 0 10px;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #d7e6ff;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+        gap: 12px;
+      }
+      .card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px;
+        padding: 14px 13px 12px;
+        border: 1px solid rgba(255, 255, 255, .24);
+        box-shadow: 0 14px 34px rgba(0, 0, 0, .32);
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .name {
+        margin: 10px 0 5px;
+        font-size: 34px;
+        line-height: 1.02;
+        font-weight: 900;
+      }
+      .meta {
+        margin: 0;
+        min-height: 34px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .actions {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+      }
+      .btn {
+        border: 0;
+        border-radius: 10px;
+        padding: 9px 10px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .btn-main {
+        flex: 1;
+        background: linear-gradient(90deg, #acefff, #c0d3ff);
+        color: #17345c;
+      }
+      .btn-alt {
+        background: rgba(255, 255, 255, .12);
+        border: 1px solid rgba(255, 255, 255, .3);
+        color: #e8f1ff;
+      }
+
+      .layout-diagonal::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(140deg, rgba(255,255,255,.12) 8%, rgba(255,255,255,0) 36%);
+        pointer-events: none;
+      }
+      .layout-split::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        background: rgba(255,255,255,.08);
+        border-right: 1px solid rgba(255,255,255,.16);
+      }
+      .layout-frame {
+        padding-top: 16px;
+      }
+      .layout-frame::before {
+        content: "";
+        position: absolute;
+        inset: 7px;
+        border-radius: 16px;
+        border: 1px solid rgba(255,255,255,.24);
+        pointer-events: none;
+      }
+      .layout-asym .name {
+        max-width: 70%;
+      }
+      .layout-asym::before {
+        content: "";
+        position: absolute;
+        right: -40px;
+        top: -32px;
+        width: 170px;
+        height: 170px;
+        border-radius: 54% 46% 48% 52% / 44% 56% 46% 54%;
+        opacity: .75;
+      }
+
+      /* Common = clean matte */
+      .common {
+        background: linear-gradient(160deg, #3b4869, #2d3754);
+        border-color: rgba(206, 220, 255, .4);
+      }
+      .common .tag { background: #dbe6ff; color: #3b588f; }
+      .common .meta { color: #becce4; }
+      .common.layout-frame::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+        background-size: 14px 14px;
+        pointer-events: none;
+      }
+      .common.layout-asym::before { background: radial-gradient(circle, rgba(170,197,245,.35), rgba(170,197,245,.08) 58%, rgba(170,197,245,0)); }
+
+      /* Rare = water glass */
+      .rare {
+        background: linear-gradient(160deg, rgba(129, 191, 237, .22), rgba(48, 104, 171, .22));
+        backdrop-filter: blur(9px) saturate(120%);
+        border-color: rgba(148, 224, 255, .6);
+      }
+      .rare .tag { background: #d5f0ff; color: #12608a; }
+      .rare .meta { color: #c4def4; }
+      .rare .blob, .rare .blob-2 {
+        position: absolute;
+        border-radius: 60% 40% 47% 53% / 50% 50% 50% 50%;
+        background: radial-gradient(circle at 32% 26%, rgba(255,255,255,.55), rgba(129,226,255,.3) 48%, rgba(85,169,245,.16));
+      }
+      .rare .blob { width: 110px; height: 110px; right: -26px; top: -18px; }
+      .rare .blob-2 { width: 76px; height: 76px; left: -16px; bottom: -22px; opacity: .62; }
+      .rare.layout-split::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 48%);
+        pointer-events: none;
+      }
+
+      /* Epic = neon iridescent */
+      .epic {
+        background:
+          linear-gradient(130deg, rgba(58, 32, 95, .9), rgba(43, 33, 94, .74) 45%, rgba(31, 95, 160, .62)),
+          linear-gradient(45deg, rgba(255,255,255,.08), rgba(255,255,255,0));
+        border-color: rgba(216, 167, 255, .72);
+      }
+      .epic .tag { background: #f1ddff; color: #7140a9; }
+      .epic .meta { color: #d5c7ef; }
+      .epic.layout-diagonal::after {
+        content: "";
+        position: absolute;
+        inset: -30%;
+        background: linear-gradient(120deg, rgba(255,255,255,0) 38%, rgba(164,140,255,.28) 48%, rgba(120,220,255,.2) 56%, rgba(255,255,255,0) 65%);
+        animation: sweep 4.5s linear infinite;
+      }
+      .epic.layout-asym::before { background: radial-gradient(circle, rgba(196,131,255,.44), rgba(122,205,255,.18) 62%, rgba(0,0,0,0)); }
+
+      /* Legendary = foil artifact */
+      .legendary {
+        border-color: rgba(255, 228, 150, .9);
+        background:
+          linear-gradient(145deg, rgba(255,251,223,.2), rgba(255,181,88,.12) 44%, rgba(255,122,64,.13)),
+          linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.02));
+        box-shadow: 0 14px 34px rgba(0, 0, 0, .32), 0 0 28px rgba(255, 193, 84, .42);
+      }
+      .legendary .tag {
+        background: linear-gradient(90deg, #fff2c5, #ffd98a);
+        color: #6f4100;
+      }
+      .legendary .meta { color: #f4e6c7; }
+      .legendary::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1px;
+        background: conic-gradient(from 10deg, #ffe7a8, #ffd07a, #ffb762, #ffe7a8);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: foil 5s linear infinite;
+        pointer-events: none;
+      }
+      .legendary.layout-frame::after {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 15px;
+        border: 1px solid rgba(255, 230, 157, .62);
+        pointer-events: none;
+      }
+      .legendary .crest {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        padding: 5px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #4e2b00;
+        background: linear-gradient(90deg, #ffe8ab, #ffc26a);
+      }
+      .legendary.layout-asym::before { background: radial-gradient(circle, rgba(255,214,118,.44), rgba(255,171,96,.16) 62%, rgba(0,0,0,0)); }
+
+      .moment-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .moment {
+        border-radius: 18px;
+        padding: 12px;
+        border: 1px solid rgba(255,255,255,.24);
+        background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.04));
+      }
+      .moment h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+      .pulse {
+        height: 90px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.24);
+        animation: pulse 1.4s ease-in-out infinite;
+      }
+      .moment p { margin: 8px 0 0; font-size: 12px; color: #c9d9f2; }
+      .m-common .pulse { background: radial-gradient(circle at 50% 50%, rgba(163,198,255,.42), rgba(131,175,247,.18) 44%, rgba(131,175,247,0)); }
+      .m-rare .pulse { background: radial-gradient(circle at 50% 50%, rgba(112,214,255,.52), rgba(82,186,255,.24) 44%, rgba(82,186,255,0)); }
+      .m-epic .pulse { background: radial-gradient(circle at 50% 50%, rgba(207,138,255,.6), rgba(162,111,255,.28) 44%, rgba(162,111,255,0)); }
+      .m-legendary .pulse { background: radial-gradient(circle at 50% 50%, rgba(255,220,140,.76), rgba(255,174,89,.32) 40%, rgba(255,130,69,0)); }
+
+      @keyframes foil { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      @keyframes sweep { from { transform: translateX(-10%); } to { transform: translateX(14%); } }
+      @keyframes pulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.18); } }
+
+      @media (max-width: 1060px) {
+        .moment-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+      }
+      @media (max-width: 620px) {
+        .moment-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Drop Variants V2 (Strong Difference)</h1>
+      <p class="lead">
+        Семейства: Common=clean matte, Rare=water glass, Epic=neon iridescent, Legendary=foil artifact.
+        Внутри каждой редкости 3 разных шаблона: diagonal, split, frame/asym.
+      </p>
+
+      <h2 class="section-title">Common / clean matte</h2>
+      <section class="cards">
+        <article class="card common layout-diagonal">
+          <span class="tag">Common / Diagonal</span>
+          <h3 class="name">Mist</h3>
+          <p class="meta">Матовый и спокойный стартовый стиль.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+        <article class="card common layout-split">
+          <span class="tag">Common / Split</span>
+          <h3 class="name">Cloud</h3>
+          <p class="meta">Вертикальный split и утилитарный вайб.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+        <article class="card common layout-frame">
+          <span class="tag">Common / Frame</span>
+          <h3 class="name">Grid</h3>
+          <p class="meta">Тонкая рамка + сетка вместо свечения.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+      </section>
+
+      <h2 class="section-title">Rare / water glass</h2>
+      <section class="cards">
+        <article class="card rare layout-diagonal">
+          <span class="tag">Rare / Diagonal</span>
+          <h3 class="name">Aqua</h3>
+          <p class="meta">Glass-панель с мягким водным бликом.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="blob"></span>
+        </article>
+        <article class="card rare layout-split">
+          <span class="tag">Rare / Split</span>
+          <h3 class="name">Tide</h3>
+          <p class="meta">Split-layout и двойная водная глубина.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="blob"></span><span class="blob-2"></span>
+        </article>
+        <article class="card rare layout-asym">
+          <span class="tag">Rare / Asym</span>
+          <h3 class="name">Jet</h3>
+          <p class="meta">Асимметричный пузырь как редкий акцент.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="blob"></span>
+        </article>
+      </section>
+
+      <h2 class="section-title">Epic / neon iridescent</h2>
+      <section class="cards">
+        <article class="card epic layout-diagonal">
+          <span class="tag">Epic / Diagonal</span>
+          <h3 class="name">Violet</h3>
+          <p class="meta">Иридесцентный скос и динамичный sweep.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+        <article class="card epic layout-split">
+          <span class="tag">Epic / Split</span>
+          <h3 class="name">Pulse</h3>
+          <p class="meta">Split + глубокий неоновый градиент.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+        <article class="card epic layout-asym">
+          <span class="tag">Epic / Asym</span>
+          <h3 class="name">Nova</h3>
+          <p class="meta">Сильный акцент формы и света.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+        </article>
+      </section>
+
+      <h2 class="section-title">Legendary / foil artifact</h2>
+      <section class="cards">
+        <article class="card legendary layout-diagonal">
+          <span class="tag">Legendary / Diagonal</span>
+          <h3 class="name">Crown</h3>
+          <p class="meta">Фольгированный diagonal с теплым свечением.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="crest">Ultra</span>
+        </article>
+        <article class="card legendary layout-frame">
+          <span class="tag">Legendary / Frame</span>
+          <h3 class="name">Solar</h3>
+          <p class="meta">Артефактная рамка и премиальный контур.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="crest">Ultra</span>
+        </article>
+        <article class="card legendary layout-asym">
+          <span class="tag">Legendary / Asym</span>
+          <h3 class="name">Apex</h3>
+          <p class="meta">Смелая композиция и максимальный статус.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="crest">Ultra</span>
+        </article>
+      </section>
+
+      <h2 class="section-title">Apply Moment (у всех редкостей)</h2>
+      <section class="moment-grid">
+        <article class="moment m-common"><h4>Common Apply</h4><div class="pulse"></div><p>Легкий flash + Applied.</p></article>
+        <article class="moment m-rare"><h4>Rare Apply</h4><div class="pulse"></div><p>Чуть ярче + водный хвост.</p></article>
+        <article class="moment m-epic"><h4>Epic Apply</h4><div class="pulse"></div><p>Неоновый flash + ripple.</p></article>
+        <article class="moment m-legendary"><h4>Legendary Apply</h4><div class="pulse"></div><p>Foil pulse + статусный glow.</p></article>
+      </section>
+    </main>
+  </body>
+</html>

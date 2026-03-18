@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BubbleDrop Cards V3</title>
+    <style>
+      :root {
+        --txt: #eef4ff;
+        --muted: #afc2e2;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: var(--txt);
+        background:
+          radial-gradient(1200px 900px at 12% -18%, #2f4f99 0%, #16234a 44%, #090f22 100%);
+      }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 16px 60px; }
+      h1 { margin: 0; font-size: 32px; }
+      .lead { margin: 8px 0 0; color: #c5d6f2; }
+      .title { margin: 28px 0 10px; font-size: 18px; letter-spacing: .04em; text-transform: uppercase; }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 14px;
+      }
+      .card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 24px;
+        padding: 15px 14px 13px;
+        border: 1px solid rgba(255,255,255,.3);
+        background: linear-gradient(160deg, rgba(255,255,255,.2), rgba(255,255,255,.05));
+        box-shadow: 0 14px 42px rgba(0,0,0,.34);
+        backdrop-filter: blur(11px);
+      }
+      .rarity {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+      .name { margin: 10px 0 5px; font-size: 41px; font-weight: 900; line-height: 1.02; }
+      .meta { margin: 0; color: var(--muted); font-size: 13px; min-height: 34px; max-width: 88%; }
+      .actions { margin-top: 12px; display: flex; gap: 8px; }
+      .btn { border: 0; border-radius: 12px; padding: 10px 11px; font-size: 13px; font-weight: 800; }
+      .btn-main { flex: 1; background: linear-gradient(90deg, #a8edff, #bfd0ff); color: #173359; }
+      .btn-alt { border: 1px solid rgba(255,255,255,.32); background: rgba(255,255,255,.12); color: #e8f1ff; }
+      .bubble {
+        position: absolute; right: -20px; top: -20px; width: 134px; height: 134px;
+        border-radius: 56% 44% 50% 50% / 45% 55% 42% 58%;
+        opacity: .9; animation: bubbleMove 4.2s ease-in-out infinite alternate;
+      }
+      .common .rarity { background: #dce7ff; color: #375088; }
+      .common .bubble { background: radial-gradient(circle at 32% 25%, rgba(255,255,255,.78), rgba(133,182,255,.38) 56%, rgba(84,147,244,.3)); }
+      .rare .rarity { background: #d5f0ff; color: #15608b; }
+      .rare .bubble { background: radial-gradient(circle at 32% 25%, rgba(255,255,255,.8), rgba(87,217,255,.42) 56%, rgba(67,157,255,.33)); }
+      .epic .rarity { background: #f1ddff; color: #7040a7; }
+      .epic .bubble { background: radial-gradient(circle at 32% 25%, rgba(255,255,255,.82), rgba(210,122,255,.46) 56%, rgba(140,90,255,.35)); }
+
+      .legendary {
+        border-color: rgba(255, 230, 146, 0.95);
+        background:
+          linear-gradient(145deg, rgba(255,251,223,.22), rgba(255,177,82,.14) 42%, rgba(255,114,61,.16)),
+          linear-gradient(160deg, rgba(255,255,255,.24), rgba(255,255,255,.05));
+        box-shadow:
+          0 16px 48px rgba(0,0,0,.36),
+          0 0 0 1px rgba(255,233,160,.68) inset,
+          0 0 32px rgba(255,191,76,.52);
+      }
+      .legendary::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1px;
+        background: conic-gradient(from 0deg, #ffe7a8, #ffd180, #ffb86a, #ffe7a8);
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: foilSpin 4.5s linear infinite;
+        pointer-events: none;
+      }
+      .legendary::after {
+        content: "";
+        position: absolute;
+        inset: -28%;
+        pointer-events: none;
+        background: conic-gradient(from 45deg, rgba(255,210,95,0) 0deg, rgba(255,227,140,.34) 62deg, rgba(255,152,76,0) 120deg, rgba(255,227,140,.34) 190deg, rgba(255,132,62,0) 250deg, rgba(255,224,130,.3) 320deg, rgba(255,210,95,0) 360deg);
+        animation: haloSpin 6s linear infinite;
+      }
+      .legendary .rarity { background: linear-gradient(90deg, #fff2c5, #ffd98a); color: #6f4100; }
+      .legendary .name { text-shadow: 0 0 18px rgba(255,205,115,.48); }
+      .legendary .meta { color: #f8ecd2; }
+      .legendary .bubble {
+        background: radial-gradient(circle at 30% 23%, rgba(255,255,255,.92), rgba(255,242,194,.58) 38%, rgba(255,204,105,.44) 56%, rgba(255,132,58,.4));
+        box-shadow: 0 0 34px rgba(255,193,84,.58), 0 0 56px rgba(255,148,66,.36);
+      }
+      .legendary-badge {
+        position: absolute; right: 12px; bottom: 12px;
+        padding: 6px 10px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+        color: #4d2b00; background: linear-gradient(90deg, #ffe7a8, #ffc167);
+        box-shadow: 0 0 12px rgba(255,190,75,.42);
+      }
+
+      .profile-area {
+        margin-top: 10px;
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 14px;
+      }
+      .profile {
+        position: relative;
+        border-radius: 24px;
+        padding: 16px;
+        border: 1px solid rgba(255, 227, 150, 0.84);
+        background:
+          linear-gradient(160deg, rgba(255,240,192,.2), rgba(255,170,102,.14) 46%, rgba(255,98,60,.16)),
+          linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.03));
+        box-shadow: 0 18px 52px rgba(0,0,0,.44), 0 0 22px rgba(255, 194, 79, 0.48);
+      }
+      .profile-head { display: flex; gap: 12px; align-items: center; }
+      .avatar-shell {
+        width: 62px; height: 62px; border-radius: 20px; display: grid; place-items: center;
+        border: 1px solid rgba(255,236,170,.86);
+        background: linear-gradient(160deg, rgba(255,255,255,.35), rgba(255,255,255,.08));
+        box-shadow: 0 0 18px rgba(255,195,84,.45);
+      }
+      .avatar-core {
+        width: 40px; height: 40px; border-radius: 50%;
+        background: radial-gradient(circle at 32% 24%, rgba(255,255,255,.92), rgba(255,223,138,.56) 56%, rgba(255,165,82,.4));
+      }
+      .who { margin: 0; font-size: 19px; font-weight: 900; }
+      .rank { margin: 2px 0 0; font-size: 12px; color: #ebddc0; }
+      .chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip {
+        padding: 7px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+        border: 1px solid rgba(255,226,146,.64); background: linear-gradient(90deg, rgba(255,240,191,.34), rgba(255,194,101,.24));
+      }
+      .trail {
+        margin-top: 10px; height: 10px; border-radius: 999px;
+        background: linear-gradient(90deg, rgba(255,212,125,.12), rgba(255,195,87,.9), rgba(255,212,125,.12));
+        box-shadow: 0 0 12px rgba(255,192,88,.44);
+      }
+      .status {
+        margin-top: 12px; display: inline-block;
+        padding: 7px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+        color: #5d3400; background: linear-gradient(90deg, #ffecb8, #ffc66f); border: 1px solid rgba(255,220,140,.85);
+      }
+
+      .ceremony {
+        border-radius: 24px;
+        padding: 14px;
+        border: 1px solid rgba(255,255,255,.28);
+        background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.04));
+        box-shadow: 0 14px 42px rgba(0,0,0,.35);
+      }
+      .flash {
+        height: 160px;
+        border-radius: 18px;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(255,220,140,.86), rgba(255,174,89,.38) 35%, rgba(255,130,69,.2) 54%, rgba(255,130,69,0) 75%),
+          radial-gradient(circle at 30% 24%, rgba(255,255,255,.4), rgba(255,255,255,0) 38%);
+        border: 1px solid rgba(255,224,146,.65);
+        box-shadow: 0 0 24px rgba(255,186,86,.46);
+        animation: flashPulse 1.35s ease-in-out infinite;
+      }
+      .ceremony h3 { margin: 10px 0 4px; font-size: 20px; }
+      .ceremony p { margin: 0; color: #d7e5ff; font-size: 13px; line-height: 1.35; }
+
+      @keyframes bubbleMove { 0% { transform: translateY(-2px) rotate(-5deg); } 100% { transform: translateY(8px) rotate(5deg); } }
+      @keyframes haloSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      @keyframes foilSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      @keyframes flashPulse { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
+
+      @media (max-width: 900px) {
+        .profile-area { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Drop Cards Concept C</h1>
+      <p class="lead">Legendary с фольгой и живой аурой + мини-церемония применения в профиле.</p>
+
+      <h2 class="title">Drop Cards</h2>
+      <section class="cards">
+        <article class="card common">
+          <span class="rarity">Common Set</span>
+          <h3 class="name">Foam Starter</h3>
+          <p class="meta">Avatar frame + bubble skin + mini badge.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card rare">
+          <span class="rarity">Rare Set</span>
+          <h3 class="name">Aqua Flux</h3>
+          <p class="meta">Shimmer trail + profile badge + icon pulse.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card epic">
+          <span class="rarity">Epic Set</span>
+          <h3 class="name">Neon Tide</h3>
+          <p class="meta">Animated rim + exclusive bubble shape.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="bubble"></span>
+        </article>
+        <article class="card legendary">
+          <span class="rarity">Legendary Set</span>
+          <h3 class="name">Solar Crown</h3>
+          <p class="meta">Foil frame + sovereign glow + elite aura.</p>
+          <div class="actions"><button class="btn btn-main">Equip now</button><button class="btn btn-alt">Inventory</button></div>
+          <span class="bubble"></span>
+          <span class="legendary-badge">Ultra Tier</span>
+        </article>
+      </section>
+
+      <h2 class="title">Profile After Apply</h2>
+      <section class="profile-area">
+        <article class="profile">
+          <div class="profile-head">
+            <div class="avatar-shell"><span class="avatar-core"></span></div>
+            <div>
+              <p class="who">Player_182</p>
+              <p class="rank">Rank: Silver Current loadout: Legendary</p>
+            </div>
+          </div>
+          <div class="chips">
+            <span class="chip">BubbleSkin: Solar Crown</span>
+            <span class="chip">Badge: Apex Crest</span>
+            <span class="chip">Trail: Ember Halo</span>
+          </div>
+          <div class="trail"></div>
+          <span class="status">Legendary Applied</span>
+        </article>
+        <aside class="ceremony">
+          <div class="flash"></div>
+          <h3>Apply Moment</h3>
+          <p>Игрок нажал Equip now -> короткий flash + статус "Legendary Applied" + профиль обновился мгновенно.</p>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>
