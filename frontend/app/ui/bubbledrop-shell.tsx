@@ -549,9 +549,15 @@ async function getProfileConnectWalletErrorMessage(
   }
 
   if (status >= 500) {
-    return serverMessage
-      ? `Server error (${status}): ${serverMessage.slice(0, 200)}`
-      : `Server error (${status}). Check backend logs. Retry Sync profile.`;
+    const trimmed = serverMessage.trim();
+    const isGeneric =
+      !trimmed ||
+      /^internal server error$/i.test(trimmed) ||
+      /^http \d+$/i.test(trimmed);
+    if (isGeneric) {
+      return `Server error (${status}). API side: set DATABASE_URL to PostgreSQL, run migrations (npm run db:migration:run), redeploy backend. Then Sync profile again.`;
+    }
+    return `Server error (${status}): ${serverMessage.slice(0, 220)}`;
   }
 
   if (serverMessage) {

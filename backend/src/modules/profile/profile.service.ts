@@ -3,12 +3,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
@@ -196,46 +197,86 @@ export class ProfileService {
   async connectWallet(walletAddress: string): Promise<ProfileStartupState> {
     const normalizedAddress = this.normalizeWalletAddress(walletAddress);
 
-    let wallet = await this.walletRepository.findOne({
-      where: { address: normalizedAddress },
-    });
-
-    if (!wallet) {
-      wallet = this.walletRepository.create({
-        address: normalizedAddress,
+    try {
+      let wallet = await this.walletRepository.findOne({
+        where: { address: normalizedAddress },
       });
-      wallet = await this.walletRepository.save(wallet);
-    }
 
-    let profile = await this.profileRepository.findOne({
-      where: { walletId: wallet.id },
-    });
+      if (!wallet) {
+        wallet = this.walletRepository.create({
+          address: normalizedAddress,
+        });
+        wallet = await this.walletRepository.save(wallet);
+      }
 
-    if (!profile) {
-      profile = this.profileRepository.create({
+      let profile = await this.profileRepository.findOne({
+        where: { walletId: wallet.id },
+      });
+
+      if (!profile) {
+        profile = this.profileRepository.create({
+          walletId: wallet.id,
+          nickname: null,
+          currentAvatarId: null,
+          totalXp: 0,
+          currentStreak: 0,
+          onboardingCompletedAt: null,
+        });
+        profile = await this.profileRepository.save(profile);
+      }
+
+      return {
         walletId: wallet.id,
-        nickname: null,
-        currentAvatarId: null,
-        totalXp: 0,
-        currentStreak: 0,
-        onboardingCompletedAt: null,
-      });
-      profile = await this.profileRepository.save(profile);
+        walletAddress: wallet.address,
+        profileId: profile.id,
+        nickname: profile.nickname,
+        currentAvatarId: profile.currentAvatarId,
+        totalXp: profile.totalXp,
+        currentStreak: profile.currentStreak,
+        needsOnboarding:
+          profile.onboardingCompletedAt === null ||
+          profile.nickname === null ||
+          profile.currentAvatarId === null,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const userMessage = this.describeConnectWalletFailure(error);
+      this.logger.error(
+        `connectWallet failed for ${normalizedAddress}: ${userMessage}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new InternalServerErrorException(userMessage);
     }
+  }
 
-    return {
-      walletId: wallet.id,
-      walletAddress: wallet.address,
-      profileId: profile.id,
-      nickname: profile.nickname,
-      currentAvatarId: profile.currentAvatarId,
-      totalXp: profile.totalXp,
-      currentStreak: profile.currentStreak,
-      needsOnboarding:
-        profile.onboardingCompletedAt === null ||
-        profile.nickname === null ||
-        profile.currentAvatarId === null,
-    };
+  private describeConnectWalletFailure(error: unknown): string {
+    if (error instanceof QueryFailedError) {
+      const msg = error.message;
+      const driver = error.driverError as { code?: string } | undefined;
+      const code = driver?.code;
+      if (code === '42P01' || /does not exist/i.test(msg)) {
+        return 'Database tables missing — on API server run: npm run db:migration:run';
+      }
+      if (code === '28P01' || code === '3D000') {
+        return 'PostgreSQL rejected login or database name — check DATABASE_URL';
+      }
+      if (
+        /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|Connection terminated/i.test(msg) ||
+        /Connection terminated/i.test(String(error))
+      ) {
+        return 'Cannot reach PostgreSQL — verify DATABASE_URL host/port and that Postgres is running';
+      }
+      return `Database error (${code ?? 'SQL'}): ${msg.slice(0, 140)}`;
+    }
+    if (error instanceof Error) {
+      if (/ECONNREFUSED|ENOTFOUND|getaddrinfo/i.test(error.message)) {
+        return 'Cannot reach database — check DATABASE_URL on the API server';
+      }
+      return error.message.slice(0, 200);
+    }
+    return 'Unexpected error while creating profile — check API logs';
   }
 
   async completeOnboarding(
