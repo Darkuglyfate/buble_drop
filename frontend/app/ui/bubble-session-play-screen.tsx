@@ -72,6 +72,11 @@ const FUN_OVERLAY_ITEM_CONFIG = [
   { kind: "xp-crystal", hue: 42, label: "XP crystal" },
   { kind: "season-sigil", hue: 318, label: "Season sigil" },
 ] as const;
+const HELPER_THEME_CONFIG = [
+  { theme: "paperPlane", accentHue: 42, label: "Paper plane" },
+  { theme: "miniUfo", accentHue: 196, label: "Mini UFO" },
+  { theme: "bubbleCannon", accentHue: 318, label: "Bubble cannon" },
+] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
 const BUBBLE_MAX_FRAME_DT_MS = 32;
@@ -82,6 +87,13 @@ const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
 const COMBO_BURST_DURATION_MS = 980;
 const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
 const ANTICIPATION_POP_DURATION_MS = 220;
+const HELPER_EVENT_MIN_DELAY_MS = 45_000;
+const HELPER_EVENT_MAX_DELAY_MS = 90_000;
+const HELPER_EVENT_ENTER_DURATION_MS = 880;
+const HELPER_EVENT_FIRE_DURATION_MS = 1_240;
+const HELPER_EVENT_EXIT_DURATION_MS = 860;
+const HELPER_SHOT_INTERVAL_MS = 240;
+const HELPER_SHOT_CUE_DURATION_MS = 760;
 const FINISH_CELEBRATION_DURATION_MS = 2950;
 const FINISH_CELEBRATION_BLOOM_BUBBLES = [
   { x: "-12.8rem", y: "-7.2rem", size: "6.2rem", hue: 196, alpha: 0.84, delayMs: 0, durationMs: 1180 },
@@ -153,6 +165,7 @@ type PopBurst = {
   sizeRem: number;
   isBonus: boolean;
   comboTier: number | null;
+  source: "user" | "helper";
 };
 
 type ComboBurst = {
@@ -178,7 +191,37 @@ type PlayfieldTouchCue = {
   id: number;
   topPercent: number;
   leftPercent: number;
-  tone: "assist" | "miss";
+  tone: "assist" | "miss" | "helper";
+};
+
+type HelperTheme = (typeof HELPER_THEME_CONFIG)[number]["theme"];
+type HelperPhase = "entering" | "firing" | "exiting";
+
+type HelperEvent = {
+  id: number;
+  theme: HelperTheme;
+  label: string;
+  accentHue: number;
+  phase: HelperPhase;
+  anchorXPercent: number;
+  anchorYPercent: number;
+  startXPercent: number;
+  startYPercent: number;
+  exitXPercent: number;
+  exitYPercent: number;
+  targetBubbleIds: number[];
+};
+
+type HelperShotCue = {
+  id: number;
+  theme: HelperTheme;
+  accentHue: number;
+  originXPercent: number;
+  originYPercent: number;
+  targetXPercent: number;
+  targetYPercent: number;
+  beamLengthPx: number;
+  beamAngleDeg: number;
 };
 
 type SkinRarity = ProfileStyleRarity;
@@ -759,6 +802,8 @@ export function BubbleSessionPlayScreen() {
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
   const [comboBursts, setComboBursts] = useState<ComboBurst[]>([]);
   const [funOverlayItems, setFunOverlayItems] = useState<FunOverlayItem[]>([]);
+  const [helperEvent, setHelperEvent] = useState<HelperEvent | null>(null);
+  const [helperShotCues, setHelperShotCues] = useState<HelperShotCue[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
@@ -773,7 +818,10 @@ export function BubbleSessionPlayScreen() {
   const playfieldRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const footerRef = useRef<HTMLDivElement | null>(null);
+  const activePlayBubblesRef = useRef<ActivePlayBubble[]>(activePlayBubbles);
+  const helperEventRef = useRef<HelperEvent | null>(null);
   const finishCelebrationTimeoutRef = useRef<number | null>(null);
+  const helperTimeoutsRef = useRef<number[]>([]);
   const hasShownMinimumCelebrationRef = useRef(false);
   const hasShownTimerChoiceRef = useRef(false);
   const popAudioContextRef = useRef<AudioContext | null>(null);
@@ -852,6 +900,21 @@ export function BubbleSessionPlayScreen() {
     }
   };
 
+  const clearHelperTimeouts = () => {
+    helperTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    helperTimeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    activePlayBubblesRef.current = activePlayBubbles;
+  }, [activePlayBubbles]);
+
+  useEffect(() => {
+    helperEventRef.current = helperEvent;
+  }, [helperEvent]);
+
   useEffect(() => {
     setAuthSession(
       getSmokeSignInSessionFromCurrentUrl() ??
@@ -865,6 +928,7 @@ export function BubbleSessionPlayScreen() {
         window.clearTimeout(finishCelebrationTimeoutRef.current);
         finishCelebrationTimeoutRef.current = null;
       }
+      clearHelperTimeouts();
       const currentAudioContext = popAudioContextRef.current;
       if (currentAudioContext) {
         void currentAudioContext.close();
@@ -1583,6 +1647,304 @@ export function BubbleSessionPlayScreen() {
     }, FUN_OVERLAY_ITEM_DURATION_MS);
   };
 
+  const queuePopBurst = ({
+    xPercent,
+    yPercent,
+    hue,
+    sizeRem,
+    isBonus,
+    comboTier,
+    source,
+  }: {
+    xPercent: number;
+    yPercent: number;
+    hue: number;
+    sizeRem: number;
+    isBonus: boolean;
+    comboTier: number | null;
+    source: PopBurst["source"];
+  }) => {
+    const burstId = Math.floor(Math.random() * 1_000_000_000);
+    setPopBursts((current) => [
+      ...current,
+      {
+        id: burstId,
+        xPercent,
+        yPercent,
+        hue,
+        sizeRem,
+        isBonus,
+        comboTier,
+        source,
+      },
+    ]);
+    window.setTimeout(() => {
+      setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
+    }, source === "helper" ? HELPER_SHOT_CUE_DURATION_MS : 620);
+  };
+
+  const applyBubblePopLifecycle = (
+    bubbleId: number,
+    bubbleSnapshot: ActivePlayBubble,
+    now: number,
+    options?: { anticipationMs?: number; deformStretch?: number; deformRotationDeg?: number },
+  ) => {
+    const anticipationMs = options?.anticipationMs ?? ANTICIPATION_POP_DURATION_MS;
+    const deformStretch = options?.deformStretch ?? (bubbleSnapshot.isBonus ? 0.26 : 0.18);
+    const deformRotationDeg = options?.deformRotationDeg ?? (bubbleSnapshot.isBonus ? 3.2 : 2.2);
+    setActivePlayBubbles((current) =>
+      current.map((bubble) => {
+        if (bubble.id !== bubbleId) {
+          return bubble;
+        }
+        if (
+          bubble.poppedUntilMs > now ||
+          bubble.respawnAtMs > now ||
+          bubble.spawnedUntilMs > now
+        ) {
+          return bubble;
+        }
+        return {
+          ...bubble,
+          poppedUntilMs: now + anticipationMs + BUBBLE_POP_DURATION_MS,
+          respawnAtMs:
+            now +
+            anticipationMs +
+            BUBBLE_POP_DURATION_MS +
+            BUBBLE_RESPAWN_DELAY_MS,
+          spawnedUntilMs: 0,
+          nextShiftAtMs:
+            now +
+            anticipationMs +
+            BUBBLE_POP_DURATION_MS +
+            BUBBLE_RESPAWN_DELAY_MS,
+          deformUntilMs: now + anticipationMs,
+          deformStretch,
+          deformRotationDeg,
+        };
+      }),
+    );
+  };
+
+  const addHelperShotCue = ({
+    event,
+    targetBubble,
+    xPercent,
+    yPercent,
+  }: {
+    event: HelperEvent;
+    targetBubble: ActivePlayBubble;
+    xPercent: number;
+    yPercent: number;
+  }) => {
+    const metrics = playfieldMetricsRef.current;
+    const originXPercent = clampPercent(
+      event.anchorXPercent + randomBetween(-2.4, 2.4),
+      -8,
+      108,
+    );
+    const originYPercent = clampPercent(
+      event.anchorYPercent + randomBetween(-1.2, 1.2),
+      0,
+      100,
+    );
+    const originXpx = (metrics.width * originXPercent) / 100;
+    const originYpx = (metrics.height * originYPercent) / 100;
+    const targetXpx = (metrics.width * xPercent) / 100;
+    const targetYpx = (metrics.height * yPercent) / 100;
+    const shotId = Math.floor(Math.random() * 1_000_000_000);
+    setHelperShotCues((current) => [
+      ...current,
+      {
+        id: shotId,
+        theme: event.theme,
+        accentHue: event.accentHue,
+        originXPercent,
+        originYPercent,
+        targetXPercent: xPercent,
+        targetYPercent: yPercent,
+        beamLengthPx: Math.hypot(targetXpx - originXpx, targetYpx - originYpx),
+        beamAngleDeg: (Math.atan2(targetYpx - originYpx, targetXpx - originXpx) * 180) / Math.PI,
+      },
+    ]);
+    window.setTimeout(() => {
+      setHelperShotCues((current) => current.filter((cue) => cue.id !== shotId));
+    }, HELPER_SHOT_CUE_DURATION_MS);
+    showPlayfieldTouchCue("helper", {
+      topPercent: yPercent,
+      leftPercent: xPercent,
+    });
+    triggerNeighborRipple(targetBubble.id, { xPercent, yPercent }, targetBubble.isBonus);
+  };
+
+  const fireHelperShot = (eventId: number, bubbleId: number) => {
+    const currentEvent =
+      helperEventRef.current && helperEventRef.current.id === eventId
+        ? helperEventRef.current
+        : null;
+    if (!currentEvent) {
+      return;
+    }
+    const now = Date.now();
+    const targetBubble = activePlayBubblesRef.current.find(
+      (bubble) =>
+        bubble.id === bubbleId &&
+        bubble.poppedUntilMs <= now &&
+        bubble.respawnAtMs <= now &&
+        bubble.spawnedUntilMs <= now,
+    );
+    if (!targetBubble) {
+      return;
+    }
+
+    const xPercent = targetBubble.left;
+    const yPercent = targetBubble.top;
+    applyBubblePopLifecycle(targetBubble.id, targetBubble, now, {
+      anticipationMs: 80,
+      deformStretch: targetBubble.isBonus ? 0.2 : 0.16,
+      deformRotationDeg: targetBubble.left >= currentEvent.anchorXPercent ? 2.4 : -2.4,
+    });
+    queuePopBurst({
+      xPercent,
+      yPercent,
+      hue: currentEvent.accentHue,
+      sizeRem: targetBubble.isBonus ? 0.86 : 0.58,
+      isBonus: targetBubble.isBonus,
+      comboTier: null,
+      source: "helper",
+    });
+    addHelperShotCue({
+      event: currentEvent,
+      targetBubble,
+      xPercent,
+      yPercent,
+    });
+  };
+
+  const triggerHelperEvent = () => {
+    const now = Date.now();
+    const availableTargets = activePlayBubblesRef.current.filter(
+      (bubble) =>
+        bubble.poppedUntilMs <= now &&
+        bubble.respawnAtMs <= now &&
+        bubble.spawnedUntilMs <= now,
+    );
+    if (availableTargets.length < 2) {
+      return;
+    }
+
+    const isCompactPlayfield = playfieldMetricsRef.current.width <= 460;
+    const targetCount = Math.min(availableTargets.length, isCompactPlayfield ? 2 : 3);
+    const upperPriority = [...availableTargets]
+      .sort((first, second) => first.top - second.top)
+      .slice(0, Math.max(targetCount + 1, Math.ceil(availableTargets.length * 0.45)));
+    const targets = upperPriority.slice(0, targetCount);
+    if (targets.length === 0) {
+      return;
+    }
+
+    const helperThemeConfig =
+      HELPER_THEME_CONFIG[Math.floor(Math.random() * HELPER_THEME_CONFIG.length)];
+    const averageLeft =
+      targets.reduce((sum, bubble) => sum + bubble.left, 0) / targets.length;
+    const averageTop =
+      targets.reduce((sum, bubble) => sum + bubble.top, 0) / targets.length;
+    const enterFromLeft = Math.random() < 0.5;
+    const anchorXPercent = clampPercent(
+      averageLeft + randomBetween(-4, 4),
+      18,
+      82,
+    );
+    const anchorYPercent = clampPercent(
+      averageTop - randomBetween(10, 16),
+      16,
+      44,
+    );
+    const eventId = Math.floor(Math.random() * 1_000_000_000);
+    const nextEvent: HelperEvent = {
+      id: eventId,
+      theme: helperThemeConfig.theme,
+      label: helperThemeConfig.label,
+      accentHue: helperThemeConfig.accentHue,
+      phase: "entering",
+      anchorXPercent,
+      anchorYPercent,
+      startXPercent: enterFromLeft ? -14 : 114,
+      startYPercent: clampPercent(anchorYPercent - randomBetween(3, 8), 6, 36),
+      exitXPercent: enterFromLeft ? 114 : -14,
+      exitYPercent: clampPercent(anchorYPercent - randomBetween(6, 10), 4, 34),
+      targetBubbleIds: targets.map((bubble) => bubble.id),
+    };
+
+    setHelperEvent(nextEvent);
+
+    const enterTimeout = window.setTimeout(() => {
+      setHelperEvent((current) =>
+        current?.id === eventId
+          ? { ...current, phase: "firing" }
+          : current,
+      );
+    }, HELPER_EVENT_ENTER_DURATION_MS);
+    helperTimeoutsRef.current.push(enterTimeout);
+
+    targets.forEach((bubble, index) => {
+      const shotTimeout = window.setTimeout(() => {
+        fireHelperShot(eventId, bubble.id);
+      }, HELPER_EVENT_ENTER_DURATION_MS + 160 + index * HELPER_SHOT_INTERVAL_MS);
+      helperTimeoutsRef.current.push(shotTimeout);
+    });
+
+    const exitTimeout = window.setTimeout(() => {
+      setHelperEvent((current) =>
+        current?.id === eventId
+          ? { ...current, phase: "exiting" }
+          : current,
+      );
+    }, HELPER_EVENT_ENTER_DURATION_MS + HELPER_EVENT_FIRE_DURATION_MS);
+    helperTimeoutsRef.current.push(exitTimeout);
+
+    const cleanupTimeout = window.setTimeout(() => {
+      setHelperEvent((current) => (current?.id === eventId ? null : current));
+      setHelperShotCues([]);
+    }, HELPER_EVENT_ENTER_DURATION_MS + HELPER_EVENT_FIRE_DURATION_MS + HELPER_EVENT_EXIT_DURATION_MS);
+    helperTimeoutsRef.current.push(cleanupTimeout);
+  };
+
+  useEffect(() => {
+    if (!isActive || sessionCompleted || sessionTimerGoalReached || postTimerChoiceVisible) {
+      clearHelperTimeouts();
+      setHelperEvent(null);
+      setHelperShotCues([]);
+      return;
+    }
+    if (helperEvent) {
+      return;
+    }
+    const scheduleDelayMs = randomBetween(
+      HELPER_EVENT_MIN_DELAY_MS,
+      HELPER_EVENT_MAX_DELAY_MS,
+    );
+    const timeoutId = window.setTimeout(() => {
+      triggerHelperEvent();
+      helperTimeoutsRef.current = helperTimeoutsRef.current.filter(
+        (currentId) => currentId !== timeoutId,
+      );
+    }, scheduleDelayMs);
+    helperTimeoutsRef.current.push(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      helperTimeoutsRef.current = helperTimeoutsRef.current.filter(
+        (currentId) => currentId !== timeoutId,
+      );
+    };
+  }, [
+    helperEvent,
+    isActive,
+    postTimerChoiceVisible,
+    sessionCompleted,
+    sessionTimerGoalReached,
+  ]);
+
   const triggerNeighborRipple = (
     sourceBubbleId: number,
     sourcePoint: { xPercent: number; yPercent: number },
@@ -1692,6 +2054,9 @@ export function BubbleSessionPlayScreen() {
         setPopBursts([]);
         setComboBursts([]);
         setFunOverlayItems([]);
+        clearHelperTimeouts();
+        setHelperEvent(null);
+        setHelperShotCues([]);
         if (finishCelebrationTimeoutRef.current !== null) {
           window.clearTimeout(finishCelebrationTimeoutRef.current);
           finishCelebrationTimeoutRef.current = null;
@@ -1748,36 +2113,11 @@ export function BubbleSessionPlayScreen() {
     setTapCombo(nextCombo);
     setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
     setLastTapAtMs(now);
-    if (typeof bubbleId === "number") {
-      setActivePlayBubbles((current) =>
-        current.map((bubble) =>
-          bubble.id === bubbleId
-            ? {
-                ...bubble,
-                poppedUntilMs: now + ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS,
-                respawnAtMs:
-                  now +
-                  ANTICIPATION_POP_DURATION_MS +
-                  BUBBLE_POP_DURATION_MS +
-                  BUBBLE_RESPAWN_DELAY_MS,
-                spawnedUntilMs: 0,
-                nextShiftAtMs:
-                  now +
-                  ANTICIPATION_POP_DURATION_MS +
-                  BUBBLE_POP_DURATION_MS +
-                  BUBBLE_RESPAWN_DELAY_MS,
-                deformUntilMs: now + ANTICIPATION_POP_DURATION_MS,
-                deformStretch: tappedBubble?.isBonus ? 0.26 : 0.18,
-                deformRotationDeg: tappedBubble?.isBonus ? 3.2 : 2.2,
-              }
-            : bubble,
-        ),
-      );
-
+    if (typeof bubbleId === "number" && tappedBubble) {
+      applyBubblePopLifecycle(bubbleId, tappedBubble, now);
       const rect = event?.currentTarget.getBoundingClientRect();
       const playfieldRect = playfieldRef.current?.getBoundingClientRect();
       if (playfieldRect) {
-        const burstId = Math.floor(Math.random() * 1_000_000_000);
         const burstX =
           rect
             ? rect.left + rect.width / 2
@@ -1792,31 +2132,25 @@ export function BubbleSessionPlayScreen() {
         const yPercent = ((burstY - playfieldRect.top) / playfieldRect.height) * 100;
         setTapFeedbackPoint(touchPointOverride ?? { topPercent: yPercent, leftPercent: xPercent });
         const comboTier = triggerComboBurst(nextCombo, { xPercent, yPercent });
-        setPopBursts((current) => [
-          ...current,
-          {
-            id: burstId,
-            xPercent,
-            yPercent,
-            hue: tappedBubble?.isBonus ? 44 : tappedBubble?.hue ?? 220,
-            sizeRem: tappedBubble?.isBonus ? 0.92 : 0.62,
-            isBonus: Boolean(tappedBubble?.isBonus),
-            comboTier,
-          },
-        ]);
+        queuePopBurst({
+          xPercent,
+          yPercent,
+          hue: tappedBubble.isBonus ? 44 : tappedBubble.hue,
+          sizeRem: tappedBubble.isBonus ? 0.92 : 0.62,
+          isBonus: tappedBubble.isBonus,
+          comboTier,
+          source: "user",
+        });
         triggerNeighborRipple(
           bubbleId,
           { xPercent, yPercent },
-          Boolean(tappedBubble?.isBonus),
+          tappedBubble.isBonus,
         );
         spawnFunOverlayItem(
           { xPercent, yPercent },
-          Boolean(tappedBubble?.isBonus),
+          tappedBubble.isBonus,
           nextCombo,
         );
-        window.setTimeout(() => {
-          setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
-        }, 620);
       }
     }
 
@@ -2363,6 +2697,9 @@ export function BubbleSessionPlayScreen() {
                               : bubble.sizeTier === "medium"
                                 ? 0.5
                                 : 0.24);
+                          const helperTargeted =
+                            helperEvent?.phase === "firing" &&
+                            helperEvent.targetBubbleIds.includes(bubble.id);
 
                           return (
                             <button
@@ -2385,6 +2722,8 @@ export function BubbleSessionPlayScreen() {
                                 bubble.sizeTier === "large" ? "session-active-bubble-large" : ""
                               } ${
                                 bubble.sizeTier === "small" ? "session-active-bubble-small" : ""
+                              } ${
+                                helperTargeted ? "session-active-bubble-helper-targeted" : ""
                               }`}
                               style={{
                                 top: `${bubble.top}%`,
@@ -2403,6 +2742,7 @@ export function BubbleSessionPlayScreen() {
                                 "--bubble-current-factor": `${bubble.currentFactor}`,
                                 "--bubble-rim-hue": `${bubble.isBonus ? 42 : bubble.hue + 28}`,
                                 "--bubble-rim-hue-2": `${bubble.isBonus ? 330 : bubble.hue + 102}`,
+                                "--session-helper-hue": `${helperTargeted ? helperEvent?.accentHue ?? 196 : 196}`,
                                 "--bubble-pop-duration": `${ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS}ms`,
                                 "--bubble-pop-intensity": `${bubble.isBonus ? 1.08 : bubble.sizeTier === "small" ? 0.92 : 1}`,
                                 opacity:
@@ -2443,14 +2783,58 @@ export function BubbleSessionPlayScreen() {
                               <span className="session-bubble-sheen-band" />
                               {bubble.isBonus ? <span className="session-bubble-bonus-tease" /> : null}
                               {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
+                              {helperTargeted ? <span className="session-bubble-helper-lock" /> : null}
                             </button>
                           );
                         })()
                       ))}
+                      {helperEvent ? (
+                        <div
+                          className={`session-helper-event session-helper-event-${helperEvent.theme} session-helper-event-${helperEvent.phase} pointer-events-none absolute`}
+                          style={{
+                            left: `${helperEvent.anchorXPercent}%`,
+                            top: `${helperEvent.anchorYPercent}%`,
+                            "--session-helper-enter-x": `${helperEvent.startXPercent - helperEvent.anchorXPercent}%`,
+                            "--session-helper-enter-y": `${helperEvent.startYPercent - helperEvent.anchorYPercent}%`,
+                            "--session-helper-exit-x": `${helperEvent.exitXPercent - helperEvent.anchorXPercent}%`,
+                            "--session-helper-exit-y": `${helperEvent.exitYPercent - helperEvent.anchorYPercent}%`,
+                            "--session-helper-hue": `${helperEvent.accentHue}`,
+                          } as CSSProperties}
+                          aria-hidden="true"
+                        >
+                          <span className="session-helper-event-trail" />
+                          <span className="session-helper-event-body">
+                            <span className="session-helper-event-core" />
+                            <span className="session-helper-event-wing session-helper-event-wing-a" />
+                            <span className="session-helper-event-wing session-helper-event-wing-b" />
+                            <span className="session-helper-event-glow" />
+                          </span>
+                          <span className="session-helper-event-chip">{helperEvent.label}</span>
+                        </div>
+                      ) : null}
+                      {helperShotCues.map((cue) => (
+                        <span
+                          key={cue.id}
+                          className={`session-helper-shot session-helper-shot-${cue.theme} pointer-events-none absolute`}
+                          style={{
+                            left: `${cue.originXPercent}%`,
+                            top: `${cue.originYPercent}%`,
+                            width: `${cue.beamLengthPx}px`,
+                            transform: `translateY(-50%) rotate(${cue.beamAngleDeg}deg)`,
+                            "--session-helper-hue": `${cue.accentHue}`,
+                          } as CSSProperties}
+                          aria-hidden="true"
+                        >
+                          <span className="session-helper-shot-beam" />
+                          <span className="session-helper-shot-hit" />
+                        </span>
+                      ))}
                       {popBursts.map((burst) => (
                         <span key={burst.id}>
                           <span
-                            className="session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                            className={`session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                              burst.source === "helper" ? "session-pop-ring-helper" : ""
+                            }`}
                             style={{
                               left: `${burst.xPercent}%`,
                               top: `${burst.yPercent}%`,
@@ -2464,7 +2848,9 @@ export function BubbleSessionPlayScreen() {
                             }}
                           />
                           <span
-                            className="session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                            className={`session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                              burst.source === "helper" ? "session-pop-core-helper" : ""
+                            }`}
                             style={{
                               left: `${burst.xPercent}%`,
                               top: `${burst.yPercent}%`,
@@ -2476,7 +2862,9 @@ export function BubbleSessionPlayScreen() {
                           {POP_SPARKLE_OFFSETS.map((sparkle, index) => (
                             <span
                               key={`${burst.id}-sparkle-${index}`}
-                              className="session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                              className={`session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                                burst.source === "helper" ? "session-pop-sparkle-helper" : ""
+                              }`}
                               style={{
                                 left: `calc(${burst.xPercent}% + ${sparkle.xRem * burst.sizeRem}rem)`,
                                 top: `calc(${burst.yPercent}% + ${sparkle.yRem * burst.sizeRem}rem)`,
@@ -2552,12 +2940,15 @@ export function BubbleSessionPlayScreen() {
                           className={`session-touch-feedback pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
                             playfieldTouchCue.tone === "assist"
                               ? "session-touch-feedback-assist"
-                              : "session-touch-feedback-miss"
+                              : playfieldTouchCue.tone === "helper"
+                                ? "session-touch-feedback-helper"
+                                : "session-touch-feedback-miss"
                           }`}
                           style={{
                             top: `${playfieldTouchCue.topPercent}%`,
                             left: `${playfieldTouchCue.leftPercent}%`,
-                          }}
+                            "--session-helper-hue": `${helperEvent?.accentHue ?? 196}`,
+                          } as CSSProperties}
                         >
                           <span className="session-touch-feedback-ring" />
                           <span className="session-touch-feedback-core" />
@@ -2798,6 +3189,9 @@ export function BubbleSessionPlayScreen() {
                   setPopBursts([]);
                   setComboBursts([]);
                   setFunOverlayItems([]);
+                  clearHelperTimeouts();
+                  setHelperEvent(null);
+                  setHelperShotCues([]);
                   setActivePlayBubbles(createActivePlayBubbleSet());
                   setActionMessage("Ready for another run.");
                 }}
