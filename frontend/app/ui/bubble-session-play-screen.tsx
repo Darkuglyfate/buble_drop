@@ -62,6 +62,16 @@ const POP_SPARKLE_OFFSETS = [
   { xRem: -0.82, yRem: 0.84, scale: 0.18 },
   { xRem: 1.08, yRem: 0.68, scale: 0.24 },
 ] as const;
+const COMBO_BURST_TIER_CONFIG = [
+  { combo: 3, label: "Combo rise", accent: "x3", hue: 198, scale: 1 },
+  { combo: 5, label: "Flow locked", accent: "x5", hue: 286, scale: 1.16 },
+  { combo: 8, label: "Pop frenzy", accent: "x8", hue: 38, scale: 1.32 },
+] as const;
+const FUN_OVERLAY_ITEM_CONFIG = [
+  { kind: "pearl-shard", hue: 196, label: "Pearl shard" },
+  { kind: "xp-crystal", hue: 42, label: "XP crystal" },
+  { kind: "season-sigil", hue: 318, label: "Season sigil" },
+] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
 const BUBBLE_MAX_FRAME_DT_MS = 32;
@@ -69,19 +79,37 @@ const PLAYFIELD_ASSIST_EXTRA_PX_SMALL = 18;
 const PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM = 14;
 const PLAYFIELD_ASSIST_EXTRA_PX_LARGE = 10;
 const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
-const FINISH_CELEBRATION_DURATION_MS = 1480;
+const COMBO_BURST_DURATION_MS = 980;
+const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
+const ANTICIPATION_POP_DURATION_MS = 220;
+const FINISH_CELEBRATION_DURATION_MS = 2950;
+const FINISH_CELEBRATION_BLOOM_BUBBLES = [
+  { x: "-12.8rem", y: "-7.2rem", size: "6.2rem", hue: 196, alpha: 0.84, delayMs: 0, durationMs: 1180 },
+  { x: "-8.1rem", y: "5.4rem", size: "5.3rem", hue: 318, alpha: 0.78, delayMs: 120, durationMs: 1100 },
+  { x: "-3.6rem", y: "-10.6rem", size: "4.7rem", hue: 42, alpha: 0.82, delayMs: 220, durationMs: 980 },
+  { x: "4.9rem", y: "-8.8rem", size: "5.5rem", hue: 278, alpha: 0.8, delayMs: 170, durationMs: 1080 },
+  { x: "9.8rem", y: "4.9rem", size: "6rem", hue: 332, alpha: 0.8, delayMs: 70, durationMs: 1220 },
+  { x: "1.6rem", y: "10.9rem", size: "4.9rem", hue: 188, alpha: 0.74, delayMs: 260, durationMs: 1020 },
+] as const;
 const FINISH_CELEBRATION_PARTICLES = [
-  { x: "-7.2rem", y: "-3.8rem", size: "0.52rem", delayMs: 0 },
-  { x: "-5.1rem", y: "-5.2rem", size: "0.4rem", delayMs: 70 },
-  { x: "-2.4rem", y: "-6.2rem", size: "0.34rem", delayMs: 120 },
-  { x: "2.1rem", y: "-5.8rem", size: "0.4rem", delayMs: 160 },
-  { x: "5.6rem", y: "-4.2rem", size: "0.54rem", delayMs: 80 },
-  { x: "7.3rem", y: "-0.9rem", size: "0.34rem", delayMs: 190 },
-  { x: "5.1rem", y: "3.7rem", size: "0.42rem", delayMs: 240 },
-  { x: "1.6rem", y: "5.5rem", size: "0.5rem", delayMs: 130 },
-  { x: "-2.8rem", y: "5.9rem", size: "0.36rem", delayMs: 220 },
-  { x: "-5.8rem", y: "3.4rem", size: "0.48rem", delayMs: 110 },
-  { x: "-7.4rem", y: "0.2rem", size: "0.34rem", delayMs: 170 },
+  { x: "-8.2rem", y: "-4.6rem", size: "0.56rem", delayMs: 840, hue: 44 },
+  { x: "-6rem", y: "-6.4rem", size: "0.42rem", delayMs: 940, hue: 194 },
+  { x: "-2.7rem", y: "-7.5rem", size: "0.36rem", delayMs: 1020, hue: 330 },
+  { x: "2.8rem", y: "-7.1rem", size: "0.42rem", delayMs: 1100, hue: 278 },
+  { x: "6.4rem", y: "-4.8rem", size: "0.54rem", delayMs: 920, hue: 34 },
+  { x: "8.1rem", y: "-0.8rem", size: "0.34rem", delayMs: 1200, hue: 192 },
+  { x: "6rem", y: "4.5rem", size: "0.46rem", delayMs: 1260, hue: 316 },
+  { x: "2rem", y: "6.8rem", size: "0.52rem", delayMs: 1140, hue: 42 },
+  { x: "-3.4rem", y: "7rem", size: "0.38rem", delayMs: 1220, hue: 266 },
+  { x: "-6.5rem", y: "4.2rem", size: "0.5rem", delayMs: 980, hue: 204 },
+  { x: "-8.4rem", y: "0.4rem", size: "0.34rem", delayMs: 1160, hue: 332 },
+] as const;
+const FINISH_CELEBRATION_RESIDUE = [
+  { x: "-5.8rem", y: "-1.8rem", size: "1rem", delayMs: 1380, durationMs: 1450, hue: 195 },
+  { x: "-2rem", y: "2.8rem", size: "0.8rem", delayMs: 1480, durationMs: 1360, hue: 318 },
+  { x: "3rem", y: "-2.6rem", size: "1.08rem", delayMs: 1420, durationMs: 1520, hue: 42 },
+  { x: "6.1rem", y: "1.7rem", size: "0.74rem", delayMs: 1540, durationMs: 1320, hue: 276 },
+  { x: "-7.1rem", y: "2.9rem", size: "0.68rem", delayMs: 1600, durationMs: 1240, hue: 332 },
 ] as const;
 
 type SessionStartResponse = {
@@ -124,6 +152,26 @@ type PopBurst = {
   hue: number;
   sizeRem: number;
   isBonus: boolean;
+  comboTier: number | null;
+};
+
+type ComboBurst = {
+  id: number;
+  xPercent: number;
+  yPercent: number;
+  label: string;
+  accent: string;
+  hue: number;
+  scale: number;
+};
+
+type FunOverlayItem = {
+  id: number;
+  xPercent: number;
+  yPercent: number;
+  kind: "pearl-shard" | "xp-crystal" | "season-sigil";
+  hue: number;
+  label: string;
 };
 
 type PlayfieldTouchCue = {
@@ -709,6 +757,8 @@ export function BubbleSessionPlayScreen() {
     () => createActivePlayBubbleSet(),
   );
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
+  const [comboBursts, setComboBursts] = useState<ComboBurst[]>([]);
+  const [funOverlayItems, setFunOverlayItems] = useState<FunOverlayItem[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
@@ -1339,7 +1389,7 @@ export function BubbleSessionPlayScreen() {
   const playfieldLayoutStyle = {
     minHeight: "100dvh",
     paddingTop: compactRuntimeLayout
-      ? "calc(var(--session-header-offset) + 1.45rem)"
+      ? "max(0.45rem, calc(env(safe-area-inset-top) + 0.28rem))"
       : "calc(var(--session-header-offset) + 0.75rem)",
     paddingBottom: compactRuntimeLayout
       ? "calc(var(--session-footer-offset) + 0.9rem)"
@@ -1353,16 +1403,16 @@ export function BubbleSessionPlayScreen() {
   } satisfies CSSProperties;
   const playfieldBoundariesStyle = {
     top: compactRuntimeLayout
-      ? "calc(var(--session-header-offset) + 1.35rem)"
+      ? "max(0.25rem, calc(env(safe-area-inset-top) + 0.12rem))"
       : "calc(var(--session-header-offset) + 0.4rem)",
     bottom: compactRuntimeLayout
       ? "calc(var(--session-footer-offset) + 0.55rem)"
       : "calc(var(--session-footer-offset) + 0.4rem)",
     left: compactRuntimeLayout
-      ? "max(1.15rem, calc(env(safe-area-inset-left) + 0.85rem))"
+      ? "max(0.5rem, calc(env(safe-area-inset-left) + 0.25rem))"
       : "max(0.75rem, calc(env(safe-area-inset-left) + 0.5rem))",
     right: compactRuntimeLayout
-      ? "max(1.05rem, calc(env(safe-area-inset-right) + 0.75rem))"
+      ? "max(0.5rem, calc(env(safe-area-inset-right) + 0.25rem))"
       : "max(0.75rem, calc(env(safe-area-inset-right) + 0.5rem))",
   } satisfies CSSProperties;
   const runtimeFooterStyle = {
@@ -1472,6 +1522,115 @@ export function BubbleSessionPlayScreen() {
     }, PLAYFIELD_TOUCH_CUE_DURATION_MS);
   };
 
+  const triggerComboBurst = (
+    comboValue: number,
+    point: { xPercent: number; yPercent: number },
+  ) => {
+    const comboTier =
+      [...COMBO_BURST_TIER_CONFIG]
+        .reverse()
+        .find((tier) => comboValue >= tier.combo) ?? null;
+    if (!comboTier) {
+      return null;
+    }
+    const comboBurstId = Math.floor(Math.random() * 1_000_000_000);
+    setComboBursts((current) => [
+      ...current,
+      {
+        id: comboBurstId,
+        xPercent: point.xPercent,
+        yPercent: point.yPercent,
+        label: comboTier.label,
+        accent: comboTier.accent,
+        hue: comboTier.hue,
+        scale: comboTier.scale,
+      },
+    ]);
+    window.setTimeout(() => {
+      setComboBursts((current) => current.filter((burst) => burst.id !== comboBurstId));
+    }, COMBO_BURST_DURATION_MS);
+    return comboTier.combo;
+  };
+
+  const spawnFunOverlayItem = (
+    point: { xPercent: number; yPercent: number },
+    isBonusSource: boolean,
+    comboValue: number,
+  ) => {
+    const shouldSpawnItem =
+      isBonusSource || comboValue >= 5 || Math.random() < 0.34;
+    if (!shouldSpawnItem) {
+      return;
+    }
+    const config =
+      FUN_OVERLAY_ITEM_CONFIG[
+        Math.floor(Math.random() * FUN_OVERLAY_ITEM_CONFIG.length)
+      ];
+    const itemId = Math.floor(Math.random() * 1_000_000_000);
+    setFunOverlayItems((current) => [
+      ...current,
+      {
+        id: itemId,
+        xPercent: point.xPercent,
+        yPercent: point.yPercent,
+        kind: config.kind,
+        hue: config.hue,
+        label: config.label,
+      },
+    ]);
+    window.setTimeout(() => {
+      setFunOverlayItems((current) => current.filter((item) => item.id !== itemId));
+    }, FUN_OVERLAY_ITEM_DURATION_MS);
+  };
+
+  const triggerNeighborRipple = (
+    sourceBubbleId: number,
+    sourcePoint: { xPercent: number; yPercent: number },
+    sourceIsBonus: boolean,
+  ) => {
+    setActivePlayBubbles((current) => {
+      const neighbors = current
+        .filter(
+          (bubble) =>
+            bubble.id !== sourceBubbleId &&
+            bubble.poppedUntilMs <= Date.now() &&
+            bubble.respawnAtMs <= Date.now(),
+        )
+        .map((bubble) => ({
+          bubble,
+          distance:
+            Math.hypot(bubble.left - sourcePoint.xPercent, bubble.top - sourcePoint.yPercent),
+        }))
+        .sort((first, second) => first.distance - second.distance)
+        .slice(0, 2);
+
+      if (neighbors.length === 0) {
+        return current;
+      }
+
+      return current.map((bubble) => {
+        const neighborIndex = neighbors.findIndex((entry) => entry.bubble.id === bubble.id);
+        if (neighborIndex === -1) {
+          return bubble;
+        }
+        const neighbor = neighbors[neighborIndex].bubble;
+        const directionX = bubble.left >= sourcePoint.xPercent ? 1 : -1;
+        const directionY = bubble.top >= sourcePoint.yPercent ? 1 : -1;
+        const rippleStrength = (sourceIsBonus ? 0.3 : 0.2) - neighborIndex * 0.05;
+
+        return {
+          ...bubble,
+          deformUntilMs: Date.now() + BUBBLE_DEFORM_DURATION_MS + 110,
+          deformStretch: Math.max(bubble.deformStretch, sourceIsBonus ? 0.28 : 0.2),
+          deformRotationDeg:
+            directionX * 3.2 + directionY * 1.4,
+          velocityX: bubble.velocityX + directionX * rippleStrength * (neighbor.sizeTier === "small" ? 1.2 : 0.85),
+          velocityY: bubble.velocityY + directionY * rippleStrength * 0.8,
+        };
+      });
+    });
+  };
+
   const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
     void rewardCard;
     setActionMessage(
@@ -1531,6 +1690,8 @@ export function BubbleSessionPlayScreen() {
         setLastTapAtMs(null);
         setLastTapFeedbackAtMs(null);
         setPopBursts([]);
+        setComboBursts([]);
+        setFunOverlayItems([]);
         if (finishCelebrationTimeoutRef.current !== null) {
           window.clearTimeout(finishCelebrationTimeoutRef.current);
           finishCelebrationTimeoutRef.current = null;
@@ -1583,7 +1744,7 @@ export function BubbleSessionPlayScreen() {
     setLastTapRewardXp(tapRewardXp);
     setLastTapComboValue(nextCombo);
     setLastTapFeedbackAtMs(now);
-    playPopSound(Boolean(tappedBubble?.isBonus));
+    playPopSound(Boolean(tappedBubble?.isBonus) || nextCombo >= 5);
     setTapCombo(nextCombo);
     setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
     setLastTapAtMs(now);
@@ -1593,10 +1754,21 @@ export function BubbleSessionPlayScreen() {
           bubble.id === bubbleId
             ? {
                 ...bubble,
-                poppedUntilMs: now + BUBBLE_POP_DURATION_MS,
-                respawnAtMs: now + BUBBLE_POP_DURATION_MS + BUBBLE_RESPAWN_DELAY_MS,
+                poppedUntilMs: now + ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS,
+                respawnAtMs:
+                  now +
+                  ANTICIPATION_POP_DURATION_MS +
+                  BUBBLE_POP_DURATION_MS +
+                  BUBBLE_RESPAWN_DELAY_MS,
                 spawnedUntilMs: 0,
-                nextShiftAtMs: now + BUBBLE_POP_DURATION_MS + BUBBLE_RESPAWN_DELAY_MS,
+                nextShiftAtMs:
+                  now +
+                  ANTICIPATION_POP_DURATION_MS +
+                  BUBBLE_POP_DURATION_MS +
+                  BUBBLE_RESPAWN_DELAY_MS,
+                deformUntilMs: now + ANTICIPATION_POP_DURATION_MS,
+                deformStretch: tappedBubble?.isBonus ? 0.26 : 0.18,
+                deformRotationDeg: tappedBubble?.isBonus ? 3.2 : 2.2,
               }
             : bubble,
         ),
@@ -1619,6 +1791,7 @@ export function BubbleSessionPlayScreen() {
         const xPercent = ((burstX - playfieldRect.left) / playfieldRect.width) * 100;
         const yPercent = ((burstY - playfieldRect.top) / playfieldRect.height) * 100;
         setTapFeedbackPoint(touchPointOverride ?? { topPercent: yPercent, leftPercent: xPercent });
+        const comboTier = triggerComboBurst(nextCombo, { xPercent, yPercent });
         setPopBursts((current) => [
           ...current,
           {
@@ -1628,16 +1801,27 @@ export function BubbleSessionPlayScreen() {
             hue: tappedBubble?.isBonus ? 44 : tappedBubble?.hue ?? 220,
             sizeRem: tappedBubble?.isBonus ? 0.92 : 0.62,
             isBonus: Boolean(tappedBubble?.isBonus),
+            comboTier,
           },
         ]);
+        triggerNeighborRipple(
+          bubbleId,
+          { xPercent, yPercent },
+          Boolean(tappedBubble?.isBonus),
+        );
+        spawnFunOverlayItem(
+          { xPercent, yPercent },
+          Boolean(tappedBubble?.isBonus),
+          nextCombo,
+        );
         window.setTimeout(() => {
           setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
-        }, 520);
+        }, 620);
       }
     }
 
     if ("vibrate" in navigator) {
-      navigator.vibrate(10);
+      navigator.vibrate(nextCombo >= 5 ? [10, 24, 12] : 10);
     }
 
     if (!effectiveProfileId || !backendSessionId || !authSessionToken) {
@@ -1780,8 +1964,30 @@ export function BubbleSessionPlayScreen() {
       </div>
       {showFinishCelebration ? (
         <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
+          <div className="session-finish-celebration-veil absolute inset-0" />
           <div className="session-finish-celebration-glow absolute inset-0" />
-          <div className="session-finish-celebration-core absolute left-1/2 top-[46%] h-[11.5rem] w-[11.5rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          {FINISH_CELEBRATION_BLOOM_BUBBLES.map((bubble, index) => (
+            <span
+              key={`finish-bloom-bubble-${index}`}
+              className={`session-finish-bloom-bubble absolute left-1/2 top-[46%] rounded-full ${
+                index > 3 ? "session-finish-bloom-bubble-secondary" : ""
+              }`}
+              style={
+                {
+                  "--session-finish-bloom-x": bubble.x,
+                  "--session-finish-bloom-y": bubble.y,
+                  "--session-finish-bloom-size": bubble.size,
+                  "--session-finish-bloom-hue": `${bubble.hue}`,
+                  "--session-finish-bloom-alpha": `${bubble.alpha}`,
+                  animationDelay: `${bubble.delayMs}ms`,
+                  animationDuration: `${bubble.durationMs}ms`,
+                } as CSSProperties
+              }
+            />
+          ))}
+          <div className="session-finish-bloom-halo absolute left-1/2 top-[46%] h-[19rem] w-[19rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          <div className="session-finish-celebration-core absolute left-1/2 top-[46%] h-[11.8rem] w-[11.8rem] -translate-x-1/2 -translate-y-1/2 rounded-full" />
+          <span className="session-finish-shockwave absolute left-1/2 top-[46%]" />
           <span className="session-finish-ring session-finish-ring-a absolute left-1/2 top-[46%]" />
           <span className="session-finish-ring session-finish-ring-b absolute left-1/2 top-[46%]" />
           <span className="session-finish-ring session-finish-ring-c absolute left-1/2 top-[46%]" />
@@ -1794,37 +2000,56 @@ export function BubbleSessionPlayScreen() {
                   "--session-finish-x": particle.x,
                   "--session-finish-y": particle.y,
                   "--session-finish-size": particle.size,
+                  "--session-finish-particle-hue": `${particle.hue}`,
                   animationDelay: `${particle.delayMs}ms`,
+                } as CSSProperties
+              }
+            />
+          ))}
+          {FINISH_CELEBRATION_RESIDUE.map((residue, index) => (
+            <span
+              key={`finish-residue-${index}`}
+              className={`session-finish-residue absolute left-1/2 top-[46%] rounded-full ${
+                index > 2 ? "session-finish-residue-secondary" : ""
+              }`}
+              style={
+                {
+                  "--session-finish-residue-x": residue.x,
+                  "--session-finish-residue-y": residue.y,
+                  "--session-finish-residue-size": residue.size,
+                  "--session-finish-residue-hue": `${residue.hue}`,
+                  animationDelay: `${residue.delayMs}ms`,
+                  animationDuration: `${residue.durationMs}ms`,
                 } as CSSProperties
               }
             />
           ))}
           <div className="absolute inset-x-0 top-[46%] flex -translate-y-1/2 justify-center px-5">
             <div className="session-finish-badge">
-              <span className="session-finish-badge-chip">RUN READY</span>
+              <span className="session-finish-badge-chip">RUN SECURED</span>
               <h2 className="session-finish-badge-title">Well done</h2>
               <p className="session-finish-badge-copy">
-                Minimum run complete. Bank this session and lock in season progress.
+                Minimum run complete. Your season progress is secured and ready for the next move.
               </p>
             </div>
           </div>
         </div>
       ) : null}
       {postTimerChoiceVisible ? (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.18),rgba(237,247,255,0.42),rgba(233,242,255,0.74))] px-5 backdrop-blur-[10px]">
-          <div className="w-full max-w-sm rounded-[2rem] border border-white/54 bg-white/76 p-5 text-center shadow-[0_28px_72px_rgba(92,122,189,0.18)]">
+        <div className="session-finish-choice-layer absolute inset-0 z-40 flex items-end justify-center px-5 pt-8">
+          <div className="session-finish-choice-card w-full max-w-sm rounded-[2rem] border border-white/54 bg-white/76 p-5 text-center shadow-[0_28px_72px_rgba(92,122,189,0.18)]">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#7084ae]">
-              Timed milestone
+              Session milestone
             </p>
             <h2 className="mt-2 text-[1.9rem] font-black tracking-[-0.04em] text-[#263f74]">
-              {localCompletionEstimateMet ? "Well done" : "Time goal reached"}
+              {localCompletionEstimateMet ? "Run secured" : "Time goal reached"}
             </h2>
             <p className="mt-3 text-sm leading-6 text-[#546c99]">
               {localCompletionEstimateMet
-                ? "You completed today's 10-minute target. Finish the run now or keep popping to bank more XP and strengthen your season-end chance."
+                ? "You locked in today's minimum. Finish now or keep popping to stack more XP and strengthen your season-end chance."
                 : "The 10-minute timer is over. Finish now, or keep popping to close the active-play gap before you bank this run."}
             </p>
-            <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div className="session-finish-choice-actions mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => {
@@ -2156,6 +2381,10 @@ export function BubbleSessionPlayScreen() {
                                 bubble.spawnedUntilMs > now ? "session-active-bubble-spawning" : ""
                               } ${
                                 bubble.isBonus ? "session-active-bubble-bonus" : ""
+                              } ${
+                                bubble.sizeTier === "large" ? "session-active-bubble-large" : ""
+                              } ${
+                                bubble.sizeTier === "small" ? "session-active-bubble-small" : ""
                               }`}
                               style={{
                                 top: `${bubble.top}%`,
@@ -2174,6 +2403,8 @@ export function BubbleSessionPlayScreen() {
                                 "--bubble-current-factor": `${bubble.currentFactor}`,
                                 "--bubble-rim-hue": `${bubble.isBonus ? 42 : bubble.hue + 28}`,
                                 "--bubble-rim-hue-2": `${bubble.isBonus ? 330 : bubble.hue + 102}`,
+                                "--bubble-pop-duration": `${ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS}ms`,
+                                "--bubble-pop-intensity": `${bubble.isBonus ? 1.08 : bubble.sizeTier === "small" ? 0.92 : 1}`,
                                 opacity:
                                   bubble.poppedUntilMs > now
                                     ? 0.06
@@ -2210,6 +2441,7 @@ export function BubbleSessionPlayScreen() {
                               <span className="session-bubble-highlight session-bubble-highlight-a" />
                               <span className="session-bubble-highlight session-bubble-highlight-b" />
                               <span className="session-bubble-sheen-band" />
+                              {bubble.isBonus ? <span className="session-bubble-bonus-tease" /> : null}
                               {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
                             </button>
                           );
@@ -2222,12 +2454,13 @@ export function BubbleSessionPlayScreen() {
                             style={{
                               left: `${burst.xPercent}%`,
                               top: `${burst.yPercent}%`,
-                              width: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
-                              height: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
+                              width: `${burst.sizeRem * (burst.isBonus ? 2.8 : burst.comboTier ? 2.45 : 2.1)}rem`,
+                              height: `${burst.sizeRem * (burst.isBonus ? 2.8 : burst.comboTier ? 2.45 : 2.1)}rem`,
                               borderColor: `hsla(${burst.hue}, 94%, 78%, ${burst.isBonus ? 0.88 : 0.72})`,
                               boxShadow: `0 0 0 8px hsla(${burst.hue}, 92%, 76%, 0.16), 0 0 24px hsla(${burst.hue}, 94%, 74%, ${
                                 burst.isBonus ? 0.34 : 0.22
                               })`,
+                              animationDuration: `${burst.comboTier ? 760 : 620}ms`,
                             }}
                           />
                           <span
@@ -2261,6 +2494,40 @@ export function BubbleSessionPlayScreen() {
                           ))}
                         </span>
                       ))}
+                      {comboBursts.map((burst) => (
+                        <span
+                          key={burst.id}
+                          className="session-combo-burst pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+                          style={{
+                            left: `${burst.xPercent}%`,
+                            top: `${burst.yPercent}%`,
+                            "--session-combo-hue": `${burst.hue}`,
+                            "--session-combo-scale": `${burst.scale}`,
+                          } as CSSProperties}
+                        >
+                          <span className="session-combo-burst-orbit session-combo-burst-orbit-a" />
+                          <span className="session-combo-burst-orbit session-combo-burst-orbit-b" />
+                          <span className="session-combo-burst-chip">
+                            <span className="session-combo-burst-accent">{burst.accent}</span>
+                            <span className="session-combo-burst-label">{burst.label}</span>
+                          </span>
+                        </span>
+                      ))}
+                      {funOverlayItems.map((item) => (
+                        <span
+                          key={item.id}
+                          className={`session-fun-overlay-item session-fun-overlay-item-${item.kind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2`}
+                          style={{
+                            left: `${item.xPercent}%`,
+                            top: `${item.yPercent}%`,
+                            "--session-item-hue": `${item.hue}`,
+                          } as CSSProperties}
+                          aria-hidden="true"
+                        >
+                          <span className="session-fun-overlay-item-core" />
+                          <span className="session-fun-overlay-item-label">{item.label}</span>
+                        </span>
+                      ))}
                       {showTapFeedback && tapFeedbackPoint ? (
                         <div
                           className="session-touch-feedback session-touch-feedback-xp pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
@@ -2271,8 +2538,12 @@ export function BubbleSessionPlayScreen() {
                           }}
                         >
                           <span className="session-touch-feedback-badge">
-                            +{lastTapRewardXp} XP
-                            {lastTapComboValue > 1 ? ` · x${lastTapComboValue}` : ""}
+                            <span className="session-touch-feedback-xp-value">+{lastTapRewardXp} XP</span>
+                            {lastTapComboValue > 1 ? (
+                              <span className="session-touch-feedback-combo-pill">
+                                x{lastTapComboValue}
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                       ) : null}
@@ -2289,6 +2560,7 @@ export function BubbleSessionPlayScreen() {
                           }}
                         >
                           <span className="session-touch-feedback-ring" />
+                          <span className="session-touch-feedback-core" />
                         </div>
                       ) : null}
                     </div>
@@ -2524,7 +2796,9 @@ export function BubbleSessionPlayScreen() {
                   setActiveTapCount(0);
                   setTapFeedbackPoint(null);
                   setPopBursts([]);
-        setActivePlayBubbles(createActivePlayBubbleSet());
+                  setComboBursts([]);
+                  setFunOverlayItems([]);
+                  setActivePlayBubbles(createActivePlayBubbleSet());
                   setActionMessage("Ready for another run.");
                 }}
                 className="gloss-pill flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"

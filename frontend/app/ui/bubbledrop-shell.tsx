@@ -632,7 +632,7 @@ type IntroBubbleSpec = {
   alpha: number;
 };
 const REQUIRED_INTRO_POPS = 4;
-const INTRO_SEEN_STORAGE_KEY = "bubbledrop:intro-seen:v1";
+const INTRO_SEEN_STORAGE_KEY = "bubbledrop:intro-seen:v2";
 
 function seededUnit(seed: number): number {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -1440,7 +1440,6 @@ export function BubbleDropShell() {
     setWelcomeIntroVisible(!(skipIntro || introAlreadySeen));
 
     if (skipIntro) {
-      window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
       url.searchParams.delete("skipIntro");
       window.history.replaceState(null, "", url.toString());
     }

@@ -526,7 +526,7 @@ async function mockBubbleDropApi(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("bubbledrop:intro-seen:v1", "1");
+    window.localStorage.setItem("bubbledrop:intro-seen:v2", "1");
   });
   await mockBubbleDropApi(page);
 });
@@ -599,14 +599,14 @@ test("completes session and reveals confirmed season progress", async ({
   const seasonProgressUpdatedHeading = page.getByText("Season progress updated");
   const finishRunButton = page.getByRole("button", { name: "Finish run" });
   const finishRunVisible = await finishRunButton
-    .waitFor({ state: "visible", timeout: 2000 })
+    .waitFor({ state: "visible", timeout: 3500 })
     .then(() => true)
     .catch(() => false);
   if (finishRunVisible) {
     await finishRunButton.click();
   } else {
     const resultAlreadyVisible = await seasonProgressUpdatedHeading
-      .waitFor({ state: "visible", timeout: 1500 })
+      .waitFor({ state: "visible", timeout: 2200 })
       .then(() => true)
       .catch(() => false);
     if (!resultAlreadyVisible) {
