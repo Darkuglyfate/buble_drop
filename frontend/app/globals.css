@@ -1813,10 +1813,29 @@ body.glass-strong .bubble {
   opacity: 0.86;
 }
 
+.session-current-layer {
+  pointer-events: none;
+  animation: sessionCurrentDrift 10.5s ease-in-out infinite alternate;
+}
+
 .session-active-bubble {
   overflow: hidden;
-  animation: sessionBubbleMorph var(--bubble-morph-duration, 2400ms) ease-in-out infinite alternate;
-  will-change: border-radius, filter;
+  isolation: isolate;
+  animation:
+    sessionBubbleMorph var(--bubble-morph-duration, 2400ms) ease-in-out infinite alternate,
+    sessionBubbleFloat calc(var(--bubble-morph-duration, 2400ms) + 1200ms) ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.session-active-bubble-spawning {
+  animation:
+    sessionBubbleSpawn 380ms ease-out both,
+    sessionBubbleMorph var(--bubble-morph-duration, 2400ms) ease-in-out infinite alternate,
+    sessionBubbleFloat calc(var(--bubble-morph-duration, 2400ms) + 1200ms) ease-in-out infinite;
+}
+
+.session-active-bubble-popping {
+  filter: saturate(1.08) brightness(1.04);
 }
 
 .session-active-bubble-bonus {
@@ -1825,12 +1844,35 @@ body.glass-strong .bubble {
     0 0 0 1px rgba(255, 248, 198, 0.5) inset;
 }
 
+.session-bubble-edge-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from 210deg,
+    hsla(var(--bubble-rim-hue, 220), 100%, 88%, 0.1),
+    hsla(var(--bubble-rim-hue, 220), 100%, 96%, 0.76),
+    hsla(var(--bubble-rim-hue-2, 310), 100%, 88%, 0.52),
+    hsla(var(--bubble-rim-hue, 220), 100%, 96%, 0.18),
+    hsla(var(--bubble-rim-hue, 220), 100%, 88%, 0.1)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
 .session-bubble-core {
   position: absolute;
-  inset: 18%;
+  inset: 19%;
   border-radius: 999px;
-  background: radial-gradient(circle at 36% 24%, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.08) 62%);
-  opacity: 0.5;
+  background: radial-gradient(circle at 36% 24%, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.08) 62%);
+  opacity: 0.58;
+  animation: coreBreath 3.6s ease-in-out infinite;
 }
 
 .session-bubble-highlight {
@@ -1857,15 +1899,275 @@ body.glass-strong .bubble {
   animation-delay: 220ms;
 }
 
+.session-bubble-sheen-band {
+  position: absolute;
+  inset: -24%;
+  border-radius: inherit;
+  background: linear-gradient(
+    112deg,
+    rgba(255, 255, 255, 0) 24%,
+    rgba(255, 255, 255, 0.08) 35%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(236, 232, 255, 0.18) 58%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  mix-blend-mode: screen;
+  opacity: 0.7;
+  transform: translateX(-130%) rotate(12deg);
+  animation: sessionBubbleBandSlide var(--bubble-sheen-duration, 2200ms) linear infinite;
+  pointer-events: none;
+}
+
 .session-bubble-glint {
   position: absolute;
-  top: 18%;
-  right: 20%;
-  width: 18%;
-  height: 18%;
+  top: 16%;
+  right: 18%;
+  width: 22%;
+  height: 22%;
   border-radius: 999px;
-  background: rgba(255, 248, 190, 0.78);
-  box-shadow: 0 0 14px rgba(255, 226, 140, 0.72);
+  background: radial-gradient(circle, rgba(255, 247, 204, 0.98), rgba(255, 220, 140, 0.72) 60%, transparent 100%);
+  box-shadow:
+    0 0 14px rgba(255, 226, 140, 0.72),
+    0 0 26px rgba(255, 203, 94, 0.42);
+  animation: sessionBonusGlint 1.8s ease-in-out infinite alternate;
+}
+
+.session-pop-ring {
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  animation: sessionPopRing 620ms ease-out forwards;
+}
+
+.session-pop-core {
+  animation: sessionPopFlash 520ms ease-out forwards;
+}
+
+.session-pop-sparkle {
+  animation: sessionPopSparkle 780ms ease-out forwards;
+}
+
+.session-runtime-drop {
+  z-index: 15;
+  min-width: 5.2rem;
+  min-height: 4.6rem;
+  transform-origin: center;
+  animation: sessionRuntimeDropRise 1320ms cubic-bezier(0.2, 0.9, 0.24, 1) forwards;
+}
+
+.session-runtime-drop-orbit {
+  position: absolute;
+  inset: -0.95rem;
+  border-radius: 999px;
+  border: 1px solid hsla(var(--runtime-drop-hue, 42), 94%, 84%, 0.54);
+  box-shadow: 0 0 20px hsla(var(--runtime-drop-hue, 42), 92%, 72%, 0.26);
+  animation: sessionRuntimeDropOrbit 820ms ease-out forwards;
+}
+
+.session-runtime-drop-core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 22px hsla(var(--runtime-drop-hue, 42), 92%, 70%, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.session-runtime-drop-foil,
+.session-runtime-drop-ribbon {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.session-runtime-drop-memecoin .session-runtime-drop-core {
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.96), rgba(255, 248, 210, 0.38) 32%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(255, 247, 205, 0.98), rgba(255, 208, 112, 0.92) 58%, rgba(255, 166, 72, 0.68));
+}
+
+.session-runtime-drop-memecoin .session-runtime-drop-ribbon {
+  left: 50%;
+  top: 50%;
+  width: 3.4rem;
+  height: 0.7rem;
+  inset: auto;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) rotate(-24deg);
+  background: linear-gradient(90deg, rgba(255, 232, 166, 0), rgba(255, 246, 214, 0.92), rgba(255, 196, 93, 0));
+  filter: blur(0.2rem);
+  animation: sessionRuntimeDropRibbon 820ms ease-out forwards;
+}
+
+.session-runtime-drop-cosmetic .session-runtime-drop-core {
+  width: 3rem;
+  height: 2.2rem;
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 239, 249, 0.62) 34%, rgba(215, 228, 255, 0.82)),
+    linear-gradient(135deg, hsla(var(--runtime-drop-hue, 286), 92%, 74%, 0.9), hsla(calc(var(--runtime-drop-hue, 286) + 46), 88%, 82%, 0.82));
+  box-shadow:
+    0 0 20px hsla(var(--runtime-drop-hue, 286), 88%, 76%, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.session-runtime-drop-cosmetic .session-runtime-drop-ribbon {
+  left: 50%;
+  top: 50%;
+  width: 3.6rem;
+  height: 2.6rem;
+  inset: auto;
+  transform: translate(-50%, -50%) rotate(-6deg);
+  border-radius: 1.2rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0), rgba(255, 238, 255, 0.46), rgba(255, 255, 255, 0));
+  mix-blend-mode: screen;
+  animation: sessionRuntimeDropRibbon 960ms ease-out forwards;
+}
+
+.session-runtime-drop-nft .session-runtime-drop-core {
+  width: 3.25rem;
+  height: 4.15rem;
+  border-radius: 1.05rem;
+  background:
+    linear-gradient(145deg, rgba(255, 251, 223, 0.24), rgba(255, 177, 82, 0.16) 42%, rgba(255, 114, 61, 0.18)),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.06));
+  box-shadow:
+    0 0 26px rgba(255, 191, 76, 0.38),
+    0 0 0 1px rgba(255, 233, 160, 0.5) inset,
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.session-runtime-drop-nft .session-runtime-drop-foil {
+  left: 50%;
+  top: 50%;
+  width: 3.45rem;
+  height: 4.35rem;
+  inset: auto;
+  transform: translate(-50%, -50%);
+  border-radius: 1.12rem;
+  padding: 1px;
+  background: conic-gradient(from 0deg, #ffe7a8, #ffd180, #ffb86a, #ffe7a8);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: sessionRuntimeDropFoilSpin 1.8s linear infinite;
+}
+
+.session-runtime-drop-nft .session-runtime-drop-ribbon {
+  left: 50%;
+  top: 50%;
+  width: 5.2rem;
+  height: 5.2rem;
+  inset: auto;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: conic-gradient(
+    from 45deg,
+    rgba(255, 210, 95, 0) 0deg,
+    rgba(255, 227, 140, 0.28) 62deg,
+    rgba(255, 152, 76, 0) 120deg,
+    rgba(255, 227, 140, 0.24) 190deg,
+    rgba(255, 132, 62, 0) 250deg,
+    rgba(255, 224, 130, 0.2) 320deg,
+    rgba(255, 210, 95, 0) 360deg
+  );
+  animation: sessionRuntimeDropHaloSpin 2.8s linear infinite;
+}
+
+.session-runtime-drop-chip {
+  position: absolute;
+  left: 50%;
+  top: -0.55rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  padding: 0.16rem 0.48rem;
+  background: rgba(255, 255, 255, 0.82);
+  color: #405583;
+  font-size: 0.48rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(97, 118, 170, 0.16);
+}
+
+.session-runtime-drop-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, 1.95rem);
+  color: #304472;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 10px rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+
+.session-runtime-drop-bonus .session-runtime-drop-core {
+  box-shadow:
+    0 0 28px hsla(var(--runtime-drop-hue, 42), 94%, 72%, 0.46),
+    0 0 42px hsla(var(--runtime-drop-hue, 42), 94%, 72%, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+}
+
+.session-touch-feedback {
+  z-index: 16;
+  transform-origin: center;
+  animation: sessionTouchFeedbackRise 620ms cubic-bezier(0.22, 0.88, 0.28, 1) forwards;
+}
+
+.session-touch-feedback-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.22rem;
+  min-width: 3.8rem;
+  border-radius: 999px;
+  padding: 0.34rem 0.62rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 10px 24px rgba(96, 132, 203, 0.12);
+  white-space: nowrap;
+}
+
+.session-touch-feedback-xp .session-touch-feedback-badge {
+  background: rgba(255, 255, 255, 0.76);
+  color: #31467b;
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.session-touch-feedback-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3.3rem;
+  height: 3.3rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08);
+  transform: translate(-50%, -50%);
+  animation: sessionTouchFeedbackRing 620ms ease-out forwards;
+}
+
+.session-touch-feedback-assist .session-touch-feedback-ring {
+  border-color: rgba(182, 227, 255, 0.68);
+  box-shadow: 0 0 0 7px rgba(170, 229, 255, 0.12);
+}
+
+.session-touch-feedback-miss .session-touch-feedback-ring {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-color: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.06);
 }
 
 @keyframes sessionBubbleMorph {
@@ -1883,6 +2185,34 @@ body.glass-strong .bubble {
   }
 }
 
+@keyframes sessionBubbleFloat {
+  0%,
+  100% {
+    filter: saturate(1) brightness(1);
+  }
+  50% {
+    filter: saturate(1.14) brightness(1.05);
+  }
+}
+
+@keyframes sessionBubbleSpawn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.62);
+    filter: saturate(1.2) blur(2px);
+  }
+  55% {
+    opacity: 0.82;
+    transform: translate(-50%, -50%) scale(1.06);
+    filter: saturate(1.08) blur(0.6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    filter: saturate(1) blur(0);
+  }
+}
+
 @keyframes sessionBubbleSheen {
   0%,
   100% {
@@ -1892,6 +2222,188 @@ body.glass-strong .bubble {
   50% {
     transform: translateY(5%) scale(1.04);
     opacity: 0.58;
+  }
+}
+
+@keyframes sessionBubbleBandSlide {
+  0% {
+    transform: translateX(-135%) rotate(12deg);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.22;
+  }
+  50% {
+    transform: translateX(0) rotate(12deg);
+    opacity: 0.7;
+  }
+  82% {
+    opacity: 0.16;
+  }
+  100% {
+    transform: translateX(135%) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes sessionBonusGlint {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.76;
+  }
+  100% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes sessionCurrentDrift {
+  0% {
+    transform: translate3d(-1rem, 0.45rem, 0);
+  }
+  50% {
+    transform: translate3d(0.6rem, -0.45rem, 0);
+  }
+  100% {
+    transform: translate3d(1.25rem, 0.3rem, 0);
+  }
+}
+
+@keyframes sessionPopRing {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.28);
+  }
+  70% {
+    opacity: 0.44;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.42);
+  }
+}
+
+@keyframes sessionPopFlash {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.52);
+    filter: blur(0);
+  }
+  55% {
+    opacity: 0.68;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.62);
+    filter: blur(2px);
+  }
+}
+
+@keyframes sessionPopSparkle {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.24);
+  }
+  28% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.8);
+  }
+}
+
+@keyframes sessionRuntimeDropRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6) rotate(-8deg);
+    filter: blur(2px);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(-50%, -58%) scale(1.06) rotate(0deg);
+    filter: blur(0);
+  }
+  76% {
+    opacity: 1;
+    transform: translate(-50%, -88%) scale(1) rotate(2deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -116%) scale(0.92) rotate(4deg);
+  }
+}
+
+@keyframes sessionRuntimeDropOrbit {
+  0% {
+    opacity: 0;
+    transform: scale(0.42);
+  }
+  40% {
+    opacity: 0.82;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.24);
+  }
+}
+
+@keyframes sessionRuntimeDropRibbon {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.65) rotate(-20deg);
+  }
+  35% {
+    opacity: 0.94;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.18) rotate(10deg);
+  }
+}
+
+@keyframes sessionRuntimeDropFoilSpin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes sessionRuntimeDropHaloSpin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) scale(0.9);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg) scale(1.08);
+    opacity: 0.9;
+  }
+}
+
+@keyframes sessionTouchFeedbackRise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 1.15rem)) scale(1);
+  }
+}
+
+@keyframes sessionTouchFeedbackRing {
+  0% {
+    opacity: 0.82;
+    transform: translate(-50%, -50%) scale(0.42);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.24);
   }
 }
 
@@ -1905,8 +2417,19 @@ body.glass-strong .bubble {
   .intro-bubble,
   .intro-bubble-signal,
   .intro-pop-burst,
+  .session-current-layer,
   .session-active-bubble,
-  .session-bubble-highlight {
+  .session-bubble-highlight,
+  .session-bubble-sheen-band,
+  .session-pop-ring,
+  .session-pop-core,
+  .session-pop-sparkle,
+  .session-runtime-drop,
+  .session-runtime-drop-orbit,
+  .session-runtime-drop-foil,
+  .session-runtime-drop-ribbon,
+  .session-touch-feedback,
+  .session-touch-feedback-ring {
     animation: none !important;
     transition: none !important;
   }

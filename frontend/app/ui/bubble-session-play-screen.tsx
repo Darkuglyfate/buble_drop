@@ -22,13 +22,27 @@ const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
 const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 3 * 60;
 const ACTIVE_SECONDS_PER_TAP = 12;
+const TAP_FEEDBACK_XP_PER_UNIT = 12;
+const BUBBLE_POP_DURATION_MS = 260;
+const BUBBLE_RESPAWN_DELAY_MS = 440;
+const BUBBLE_SPAWN_DURATION_MS = 320;
+const BUBBLE_COLLISION_TICK_MS = 40;
+const BUBBLE_DEFORM_DURATION_MS = 150;
+const BUBBLE_COLLISION_SOLVER_PASSES = 3;
+const BUBBLE_COLLISION_PENETRATION_SLOP_PX = 3;
+const BUBBLE_COLLISION_CORRECTION_PERCENT = 0.76;
+const BUBBLE_SPAWN_PADDING_PX = 14;
+const RUNTIME_DROP_DURATION_MS = 1320;
+const MEMECOIN_SYMBOLS = ["BUB", "MINT", "WAVE", "POP", "GEM"] as const;
+const COSMETIC_SET_LABELS = ["Pearl Set", "Neon Skin", "Glint Pack", "Soft Aura"] as const;
+const NFT_REWARD_LABELS = ["Solar Crown", "Aqua Flux", "Neon Tide", "Foam Starter"] as const;
 const SESSION_REWARD_BUBBLES_XP = 30;
 const SESSION_COMPLETION_BONUS_XP = 20;
 const SESSION_ACTIVE_PLAY_XP_MAX = 20;
 const SESSION_ACTIVE_SECONDS_XP_CAP = 10 * 60;
 const COMBO_WINDOW_MS = 1500;
 const FEATURED_COMBO_TARGET = 5;
-const ACTIVE_PLAY_BUBBLE_COUNT = 14;
+const ACTIVE_PLAY_BUBBLE_COUNT = 18;
 const DECORATIVE_STANDARD_BUBBLES = [
   { top: "18%", left: "14%", size: "3.25rem" },
   { top: "26%", left: "76%", size: "4.5rem" },
@@ -45,6 +59,18 @@ const DECORATIVE_PREMIUM_BUBBLES = [
   { top: "34%", left: "84%", size: "2rem" },
   { top: "64%", left: "40%", size: "2.4rem" },
 ] as const;
+const POP_SPARKLE_OFFSETS = [
+  { xRem: -1.05, yRem: -0.7, scale: 0.28 },
+  { xRem: 0.98, yRem: -0.9, scale: 0.22 },
+  { xRem: -0.82, yRem: 0.84, scale: 0.18 },
+  { xRem: 1.08, yRem: 0.68, scale: 0.24 },
+] as const;
+const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
+const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
+const PLAYFIELD_ASSIST_EXTRA_PX_SMALL = 18;
+const PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM = 14;
+const PLAYFIELD_ASSIST_EXTRA_PX_LARGE = 10;
+const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
 
 type SessionStartResponse = {
   sessionId: string;
@@ -52,20 +78,31 @@ type SessionStartResponse = {
   startedAt: string;
 };
 
+type BubbleSizeTier = "small" | "medium" | "large";
+
 type ActivePlayBubble = {
   id: number;
   top: number;
   left: number;
   sizeRem: number;
+  sizeTier: BubbleSizeTier;
   hue: number;
   alpha: number;
   driftMs: number;
   wobbleDeg: number;
   roundness: number;
   scale: number;
+  currentFactor: number;
+  velocityX: number;
+  velocityY: number;
+  deformUntilMs: number;
+  deformRotationDeg: number;
+  deformStretch: number;
   isBonus: boolean;
   nextShiftAtMs: number;
   poppedUntilMs: number;
+  respawnAtMs: number;
+  spawnedUntilMs: number;
 };
 
 type PopBurst = {
@@ -74,6 +111,26 @@ type PopBurst = {
   yPercent: number;
   hue: number;
   sizeRem: number;
+  isBonus: boolean;
+};
+
+type RuntimeDropFeedback = {
+  id: number;
+  kind: "memecoin" | "cosmetic" | "nft";
+  xPercent: number;
+  yPercent: number;
+  hue: number;
+  label: string;
+  accentLabel: string;
+  createdAtMs: number;
+  isBonusSource: boolean;
+};
+
+type PlayfieldTouchCue = {
+  id: number;
+  topPercent: number;
+  leftPercent: number;
+  tone: "assist" | "miss";
 };
 
 type SkinRarity = ProfileStyleRarity;
@@ -281,23 +338,327 @@ function getDropStylePalette(rarity: SkinRarity): {
   };
 }
 
-function createActivePlayBubble(id: number): ActivePlayBubble {
+function pickBubbleSizeTier(): BubbleSizeTier {
+  const roll = Math.random();
+  if (roll < 0.42) {
+    return "small";
+  }
+  if (roll < 0.8) {
+    return "medium";
+  }
+  return "large";
+}
+
+function pickBubbleZone(sizeTier: BubbleSizeTier): {
+  topMin: number;
+  topMax: number;
+  leftMin: number;
+  leftMax: number;
+} {
+  if (sizeTier === "small") {
+    return Math.random() < 0.5
+      ? { topMin: 18, topMax: 44, leftMin: 14, leftMax: 42 }
+      : { topMin: 30, topMax: 68, leftMin: 58, leftMax: 86 };
+  }
+  if (sizeTier === "medium") {
+    return Math.random() < 0.5
+      ? { topMin: 22, topMax: 62, leftMin: 24, leftMax: 56 }
+      : { topMin: 34, topMax: 78, leftMin: 46, leftMax: 78 };
+  }
+  return Math.random() < 0.5
+    ? { topMin: 20, topMax: 54, leftMin: 52, leftMax: 84 }
+    : { topMin: 48, topMax: 80, leftMin: 18, leftMax: 48 };
+}
+
+function getBubbleSpeedRange(sizeTier: BubbleSizeTier): [number, number] {
+  if (sizeTier === "small") {
+    return [28, 38];
+  }
+  if (sizeTier === "medium") {
+    return [16, 24];
+  }
+  return [8, 14];
+}
+
+function getBubbleSteerWindow(sizeTier: BubbleSizeTier): [number, number] {
+  if (sizeTier === "small") {
+    return [760, 1700];
+  }
+  if (sizeTier === "medium") {
+    return [1800, 3600];
+  }
+  return [3200, 5200];
+}
+
+function getBubbleMass(sizeRem: number): number {
+  return Math.max(0.7, sizeRem * sizeRem * sizeRem * 0.028);
+}
+
+function getBubbleRadiusPx(sizeRem: number): number {
+  return sizeRem * 8;
+}
+
+function clampPercent(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampBubblePosition(
+  left: number,
+  top: number,
+  sizeRem: number,
+  playfieldWidth: number,
+  playfieldHeight: number,
+): { left: number; top: number } {
+  const radiusPx = getBubbleRadiusPx(sizeRem);
+  const minLeft = (radiusPx / playfieldWidth) * 100;
+  const maxLeft = 100 - minLeft;
+  const minTop = (radiusPx / playfieldHeight) * 100;
+  const maxTop = 100 - minTop;
+
+  return {
+    left: clampPercent(left, minLeft, maxLeft),
+    top: clampPercent(top, minTop, maxTop),
+  };
+}
+
+function getBubbleMaxSpeed(sizeTier: BubbleSizeTier): number {
+  if (sizeTier === "small") {
+    return 38;
+  }
+  if (sizeTier === "medium") {
+    return 26;
+  }
+  return 17;
+}
+
+function clampBubbleVelocity(
+  velocityX: number,
+  velocityY: number,
+  sizeTier: BubbleSizeTier,
+): { velocityX: number; velocityY: number } {
+  const speed = Math.hypot(velocityX, velocityY);
+  const maxSpeed = getBubbleMaxSpeed(sizeTier);
+  if (speed <= maxSpeed || speed === 0) {
+    return { velocityX, velocityY };
+  }
+
+  const ratio = maxSpeed / speed;
+  return {
+    velocityX: velocityX * ratio,
+    velocityY: velocityY * ratio,
+  };
+}
+
+function getBubbleAssistRadiusPx(bubble: ActivePlayBubble): number {
+  return (
+    getBubbleRadiusPx(bubble.sizeRem) +
+    (bubble.sizeTier === "small"
+      ? PLAYFIELD_ASSIST_EXTRA_PX_SMALL
+      : bubble.sizeTier === "medium"
+        ? PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM
+        : PLAYFIELD_ASSIST_EXTRA_PX_LARGE)
+  );
+}
+
+function getPlayfieldPercentPoint(
+  playfieldRect: DOMRect,
+  clientX: number,
+  clientY: number,
+): { leftPercent: number; topPercent: number } {
+  return {
+    leftPercent: clampPercent(((clientX - playfieldRect.left) / playfieldRect.width) * 100, 0, 100),
+    topPercent: clampPercent(((clientY - playfieldRect.top) / playfieldRect.height) * 100, 0, 100),
+  };
+}
+
+function getSpawnClearanceScore(
+  left: number,
+  top: number,
+  sizeRem: number,
+  existingBubbles: ActivePlayBubble[],
+  playfieldWidth: number,
+  playfieldHeight: number,
+  ignoreId: number,
+): number {
+  const candidateRadiusPx = getBubbleRadiusPx(sizeRem);
+  let closestClearancePx = Number.POSITIVE_INFINITY;
+
+  for (const bubble of existingBubbles) {
+    if (bubble.id === ignoreId) {
+      continue;
+    }
+
+    const minDistancePx =
+      candidateRadiusPx + getBubbleRadiusPx(bubble.sizeRem) + BUBBLE_SPAWN_PADDING_PX;
+    const deltaXPx = ((bubble.left - left) / 100) * playfieldWidth;
+    const deltaYPx = ((bubble.top - top) / 100) * playfieldHeight;
+    const distancePx = Math.hypot(deltaXPx, deltaYPx);
+    closestClearancePx = Math.min(closestClearancePx, distancePx - minDistancePx);
+  }
+
+  return closestClearancePx;
+}
+
+function findSafeBubbleSpawnPosition(input: {
+  id: number;
+  sizeRem: number;
+  zone: ReturnType<typeof pickBubbleZone>;
+  existingBubbles: ActivePlayBubble[];
+  playfieldWidth: number;
+  playfieldHeight: number;
+}): { left: number; top: number } {
+  let bestCandidate = clampBubblePosition(
+    randomBetween(input.zone.leftMin, input.zone.leftMax),
+    randomBetween(input.zone.topMin, input.zone.topMax),
+    input.sizeRem,
+    input.playfieldWidth,
+    input.playfieldHeight,
+  );
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const zone =
+      attempt < 12
+        ? input.zone
+        : {
+            topMin: 18,
+            topMax: 82,
+            leftMin: 12,
+            leftMax: 88,
+          };
+    const candidate = clampBubblePosition(
+      randomBetween(zone.leftMin, zone.leftMax),
+      randomBetween(zone.topMin, zone.topMax),
+      input.sizeRem,
+      input.playfieldWidth,
+      input.playfieldHeight,
+    );
+    const score = getSpawnClearanceScore(
+      candidate.left,
+      candidate.top,
+      input.sizeRem,
+      input.existingBubbles,
+      input.playfieldWidth,
+      input.playfieldHeight,
+      input.id,
+    );
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
+    }
+
+    if (score >= 0) {
+      return candidate;
+    }
+  }
+
+  return bestCandidate;
+}
+
+function createActivePlayBubble(
+  id: number,
+  previous?: ActivePlayBubble,
+  existingBubbles: ActivePlayBubble[] = [],
+  playfieldWidth = DEFAULT_PLAYFIELD_WIDTH_PX,
+  playfieldHeight = DEFAULT_PLAYFIELD_HEIGHT_PX,
+): ActivePlayBubble {
   const now = Date.now();
+  const sizeTier =
+    previous?.sizeTier && Math.random() < 0.82 ? previous.sizeTier : pickBubbleSizeTier();
+  const zone = pickBubbleZone(sizeTier);
+  const sizeRange =
+    sizeTier === "small"
+      ? [1.95, 2.95]
+      : sizeTier === "medium"
+        ? [3.35, 4.5]
+        : [4.95, 6.55];
+  const driftRange =
+    sizeTier === "small"
+      ? [900, 1850]
+      : sizeTier === "medium"
+        ? [2500, 4300]
+        : [4600, 7600];
+  const scaleRange =
+    sizeTier === "small"
+      ? [0.92, 1.18]
+      : sizeTier === "medium"
+        ? [0.97, 1.08]
+        : [0.985, 1.03];
+  const wobbleRange =
+    sizeTier === "small"
+      ? [-22, 22]
+      : sizeTier === "medium"
+        ? [-9, 9]
+        : [-4, 4];
+  const bonusChance =
+    sizeTier === "large" ? 0.24 : sizeTier === "medium" ? 0.16 : 0.11;
+  const [speedMin, speedMax] = getBubbleSpeedRange(sizeTier);
+  const [steerMin, steerMax] = getBubbleSteerWindow(sizeTier);
+  const angle = randomBetween(0, Math.PI * 2);
+  const speed = randomBetween(speedMin, speedMax);
+  const sizeRem = randomBetween(sizeRange[0], sizeRange[1]);
+  const spawnPosition = findSafeBubbleSpawnPosition({
+    id,
+    sizeRem,
+    zone,
+    existingBubbles,
+    playfieldWidth,
+    playfieldHeight,
+  });
+
   return {
     id,
-    top: randomBetween(16, 78),
-    left: randomBetween(10, 86),
-    sizeRem: randomBetween(2.8, 5.6),
-    hue: randomBetween(185, 325),
-    alpha: randomBetween(0.42, 0.72),
-    driftMs: Math.round(randomBetween(1200, 3200)),
-    wobbleDeg: randomBetween(-10, 10),
-    roundness: randomBetween(42, 58),
-    scale: randomBetween(0.94, 1.08),
-    isBonus: Math.random() < 0.16,
-    nextShiftAtMs: now + randomBetween(500, 2200),
+    top: spawnPosition.top,
+    left: spawnPosition.left,
+    sizeRem,
+    sizeTier,
+    hue:
+      sizeTier === "small"
+        ? randomBetween(196, 288)
+        : sizeTier === "medium"
+          ? randomBetween(208, 312)
+          : randomBetween(220, 330),
+    alpha:
+      sizeTier === "small"
+        ? randomBetween(0.4, 0.56)
+        : sizeTier === "medium"
+          ? randomBetween(0.46, 0.66)
+          : randomBetween(0.54, 0.76),
+    driftMs: Math.round(randomBetween(driftRange[0], driftRange[1])),
+    wobbleDeg: randomBetween(wobbleRange[0], wobbleRange[1]),
+    roundness: randomBetween(40, 62),
+    scale: randomBetween(scaleRange[0], scaleRange[1]),
+    currentFactor:
+      sizeTier === "small" ? 1.82 : sizeTier === "medium" ? 1.08 : 0.6,
+    velocityX: Math.cos(angle) * speed,
+    velocityY:
+      Math.sin(angle) * speed * (sizeTier === "small" ? 1.24 : sizeTier === "medium" ? 1.02 : 0.86),
+    deformUntilMs: 0,
+    deformRotationDeg: 0,
+    deformStretch: 0,
+    isBonus: Math.random() < bonusChance,
+    nextShiftAtMs: now + randomBetween(steerMin, steerMax),
     poppedUntilMs: 0,
+    respawnAtMs: 0,
+    spawnedUntilMs: 0,
   };
+}
+
+function createActivePlayBubbleSet(): ActivePlayBubble[] {
+  const created: ActivePlayBubble[] = [];
+  for (let index = 0; index < ACTIVE_PLAY_BUBBLE_COUNT; index += 1) {
+    created.push(
+      createActivePlayBubble(
+        index,
+        undefined,
+        created,
+        DEFAULT_PLAYFIELD_WIDTH_PX,
+        DEFAULT_PLAYFIELD_HEIGHT_PX,
+      ),
+    );
+  }
+  return created;
 }
 
 function normalizeWalletAddress(value: string | null | undefined): string | null {
@@ -325,18 +686,18 @@ export function BubbleSessionPlayScreen() {
   const [lastTapAtMs, setLastTapAtMs] = useState<number | null>(null);
   const [tapCombo, setTapCombo] = useState(0);
   const [bestTapCombo, setBestTapCombo] = useState(0);
-  const [lastTapGainSeconds, setLastTapGainSeconds] = useState(ACTIVE_SECONDS_PER_TAP);
+  const [lastTapRewardXp, setLastTapRewardXp] = useState(TAP_FEEDBACK_XP_PER_UNIT);
   const [tapFeedbackPoint, setTapFeedbackPoint] = useState<{
     topPercent: number;
     leftPercent: number;
   } | null>(null);
+  const [lastTapComboValue, setLastTapComboValue] = useState(0);
+  const [playfieldTouchCue, setPlayfieldTouchCue] = useState<PlayfieldTouchCue | null>(null);
   const [activePlayBubbles, setActivePlayBubbles] = useState<ActivePlayBubble[]>(
-    () =>
-      Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
-        createActivePlayBubble(index),
-      ),
+    () => createActivePlayBubbleSet(),
   );
   const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
+  const [runtimeDropFeedback, setRuntimeDropFeedback] = useState<RuntimeDropFeedback[]>([]);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [equippedSkinRewardId, setEquippedSkinRewardId] = useState<string | null>(null);
   const [inventorySavedRewardIds, setInventorySavedRewardIds] = useState<string[]>([]);
@@ -356,9 +717,12 @@ export function BubbleSessionPlayScreen() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const connectedWalletAddress = normalizeWalletAddress(address);
   const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
+  const effectiveProfileId = profileId;
+  const effectiveWalletAddress = walletAddress;
   const normalizedAuthSessionAddress = normalizeWalletAddress(authSession?.address);
   const authSessionMatchesRuntimeWallet =
-    !normalizedWalletAddress || normalizedAuthSessionAddress === normalizedWalletAddress;
+    !normalizedWalletAddress ||
+    normalizedAuthSessionAddress === normalizedWalletAddress;
   const authSessionMatchesConnectedWallet =
     !connectedWalletAddress || normalizedAuthSessionAddress === connectedWalletAddress;
   const authSessionToken =
@@ -484,26 +848,240 @@ export function BubbleSessionPlayScreen() {
 
     const intervalId = window.setInterval(() => {
       const now = Date.now();
-      setActivePlayBubbles((current) =>
-        current.map((bubble) => {
-          if (bubble.poppedUntilMs > now || bubble.nextShiftAtMs > now) {
+      const playfieldRect = playfieldRef.current?.getBoundingClientRect();
+      const playfieldWidth = playfieldRect?.width ?? 390;
+      const playfieldHeight = playfieldRect?.height ?? 760;
+      const dt = BUBBLE_COLLISION_TICK_MS / 1000;
+      const currentDriftX = Math.sin(now / 1800) * 4.6;
+      const currentDriftY = Math.cos(now / 2500) * 2.6;
+
+      setActivePlayBubbles((current) => {
+        const prepared = current.map((bubble) => {
+          if (bubble.poppedUntilMs > now) {
             return bubble;
           }
 
+          if (bubble.respawnAtMs > now) {
+            return bubble;
+          }
+
+          if (bubble.respawnAtMs > 0) {
+            const existingBubbles = current.filter(
+              (candidate) =>
+                candidate.id !== bubble.id &&
+                candidate.poppedUntilMs <= now &&
+                candidate.respawnAtMs <= now,
+            );
+            return {
+              ...createActivePlayBubble(
+                bubble.id,
+                bubble,
+                existingBubbles,
+                playfieldWidth,
+                playfieldHeight,
+              ),
+              respawnAtMs: 0,
+              spawnedUntilMs: now + BUBBLE_SPAWN_DURATION_MS,
+            };
+          }
+
+          let velocityX = bubble.velocityX;
+          let velocityY = bubble.velocityY;
+          let nextShiftAtMs = bubble.nextShiftAtMs;
+          if (bubble.nextShiftAtMs <= now) {
+            const [steerMin, steerMax] = getBubbleSteerWindow(bubble.sizeTier);
+            const baseSpeed = Math.hypot(velocityX, velocityY);
+            const steerAngle =
+              Math.atan2(velocityY, velocityX) +
+              randomBetween(
+                bubble.sizeTier === "small" ? -1.05 : bubble.sizeTier === "medium" ? -0.56 : -0.28,
+                bubble.sizeTier === "small" ? 1.05 : bubble.sizeTier === "medium" ? 0.56 : 0.28,
+              );
+            const nextSpeed = baseSpeed * randomBetween(0.98, 1.18);
+            velocityX = Math.cos(steerAngle) * nextSpeed;
+            velocityY = Math.sin(steerAngle) * nextSpeed;
+            nextShiftAtMs = now + randomBetween(steerMin, steerMax);
+          }
+
+          const radiusPx = getBubbleRadiusPx(bubble.sizeRem);
+          const minLeft = (radiusPx / playfieldWidth) * 100;
+          const maxLeft = 100 - minLeft;
+          const minTop = (radiusPx / playfieldHeight) * 100;
+          const maxTop = 100 - minTop;
+
+          let left = bubble.left + (velocityX + currentDriftX * bubble.currentFactor) * dt;
+          let top = bubble.top + (velocityY + currentDriftY * bubble.currentFactor) * dt;
+
+          if (left < minLeft) {
+            left = minLeft;
+            velocityX = Math.abs(velocityX);
+          } else if (left > maxLeft) {
+            left = maxLeft;
+            velocityX = -Math.abs(velocityX);
+          }
+
+          if (top < minTop) {
+            top = minTop;
+            velocityY = Math.abs(velocityY);
+          } else if (top > maxTop) {
+            top = maxTop;
+            velocityY = -Math.abs(velocityY);
+          }
+
+          const clampedVelocity = clampBubbleVelocity(velocityX, velocityY, bubble.sizeTier);
+          const clampedPosition = clampBubblePosition(
+            left,
+            top,
+            bubble.sizeRem,
+            playfieldWidth,
+            playfieldHeight,
+          );
+
           return {
             ...bubble,
-            top: randomBetween(14, 80),
-            left: randomBetween(8, 88),
-            driftMs: Math.round(randomBetween(900, 2800)),
-            wobbleDeg: randomBetween(-14, 14),
-            roundness: randomBetween(40, 62),
-            scale: randomBetween(0.9, 1.12),
-            isBonus: Math.random() < 0.16,
-            nextShiftAtMs: now + randomBetween(600, 2600),
+            left: clampedPosition.left,
+            top: clampedPosition.top,
+            velocityX: clampedVelocity.velocityX,
+            velocityY: clampedVelocity.velocityY,
+            nextShiftAtMs,
+            spawnedUntilMs: bubble.spawnedUntilMs > now ? bubble.spawnedUntilMs : 0,
+            deformUntilMs: bubble.deformUntilMs > now ? bubble.deformUntilMs : 0,
+            deformRotationDeg: bubble.deformUntilMs > now ? bubble.deformRotationDeg : 0,
+            deformStretch: bubble.deformUntilMs > now ? bubble.deformStretch : 0,
           };
-        }),
-      );
-    }, 240);
+        });
+
+        for (let solverPass = 0; solverPass < BUBBLE_COLLISION_SOLVER_PASSES; solverPass += 1) {
+          for (let firstIdx = 0; firstIdx < prepared.length; firstIdx += 1) {
+            const first = prepared[firstIdx];
+            if (
+              first.poppedUntilMs > now ||
+              first.respawnAtMs > now ||
+              first.spawnedUntilMs > now
+            ) {
+              continue;
+            }
+
+            for (let secondIdx = firstIdx + 1; secondIdx < prepared.length; secondIdx += 1) {
+              const second = prepared[secondIdx];
+              if (
+                second.poppedUntilMs > now ||
+                second.respawnAtMs > now ||
+                second.spawnedUntilMs > now
+              ) {
+                continue;
+              }
+
+              const deltaXPx = ((second.left - first.left) / 100) * playfieldWidth;
+              const deltaYPx = ((second.top - first.top) / 100) * playfieldHeight;
+              const distancePx = Math.hypot(deltaXPx, deltaYPx) || 0.0001;
+              const combinedRadiusPx =
+                getBubbleRadiusPx(first.sizeRem) + getBubbleRadiusPx(second.sizeRem);
+              if (distancePx >= combinedRadiusPx) {
+                continue;
+              }
+
+              const normalX = deltaXPx / distancePx;
+              const normalY = deltaYPx / distancePx;
+              const overlapPx = combinedRadiusPx - distancePx;
+              const correctionPx =
+                Math.max(0, overlapPx - BUBBLE_COLLISION_PENETRATION_SLOP_PX) *
+                BUBBLE_COLLISION_CORRECTION_PERCENT;
+              if (correctionPx <= 0) {
+                continue;
+              }
+
+              const firstMass = getBubbleMass(first.sizeRem);
+              const secondMass = getBubbleMass(second.sizeRem);
+              const totalMass = firstMass + secondMass;
+              const firstPushShare = Math.pow(secondMass / totalMass, 1.28);
+              const secondPushShare = Math.pow(firstMass / totalMass, 1.28);
+              const pushShareTotal = firstPushShare + secondPushShare;
+              const firstPushPx = correctionPx * (firstPushShare / pushShareTotal);
+              const secondPushPx = correctionPx * (secondPushShare / pushShareTotal);
+
+              first.left -= (normalX * firstPushPx / playfieldWidth) * 100;
+              first.top -= (normalY * firstPushPx / playfieldHeight) * 100;
+              second.left += (normalX * secondPushPx / playfieldWidth) * 100;
+              second.top += (normalY * secondPushPx / playfieldHeight) * 100;
+
+              const firstClampedPosition = clampBubblePosition(
+                first.left,
+                first.top,
+                first.sizeRem,
+                playfieldWidth,
+                playfieldHeight,
+              );
+              first.left = firstClampedPosition.left;
+              first.top = firstClampedPosition.top;
+
+              const secondClampedPosition = clampBubblePosition(
+                second.left,
+                second.top,
+                second.sizeRem,
+                playfieldWidth,
+                playfieldHeight,
+              );
+              second.left = secondClampedPosition.left;
+              second.top = secondClampedPosition.top;
+
+              const firstVelocityXPx = (first.velocityX / 100) * playfieldWidth;
+              const firstVelocityYPx = (first.velocityY / 100) * playfieldHeight;
+              const secondVelocityXPx = (second.velocityX / 100) * playfieldWidth;
+              const secondVelocityYPx = (second.velocityY / 100) * playfieldHeight;
+              const relativeVelocityAlongNormal =
+                (secondVelocityXPx - firstVelocityXPx) * normalX +
+                (secondVelocityYPx - firstVelocityYPx) * normalY;
+
+              if (relativeVelocityAlongNormal < 0) {
+                const restitution = 0.74;
+                const impulse =
+                  (-(1 + restitution) * relativeVelocityAlongNormal) /
+                  (1 / firstMass + 1 / secondMass);
+
+                const impulseX = impulse * normalX;
+                const impulseY = impulse * normalY;
+
+                const firstVelocity = clampBubbleVelocity(
+                  first.velocityX - (impulseX / firstMass / playfieldWidth) * 100,
+                  first.velocityY - (impulseY / firstMass / playfieldHeight) * 100,
+                  first.sizeTier,
+                );
+                first.velocityX = firstVelocity.velocityX;
+                first.velocityY = firstVelocity.velocityY;
+
+                const secondVelocity = clampBubbleVelocity(
+                  second.velocityX + (impulseX / secondMass / playfieldWidth) * 100,
+                  second.velocityY + (impulseY / secondMass / playfieldHeight) * 100,
+                  second.sizeTier,
+                );
+                second.velocityX = secondVelocity.velocityX;
+                second.velocityY = secondVelocity.velocityY;
+              }
+
+              const impactStrength = Math.min(
+                0.28,
+                Math.max(
+                  0.08,
+                  correctionPx / combinedRadiusPx + Math.abs(relativeVelocityAlongNormal) / 240,
+                ),
+              );
+              const impactRotationDeg = (Math.atan2(normalY, normalX) * 180) / Math.PI;
+
+              first.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 24;
+              first.deformRotationDeg = impactRotationDeg;
+              first.deformStretch = Math.max(first.deformStretch, impactStrength);
+
+              second.deformUntilMs = now + BUBBLE_DEFORM_DURATION_MS + 24;
+              second.deformRotationDeg = impactRotationDeg;
+              second.deformStretch = Math.max(second.deformStretch, impactStrength);
+            }
+          }
+        }
+
+        return prepared;
+      });
+    }, BUBBLE_COLLISION_TICK_MS);
 
     return () => {
       window.clearInterval(intervalId);
@@ -588,16 +1166,16 @@ export function BubbleSessionPlayScreen() {
     : isActive
       ? localCompletionEstimateMet
         ? `You can submit this run now. Projected reward: ${projectedXpAwarded} XP.`
-        : `Keep playing to build activity and time. ${formatTime(
+        : `Stay in the run to build activity and time. ${formatTime(
             elapsedSecondsRemaining,
           )} min time and ${formatTime(activeSecondsRemaining)} play target remain.`
-      : "Start a run, then keep tapping the bubble field.";
+      : "Review the rules, then start the run when you are ready.";
   const canStartSession =
     !isActive &&
     !sessionCompleted &&
     !isSubmitting &&
     !isResolvingOnboardingState &&
-    Boolean(profileId) &&
+    Boolean(effectiveProfileId) &&
     !needsOnboarding &&
     Boolean(authSessionToken);
   const canCompleteSession =
@@ -612,7 +1190,7 @@ export function BubbleSessionPlayScreen() {
         ? "Checking your session access..."
         : isSubmitting
           ? "Starting session..."
-          : !profileId || needsOnboarding
+          : !effectiveProfileId || needsOnboarding
             ? "Finish wallet setup on Home before starting a run."
             : !authSessionToken
               ? "Use Sign in with Base on Home before starting a run."
@@ -621,9 +1199,43 @@ export function BubbleSessionPlayScreen() {
     startSessionBlockReason ??
     (!isActive && !sessionCompleted ? actionMessage : null);
   const gameplayToastMessage =
-    actionMessage && !sessionCompleted ? actionMessage : null;
+    actionMessage &&
+    isActive &&
+    !sessionCompleted &&
+    (actionMessage.startsWith("We couldn't") ||
+      actionMessage.startsWith("Session start failed") ||
+      actionMessage.startsWith("Finish ") ||
+      actionMessage.startsWith("Sign in") ||
+      actionMessage.startsWith("Start a live session"))
+      ? actionMessage
+      : null;
   const showTapFeedback =
     lastTapFeedbackAtMs !== null && Date.now() - lastTapFeedbackAtMs < 850;
+  const compactRuntimeLayout = isActive && !sessionCompleted;
+  const runtimeFrameStyle = { minHeight: "100dvh" } satisfies CSSProperties;
+  const runtimeHeaderStyle = {
+    paddingTop: compactRuntimeLayout
+      ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.35rem))"
+      : "max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem))",
+    paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
+    paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+  } satisfies CSSProperties;
+  const playfieldLayoutStyle = {
+    minHeight: "100dvh",
+    paddingTop: compactRuntimeLayout
+      ? "max(6rem, calc(env(safe-area-inset-top) + 5rem))"
+      : "max(6.5rem, calc(env(safe-area-inset-top) + 5.5rem))",
+    paddingBottom: compactRuntimeLayout
+      ? "max(7.5rem, calc(env(safe-area-inset-bottom) + 6.5rem))"
+      : "max(11rem, calc(env(safe-area-inset-bottom) + 10rem))",
+    paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
+    paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+  } satisfies CSSProperties;
+  const runtimeFooterStyle = {
+    paddingBottom: "max(0.75rem, calc(env(safe-area-inset-bottom) + 0.25rem))",
+    paddingLeft: "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
+    paddingRight: "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
+  } satisfies CSSProperties;
 
   const hasRareRewardOutcome = completionResult
     ? hasIssuedRareRewardOutcome(completionResult.rareRewardOutcome)
@@ -667,15 +1279,30 @@ export function BubbleSessionPlayScreen() {
       : "Next step: complete daily check-in on Home to restore rare lane."
     : null;
   const backHomeHrefBase = withBubbleDropContext("/", {
-    profileId,
-    walletAddress: connectedWalletAddress ?? walletAddress,
+    profileId: effectiveProfileId,
+    walletAddress: connectedWalletAddress ?? effectiveWalletAddress,
   });
   const backHomeHref = backHomeHrefBase.includes("?")
     ? `${backHomeHrefBase}&skipIntro=1`
     : `${backHomeHrefBase}?skipIntro=1`;
+  const showPlayfieldTouchCue = (
+    tone: PlayfieldTouchCue["tone"],
+    point: { topPercent: number; leftPercent: number },
+  ) => {
+    const cueId = Math.floor(Math.random() * 1_000_000_000);
+    setPlayfieldTouchCue({
+      id: cueId,
+      topPercent: point.topPercent,
+      leftPercent: point.leftPercent,
+      tone,
+    });
+    window.setTimeout(() => {
+      setPlayfieldTouchCue((current) => (current?.id === cueId ? null : current));
+    }, PLAYFIELD_TOUCH_CUE_DURATION_MS);
+  };
 
   const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
-    if (!profileId || !authSessionToken) {
+    if (!effectiveProfileId || !authSessionToken) {
       setActionMessage("Finish wallet auth before applying this style.");
       return;
     }
@@ -688,7 +1315,7 @@ export function BubbleSessionPlayScreen() {
           method: "POST",
           headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({
-            profileId,
+            profileId: effectiveProfileId,
             rewardId: rewardCard.id,
             rewardKey: rewardCard.key,
             rarity: rewardCard.rarity,
@@ -728,7 +1355,7 @@ export function BubbleSessionPlayScreen() {
     if (isActive || sessionCompleted || isSubmitting) {
       return;
     }
-    if (!profileId || needsOnboarding) {
+    if (!effectiveProfileId || needsOnboarding) {
       setActionMessage("Finish wallet setup before starting a session.");
       return;
     }
@@ -744,7 +1371,7 @@ export function BubbleSessionPlayScreen() {
         const response = await fetch(`${backendUrl}/bubble-session/start`, {
           method: "POST",
           headers: createAuthenticatedJsonHeaders(authSessionToken),
-          body: JSON.stringify({ profileId }),
+          body: JSON.stringify({ profileId: effectiveProfileId }),
         });
 
         if (!response.ok) {
@@ -762,8 +1389,10 @@ export function BubbleSessionPlayScreen() {
         setActiveTapCount(0);
         setTapCombo(0);
         setBestTapCombo(0);
-        setLastTapGainSeconds(ACTIVE_SECONDS_PER_TAP);
+        setLastTapComboValue(0);
+        setLastTapRewardXp(TAP_FEEDBACK_XP_PER_UNIT);
         setTapFeedbackPoint(null);
+        setPlayfieldTouchCue(null);
         setLastTapAtMs(null);
         setLastTapFeedbackAtMs(null);
         setPopBursts([]);
@@ -772,16 +1401,12 @@ export function BubbleSessionPlayScreen() {
         setEquippedSkinRewardId(null);
         setInventorySavedRewardIds([]);
         setLastApplyMoment(null);
-        setActivePlayBubbles(
-          Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
-            createActivePlayBubble(index),
-          ),
-        );
+        setActivePlayBubbles(createActivePlayBubbleSet());
         captureAnalyticsEvent("bubbledrop_bubble_session_started", {
           profile_id: payload.profileId,
           session_id: payload.sessionId,
         });
-        setActionMessage("Session started. Keep tapping to show active play.");
+        setActionMessage("Session started. Build active play to qualify the run.");
       } catch {
         setActionMessage("Session start failed. Check network and try again.");
       } finally {
@@ -790,7 +1415,11 @@ export function BubbleSessionPlayScreen() {
     })();
   };
 
-  const onRecordActivePlay = (bubbleId?: number, event?: MouseEvent<HTMLButtonElement>) => {
+  const onRecordActivePlay = (
+    bubbleId?: number,
+    event?: MouseEvent<HTMLButtonElement>,
+    touchPointOverride?: { topPercent: number; leftPercent: number },
+  ) => {
     if (!isActive || sessionCompleted) {
       return;
     }
@@ -798,20 +1427,22 @@ export function BubbleSessionPlayScreen() {
     const tappedBubble = typeof bubbleId === "number"
       ? activePlayBubbles.find((bubble) => bubble.id === bubbleId)
       : null;
+    if (tappedBubble && tappedBubble.poppedUntilMs > Date.now()) {
+      return;
+    }
     const tapUnits = tappedBubble?.isBonus ? 2 : 1;
-    const tapGainSeconds = tapUnits * ACTIVE_SECONDS_PER_TAP;
+    const tapRewardXp = tapUnits * TAP_FEEDBACK_XP_PER_UNIT;
 
     const now = Date.now();
+    const nextCombo =
+      lastTapAtMs !== null && now - lastTapAtMs <= COMBO_WINDOW_MS ? tapCombo + 1 : 1;
     setActiveTapCount((prev) => prev + tapUnits);
-    setLastTapGainSeconds(tapGainSeconds);
+    setLastTapRewardXp(tapRewardXp);
+    setLastTapComboValue(nextCombo);
     setLastTapFeedbackAtMs(now);
     playPopSound(Boolean(tappedBubble?.isBonus));
-    setTapCombo((prevCombo) => {
-      const nextCombo =
-        lastTapAtMs !== null && now - lastTapAtMs <= COMBO_WINDOW_MS ? prevCombo + 1 : 1;
-      setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
-      return nextCombo;
-    });
+    setTapCombo(nextCombo);
+    setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
     setLastTapAtMs(now);
     if (typeof bubbleId === "number") {
       setActivePlayBubbles((current) =>
@@ -819,15 +1450,10 @@ export function BubbleSessionPlayScreen() {
           bubble.id === bubbleId
             ? {
                 ...bubble,
-                top: randomBetween(14, 80),
-                left: randomBetween(8, 88),
-                driftMs: Math.round(randomBetween(800, 2200)),
-                wobbleDeg: randomBetween(-16, 16),
-                roundness: randomBetween(38, 64),
-                scale: randomBetween(0.88, 1.14),
-                isBonus: Math.random() < 0.16,
-                nextShiftAtMs: now + randomBetween(700, 2600),
-                poppedUntilMs: now + 130,
+                poppedUntilMs: now + BUBBLE_POP_DURATION_MS,
+                respawnAtMs: now + BUBBLE_POP_DURATION_MS + BUBBLE_RESPAWN_DELAY_MS,
+                spawnedUntilMs: 0,
+                nextShiftAtMs: now + BUBBLE_POP_DURATION_MS + BUBBLE_RESPAWN_DELAY_MS,
               }
             : bubble,
         ),
@@ -849,7 +1475,7 @@ export function BubbleSessionPlayScreen() {
               (playfieldRect.height * (tappedBubble?.top ?? 50)) / 100;
         const xPercent = ((burstX - playfieldRect.left) / playfieldRect.width) * 100;
         const yPercent = ((burstY - playfieldRect.top) / playfieldRect.height) * 100;
-        setTapFeedbackPoint({ topPercent: yPercent, leftPercent: xPercent });
+        setTapFeedbackPoint(touchPointOverride ?? { topPercent: yPercent, leftPercent: xPercent });
         setPopBursts((current) => [
           ...current,
           {
@@ -857,9 +1483,47 @@ export function BubbleSessionPlayScreen() {
             xPercent,
             yPercent,
             hue: tappedBubble?.isBonus ? 44 : tappedBubble?.hue ?? 220,
-            sizeRem: tappedBubble?.isBonus ? 0.7 : 0.52,
+            sizeRem: tappedBubble?.isBonus ? 0.92 : 0.62,
+            isBonus: Boolean(tappedBubble?.isBonus),
           },
         ]);
+        // Runtime drop feedback is intentionally visual-only and does not mutate backend rewards.
+        const shouldShowRuntimeDrop =
+          Math.random() < (tappedBubble?.isBonus ? 0.42 : 0.16);
+        if (shouldShowRuntimeDrop) {
+          const rewardRoll = Math.random();
+          const kind = rewardRoll < 0.54 ? "memecoin" : rewardRoll < 0.82 ? "cosmetic" : "nft";
+          const feedbackId = Math.floor(Math.random() * 1_000_000_000);
+          const label =
+            kind === "memecoin"
+              ? MEMECOIN_SYMBOLS[Math.floor(Math.random() * MEMECOIN_SYMBOLS.length)]
+              : kind === "cosmetic"
+                ? COSMETIC_SET_LABELS[Math.floor(Math.random() * COSMETIC_SET_LABELS.length)]
+                : NFT_REWARD_LABELS[Math.floor(Math.random() * NFT_REWARD_LABELS.length)];
+          const accentLabel =
+            kind === "memecoin" ? "MEMECOIN" : kind === "cosmetic" ? "COSMETIC SET" : "NFT DROP";
+          const dropHue =
+            kind === "memecoin" ? 42 : kind === "cosmetic" ? tappedBubble?.hue ?? 284 : 38;
+          setRuntimeDropFeedback((current) => [
+            ...current,
+            {
+              id: feedbackId,
+              kind,
+              xPercent,
+              yPercent,
+              hue: dropHue,
+              label,
+              accentLabel,
+              createdAtMs: now,
+              isBonusSource: Boolean(tappedBubble?.isBonus),
+            },
+          ]);
+          window.setTimeout(() => {
+            setRuntimeDropFeedback((current) =>
+              current.filter((feedback) => feedback.id !== feedbackId),
+            );
+          }, RUNTIME_DROP_DURATION_MS);
+        }
         window.setTimeout(() => {
           setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
         }, 520);
@@ -870,7 +1534,7 @@ export function BubbleSessionPlayScreen() {
       navigator.vibrate(10);
     }
 
-    if (!profileId || !backendSessionId || !authSessionToken) {
+    if (!effectiveProfileId || !backendSessionId || !authSessionToken) {
       return;
     }
 
@@ -878,17 +1542,69 @@ export function BubbleSessionPlayScreen() {
       method: "POST",
       headers: createAuthenticatedJsonHeaders(authSessionToken),
       body: JSON.stringify({
-        profileId,
+        profileId: effectiveProfileId,
         sessionId: backendSessionId,
       }),
     });
+  };
+
+  const onPlayfieldTap = (event: MouseEvent<HTMLDivElement>) => {
+    if (!isActive || sessionCompleted) {
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest("[data-bubble-button='true']")) {
+      return;
+    }
+    const playfieldRect = playfieldRef.current?.getBoundingClientRect();
+    if (!playfieldRect) {
+      return;
+    }
+    const touchPoint = getPlayfieldPercentPoint(playfieldRect, event.clientX, event.clientY);
+    const nearestBubble = activePlayBubbles.reduce<{
+      bubble: ActivePlayBubble | null;
+      distancePx: number;
+      assistRadiusPx: number;
+    }>(
+      (closest, bubble) => {
+        if (
+          bubble.poppedUntilMs > Date.now() ||
+          bubble.respawnAtMs > Date.now() ||
+          bubble.spawnedUntilMs > Date.now()
+        ) {
+          return closest;
+        }
+        const bubbleCenterX = playfieldRect.left + (playfieldRect.width * bubble.left) / 100;
+        const bubbleCenterY = playfieldRect.top + (playfieldRect.height * bubble.top) / 100;
+        const distancePx = Math.hypot(event.clientX - bubbleCenterX, event.clientY - bubbleCenterY);
+        if (distancePx >= closest.distancePx) {
+          return closest;
+        }
+        return {
+          bubble,
+          distancePx,
+          assistRadiusPx: getBubbleAssistRadiusPx(bubble),
+        };
+      },
+      { bubble: null, distancePx: Number.POSITIVE_INFINITY, assistRadiusPx: 0 },
+    );
+
+    if (
+      nearestBubble.bubble &&
+      nearestBubble.distancePx <= nearestBubble.assistRadiusPx
+    ) {
+      showPlayfieldTouchCue("assist", touchPoint);
+      onRecordActivePlay(nearestBubble.bubble.id, undefined, touchPoint);
+      return;
+    }
+
+    showPlayfieldTouchCue("miss", touchPoint);
   };
 
   const onCompleteSession = () => {
     if (!isActive || sessionCompleted || isSubmitting) {
       return;
     }
-    if (!profileId || !backendSessionId || needsOnboarding) {
+    if (!effectiveProfileId || !backendSessionId || needsOnboarding) {
       setActionMessage("Start a live session before trying to finish it.");
       return;
     }
@@ -905,7 +1621,7 @@ export function BubbleSessionPlayScreen() {
           method: "POST",
           headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({
-            profileId,
+            profileId: effectiveProfileId,
             sessionId: backendSessionId,
             activeSeconds: backendCountableActiveSeconds,
           }),
@@ -922,7 +1638,7 @@ export function BubbleSessionPlayScreen() {
         setIsActive(false);
         setBackendSessionId(null);
         captureAnalyticsEvent("bubbledrop_bubble_session_completed", {
-          profile_id: profileId,
+          profile_id: effectiveProfileId,
           session_id: payload.sessionId,
           granted_xp: payload.xpAwarded,
           completion_bonus_xp: payload.completionBonusXp,
@@ -944,7 +1660,10 @@ export function BubbleSessionPlayScreen() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#edf7ff_0%,#e9f2ff_28%,#f8ecff_66%,#fff6fb_100%)]">
+    <div
+      className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,#edf7ff_0%,#e9f2ff_28%,#f8ecff_66%,#fff6fb_100%)]"
+      style={runtimeFrameStyle}
+    >
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <span className="absolute -left-10 top-16 h-32 w-32 rounded-full bg-[#d8f3ff]/85 blur-[1px]" />
         <span className="absolute right-[-1.5rem] top-28 h-40 w-40 rounded-full bg-[#ece0ff]/78 blur-[1px]" />
@@ -953,22 +1672,39 @@ export function BubbleSessionPlayScreen() {
       </div>
 
       {!sessionCompleted ? (
-        <main className="relative z-10 min-h-screen">
-          <header className="pointer-events-none absolute inset-x-0 top-0 z-20 p-4 sm:p-5">
+        <main className="relative z-10 min-h-screen" style={runtimeFrameStyle}>
+          <header
+            className="pointer-events-none absolute inset-x-0 top-0 z-20 sm:p-5"
+            style={runtimeHeaderStyle}
+          >
             <div className="mx-auto flex w-full max-w-md items-start justify-between gap-3">
               <Link
                 href={backHomeHref}
-                className="pointer-events-auto rounded-full border border-white/75 bg-white/76 px-4 py-2 text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.12)] backdrop-blur-sm"
+                className={`pointer-events-auto rounded-full border text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
+                  compactRuntimeLayout
+                    ? "border-white/34 bg-white/16 px-4 py-2.5"
+                    : "border-white/48 bg-white/28 px-4 py-2"
+                }`}
               >
                 Back
               </Link>
-              <div className="pointer-events-auto min-w-0 rounded-[1.3rem] border border-white/75 bg-white/78 px-3 py-2 shadow-[0_10px_24px_rgba(96,132,203,0.14)] backdrop-blur-sm">
+              <div
+                className={`pointer-events-auto min-w-0 shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
+                  compactRuntimeLayout
+                    ? "rounded-[1.2rem] border border-white/34 bg-white/14 px-3 py-2"
+                    : "rounded-[1.3rem] border border-white/48 bg-white/24 px-3 py-2"
+                }`}
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Bubble session
                     </p>
-                    <p className="mt-1 text-xl font-bold leading-none text-[#2d477f]">
+                    <p
+                      className={`mt-1 font-bold leading-none text-[#2d477f] ${
+                        compactRuntimeLayout ? "text-[1.15rem]" : "text-xl"
+                      }`}
+                    >
                       {formatTime(displayElapsedSeconds)}
                     </p>
                   </div>
@@ -981,34 +1717,58 @@ export function BubbleSessionPlayScreen() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="h-2 flex-1 rounded-full bg-[#e4ecff]">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
-                      style={{ width: `${elapsedProgressPercent}%` }}
-                    />
-                  </div>
-                  <div className="h-2 w-20 rounded-full bg-[#f3e7ff]">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#ffe1a6] to-[#ffc7ef] transition-all"
-                      style={{ width: `${activeSignalProgressPercent}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
-                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
-                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Combo</p>
-                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{tapCombo}</p>
-                  </div>
-                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
-                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Best</p>
-                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{bestTapCombo}</p>
-                  </div>
-                  <div className="rounded-lg border border-white/80 bg-white/68 px-2 py-2 text-[#486294]">
-                    <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Hunt</p>
-                    <p className="mt-1 text-xs font-bold text-[#2f4a81]">{huntReadinessPercent}%</p>
-                  </div>
-                </div>
+                {compactRuntimeLayout ? (
+                  <>
+                    <div className="mt-2 h-1.5 rounded-full bg-[#e7eeff]/82">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
+                        style={{ width: `${elapsedProgressPercent}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 text-[10px]">
+                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                        Combo x{tapCombo}
+                      </span>
+                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                        Hunt {huntReadinessPercent}%
+                      </span>
+                      <span className="rounded-full border border-white/38 bg-white/18 px-2 py-1 font-semibold text-[#47608f]">
+                        Goals {runObjectiveCompletedCount}/{runObjectives.length}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="h-2 flex-1 rounded-full bg-[#e4ecff]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
+                          style={{ width: `${elapsedProgressPercent}%` }}
+                        />
+                      </div>
+                      <div className="h-2 w-20 rounded-full bg-[#f3e7ff]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#ffe1a6] to-[#ffc7ef] transition-all"
+                          style={{ width: `${activeSignalProgressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+                      <div className="rounded-lg border border-white/48 bg-white/22 px-2 py-2 text-[#486294]">
+                        <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Combo</p>
+                        <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{tapCombo}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/48 bg-white/22 px-2 py-2 text-[#486294]">
+                        <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Best</p>
+                        <p className="mt-1 text-xs font-bold text-[#2f4a81]">x{bestTapCombo}</p>
+                      </div>
+                      <div className="rounded-lg border border-white/48 bg-white/22 px-2 py-2 text-[#486294]">
+                        <p className="uppercase tracking-[0.08em] text-[10px] text-[#6a7faa]">Hunt</p>
+                        <p className="mt-1 text-xs font-bold text-[#2f4a81]">{huntReadinessPercent}%</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </header>
@@ -1027,8 +1787,8 @@ export function BubbleSessionPlayScreen() {
                 </p>
                 <Link
                   href={withBubbleDropContext("/", {
-                    profileId,
-                    walletAddress: connectedWalletAddress ?? walletAddress,
+                    profileId: effectiveProfileId,
+                    walletAddress: connectedWalletAddress ?? effectiveWalletAddress,
                   }, { skipIntro: true })}
                   className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
                 >
@@ -1037,7 +1797,7 @@ export function BubbleSessionPlayScreen() {
               </section>
             </div>
           ) : (
-            <section className="relative min-h-screen">
+            <section className="relative min-h-screen" style={runtimeFrameStyle}>
               <div className="pointer-events-none absolute inset-0">
                 {DECORATIVE_STANDARD_BUBBLES.map((bubble, index) => (
                   <span
@@ -1082,54 +1842,146 @@ export function BubbleSessionPlayScreen() {
 
               <div
                 ref={playfieldRef}
-                className="relative flex min-h-screen items-center justify-center px-4 pb-44 pt-24 sm:px-6 sm:pt-28"
+                onClick={onPlayfieldTap}
+                className="relative flex min-h-screen items-center justify-center sm:px-6 sm:pt-28"
+                style={playfieldLayoutStyle}
               >
                 {!isActive ? (
-                  <div className="max-w-[17rem] rounded-[2.25rem] border border-white/80 bg-white/74 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.16)] backdrop-blur-sm">
+                  <div className="w-full max-w-[19rem] rounded-[2.25rem] border border-white/46 bg-white/24 px-6 py-7 text-center shadow-[0_20px_54px_rgba(99,131,195,0.09)] backdrop-blur-[10px]">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
-                      Immersive play mode
+                      Bubble session
                     </p>
-                    <h1 className="mt-2 text-3xl font-bold leading-tight text-[#2b467c]">
-                      Enter the bubble field
+                    <h1 className="mt-2 text-[2rem] font-bold leading-tight text-[#2b467c]">
+                      How the run works
                     </h1>
                     <p className="mt-3 text-sm text-[#6077a6]">
-                      Start the run and keep tapping the moving bubble to build a live session.
+                      Stay in the run, keep active play growing, and qualify the session for the full reward lane.
                     </p>
+                    <div className="mt-4 space-y-2 text-left">
+                      <div className="rounded-2xl border border-white/44 bg-white/26 px-3 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                          Goal
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-[#385180]">
+                          Hold the session and build active play.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/44 bg-white/26 px-3 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                          Minimum
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-[#385180]">
+                          {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min run and {Math.round(
+                            ACTIVE_SECONDS_FOR_COMPLETION_BONUS / 60,
+                          )} min active play.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/44 bg-white/26 px-3 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5a6fa0]">
+                          Why
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-[#385180]">
+                          Earn XP and unlock the partner drop roll for a qualified run.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onStartSession}
+                      disabled={!canStartSession}
+                      className="gloss-pill mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-4 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
+                    >
+                      {isSubmitting && !isActive ? "Starting..." : "Start session"}
+                    </button>
+                    {startSessionStatusMessage ? (
+                      <p className="mt-3 text-center text-[11px] font-medium text-[#5c6f99]">
+                        {startSessionStatusMessage}
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
-                  <>
+                  <div className="session-current-layer absolute inset-0">
                     {activePlayBubbles.map((bubble) => (
+                      (() => {
+                        const now = Date.now();
+                        if (bubble.poppedUntilMs <= now && bubble.respawnAtMs > now) {
+                          return null;
+                        }
+                        const deformProgress =
+                          bubble.deformUntilMs > now
+                            ? (bubble.deformUntilMs - now) / BUBBLE_DEFORM_DURATION_MS
+                            : 0;
+                        const deformStretch = 1 + bubble.deformStretch * deformProgress;
+                        const deformSquash = Math.max(
+                          0.78,
+                          1 - bubble.deformStretch * 0.82 * deformProgress,
+                        );
+                        const deformRotation = bubble.deformRotationDeg * deformProgress;
+                        const hitSizeRem =
+                          bubble.sizeRem +
+                          (bubble.sizeTier === "small"
+                            ? 0.9
+                            : bubble.sizeTier === "medium"
+                              ? 0.5
+                              : 0.24);
+
+                        return (
                       <button
                         key={bubble.id}
                         type="button"
+                        data-bubble-button="true"
                         aria-label="Pop bubble"
-                        onClick={(event) => onRecordActivePlay(bubble.id, event)}
-                        disabled={!isActive || sessionCompleted}
-                        className={`session-active-bubble absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 shadow-[0_18px_44px_rgba(122,136,201,0.24)] transition-[top,left,transform,border-radius,opacity] ease-in-out disabled:opacity-70 ${
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRecordActivePlay(bubble.id, event);
+                        }}
+                        disabled={!isActive || sessionCompleted || bubble.poppedUntilMs > now}
+                        className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[transform,border-radius,opacity,box-shadow] ease-out disabled:opacity-70 ${
+                          bubble.poppedUntilMs > now ? "session-active-bubble-popping" : ""
+                        } ${
+                          bubble.spawnedUntilMs > now ? "session-active-bubble-spawning" : ""
+                        } ${
                           bubble.isBonus ? "session-active-bubble-bonus" : ""
                         }`}
                         style={{
                           top: `${bubble.top}%`,
                           left: `${bubble.left}%`,
-                          width: `${bubble.sizeRem}rem`,
-                          height: `${bubble.sizeRem}rem`,
+                          width: `${hitSizeRem}rem`,
+                          height: `${hitSizeRem}rem`,
                           borderRadius: `${bubble.roundness}% ${100 - bubble.roundness}% ${
                             bubble.roundness
                           }% ${100 - bubble.roundness}% / ${100 - bubble.roundness}% ${
                             bubble.roundness
                           }% ${100 - bubble.roundness}% ${bubble.roundness}%`,
-                          transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg}deg) scale(${bubble.scale})`,
-                          transitionDuration: `${bubble.driftMs}ms`,
+                          transform: `translate(-50%, -50%) rotate(${bubble.wobbleDeg + deformRotation}deg) scale(${bubble.scale * deformStretch}, ${bubble.scale * deformSquash})`,
+                          transitionDuration: `${bubble.poppedUntilMs > now ? 150 : bubble.sizeTier === "small" ? 90 : bubble.sizeTier === "medium" ? 120 : 150}ms`,
                           "--bubble-morph-duration": `${Math.max(1800, bubble.driftMs + 400)}ms`,
-                          "--bubble-sheen-duration": `${Math.max(1400, bubble.driftMs - 300)}ms`,
+                          "--bubble-sheen-duration": `${Math.max(1800, bubble.driftMs - 200)}ms`,
+                          "--bubble-current-factor": `${bubble.currentFactor}`,
+                          "--bubble-rim-hue": `${bubble.isBonus ? 42 : bubble.hue + 28}`,
+                          "--bubble-rim-hue-2": `${bubble.isBonus ? 330 : bubble.hue + 102}`,
                           opacity:
-                            bubble.poppedUntilMs > Date.now()
-                              ? 0.08
+                            bubble.poppedUntilMs > now
+                              ? 0.06
+                              : bubble.spawnedUntilMs > now
+                                ? 0.42
                               : bubble.isBonus
-                                ? 0.92
-                                : 0.82,
+                                ? 0.98
+                                : bubble.sizeTier === "small"
+                                  ? 0.74
+                                  : bubble.sizeTier === "medium"
+                                    ? 0.84
+                                    : 0.91,
+                          borderColor: bubble.isBonus
+                            ? "rgba(255, 242, 188, 0.9)"
+                            : `hsla(${bubble.hue + 34}, 80%, 96%, 0.72)`,
+                          boxShadow: bubble.isBonus
+                            ? "0 22px 58px rgba(255,201,108,0.42), 0 0 26px rgba(255,236,182,0.44), inset 0 0 0 1px rgba(255,248,218,0.58)"
+                            : bubble.sizeTier === "large"
+                              ? "0 20px 52px rgba(122,136,201,0.22), inset 0 0 0 1px rgba(255,255,255,0.16)"
+                              : "0 14px 36px rgba(122,136,201,0.18), inset 0 0 0 1px rgba(255,255,255,0.14)",
                           background: bubble.isBonus
-                            ? "radial-gradient(circle at 30% 22%, rgba(255,255,255,0.68), rgba(255,255,255,0.14) 36%, transparent 56%), radial-gradient(circle at 70% 72%, rgba(255,221,128,0.62), transparent 62%), radial-gradient(circle at 50% 50%, rgba(255,243,176,0.9), rgba(255,215,150,0.62))"
+                            ? "radial-gradient(circle at 30% 22%, rgba(255,255,255,0.92), rgba(255,255,255,0.22) 34%, transparent 56%), radial-gradient(circle at 72% 72%, rgba(255,238,185,0.96), rgba(255,205,126,0.54) 42%, transparent 68%), radial-gradient(circle at 50% 50%, rgba(255,246,214,0.96), rgba(255,219,150,0.82) 48%, rgba(255,183,118,0.58) 100%)"
                             : `radial-gradient(circle at 32% 24%, rgba(255,255,255,0.62), rgba(255,255,255,0.1) 35%, transparent 56%), radial-gradient(circle at 68% 72%, hsla(${
                                 bubble.hue + 14
                               }, 82%, 70%, ${bubble.alpha * 0.5}), transparent 62%), radial-gradient(circle at 50% 50%, hsla(${
@@ -1139,65 +1991,163 @@ export function BubbleSessionPlayScreen() {
                               }))`,
                         } as CSSProperties}
                       >
+                        <span className="session-bubble-edge-rim" />
                         <span className="session-bubble-core" />
                         <span className="session-bubble-highlight session-bubble-highlight-a" />
                         <span className="session-bubble-highlight session-bubble-highlight-b" />
+                        <span className="session-bubble-sheen-band" />
                         {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
                       </button>
+                        );
+                      })()
                     ))}
                     {popBursts.map((burst) => (
                       <span key={burst.id}>
                         <span
-                          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full"
+                          className="session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
                           style={{
                             left: `${burst.xPercent}%`,
                             top: `${burst.yPercent}%`,
-                            width: `${burst.sizeRem}rem`,
-                            height: `${burst.sizeRem}rem`,
-                            background: `hsla(${burst.hue}, 95%, 78%, 0.88)`,
-                            boxShadow: `0 0 0 10px hsla(${burst.hue}, 92%, 76%, 0.28), 0 0 0 20px hsla(${burst.hue}, 92%, 76%, 0.18)`,
+                            width: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
+                            height: `${burst.sizeRem * (burst.isBonus ? 2.6 : 2.1)}rem`,
+                            borderColor: `hsla(${burst.hue}, 94%, 78%, ${burst.isBonus ? 0.88 : 0.72})`,
+                            boxShadow: `0 0 0 8px hsla(${burst.hue}, 92%, 76%, 0.16), 0 0 24px hsla(${burst.hue}, 94%, 74%, ${
+                              burst.isBonus ? 0.34 : 0.22
+                            })`,
                           }}
                         />
                         <span
-                          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse rounded-full"
+                          className="session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
                           style={{
                             left: `${burst.xPercent}%`,
                             top: `${burst.yPercent}%`,
-                            width: `${burst.sizeRem * 0.45}rem`,
-                            height: `${burst.sizeRem * 0.45}rem`,
+                            width: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
+                            height: `${burst.sizeRem * (burst.isBonus ? 0.88 : 0.58)}rem`,
                             background: "rgba(255,255,255,0.92)",
                           }}
                         />
+                        {POP_SPARKLE_OFFSETS.map((sparkle, index) => (
+                          <span
+                            key={`${burst.id}-sparkle-${index}`}
+                            className="session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+                            style={{
+                              left: `calc(${burst.xPercent}% + ${sparkle.xRem * burst.sizeRem}rem)`,
+                              top: `calc(${burst.yPercent}% + ${sparkle.yRem * burst.sizeRem}rem)`,
+                              width: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
+                              height: `${burst.sizeRem * sparkle.scale * (burst.isBonus ? 1.4 : 1)}rem`,
+                              background: burst.isBonus
+                                ? "rgba(255, 236, 175, 0.92)"
+                                : `hsla(${burst.hue + 18}, 96%, 84%, 0.88)`,
+                              boxShadow: burst.isBonus
+                                ? "0 0 12px rgba(255,223,140,0.7)"
+                                : `0 0 10px hsla(${burst.hue + 22}, 96%, 80%, 0.44)`,
+                              animationDelay: `${index * 40}ms`,
+                            }}
+                          />
+                        ))}
+                      </span>
+                    ))}
+                    {runtimeDropFeedback.map((feedback) => (
+                      <span
+                        key={feedback.id}
+                        className={`session-runtime-drop session-runtime-drop-${feedback.kind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
+                          feedback.isBonusSource ? "session-runtime-drop-bonus" : ""
+                        }`}
+                        style={
+                          {
+                            left: `${feedback.xPercent}%`,
+                            top: `${feedback.yPercent}%`,
+                            "--runtime-drop-hue": `${feedback.hue}`,
+                          } as CSSProperties
+                        }
+                      >
+                        <span className="session-runtime-drop-orbit" />
+                        <span className="session-runtime-drop-core" />
+                        <span className="session-runtime-drop-foil" />
+                        <span className="session-runtime-drop-ribbon" />
+                        <span className="session-runtime-drop-chip">{feedback.accentLabel}</span>
+                        <span className="session-runtime-drop-label">{feedback.label}</span>
                       </span>
                     ))}
                     {showTapFeedback && tapFeedbackPoint ? (
                       <div
-                        className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-sm font-black text-[#3e4f82]"
+                        className="session-touch-feedback session-touch-feedback-xp pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
                         style={{
                           top: `${tapFeedbackPoint.topPercent}%`,
                           left: `${tapFeedbackPoint.leftPercent}%`,
-                          marginTop: "-5.4rem",
+                          marginTop: "-4.4rem",
                         }}
                       >
-                        +{lastTapGainSeconds}s active
+                        <span className="session-touch-feedback-badge">
+                          +{lastTapRewardXp} XP
+                          {lastTapComboValue > 1 ? ` · x${lastTapComboValue}` : ""}
+                        </span>
                       </div>
                     ) : null}
-                  </>
+                    {playfieldTouchCue ? (
+                      <div
+                        className={`session-touch-feedback pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 ${
+                          playfieldTouchCue.tone === "assist"
+                            ? "session-touch-feedback-assist"
+                            : "session-touch-feedback-miss"
+                        }`}
+                        style={{
+                          top: `${playfieldTouchCue.topPercent}%`,
+                          left: `${playfieldTouchCue.leftPercent}%`,
+                        }}
+                      >
+                        <span className="session-touch-feedback-ring" />
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
 
               {gameplayToastMessage && isActive ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-[8.75rem] z-20 px-4 sm:px-6">
-                  <div className="mx-auto w-full max-w-md rounded-full border border-white/75 bg-white/78 px-4 py-2 text-center text-xs font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.14)] backdrop-blur-sm">
+                <div className="pointer-events-none absolute inset-x-0 z-20 px-4 sm:px-6" style={{
+                  bottom: "max(6.3rem, calc(env(safe-area-inset-bottom) + 5.2rem))",
+                }}>
+                  <div className="mx-auto w-full max-w-sm rounded-full border border-white/38 bg-white/18 px-4 py-2 text-center text-[11px] font-semibold text-[#4f648f] shadow-[0_12px_28px_rgba(96,132,203,0.09)] backdrop-blur-[10px]">
                     {gameplayToastMessage}
                   </div>
                 </div>
               ) : null}
 
-              <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-4 sm:px-6 sm:pb-5">
-                <div className="mx-auto w-full max-w-md rounded-[1.9rem] border border-white/82 bg-white/78 p-4 shadow-[0_18px_48px_rgba(95,130,199,0.16)] backdrop-blur-sm">
+              <div className="absolute inset-x-0 bottom-0 z-20 sm:px-6 sm:pb-5" style={runtimeFooterStyle}>
+                <div
+                  className={`mx-auto w-full max-w-md shadow-[0_18px_48px_rgba(95,130,199,0.09)] backdrop-blur-[10px] transition-all ${
+                    compactRuntimeLayout
+                      ? "rounded-[1.55rem] border border-white/38 bg-white/14 p-3.5"
+                      : "rounded-[1.9rem] border border-white/48 bg-white/24 p-4"
+                  }`}
+                >
                   {isResolvingOnboardingState ? (
                     <p className="text-xs text-[#5f739b]">Loading session access…</p>
+                  ) : compactRuntimeLayout ? (
+                    <div className="flex items-center justify-between gap-3 text-[11px] text-[#5e75a3]">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#516798]">
+                          Live run
+                        </p>
+                        <p className="mt-1 truncate text-sm font-semibold text-[#314a7e]">
+                          {projectedXpAwarded} XP projected
+                        </p>
+                        <p className="mt-1 text-[11px] text-[#647aab]">
+                          Goals {runObjectiveCompletedCount}/{runObjectives.length} · Best x{bestTapCombo}
+                        </p>
+                        <p className="mt-1 text-[11px] font-medium text-[#6b7fa9]">
+                          Run active
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={onCompleteSession}
+                        disabled={!canCompleteSession}
+                        className="gloss-pill shrink-0 rounded-2xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-3 text-center text-sm font-semibold text-[#403165] disabled:opacity-60"
+                      >
+                        {isSubmitting && isActive ? "Submitting..." : "Complete"}
+                      </button>
+                    </div>
                   ) : (
                     <div className="flex flex-col gap-2 text-xs text-[#6178a7]">
                       <div className="flex items-center justify-between">
@@ -1205,14 +2155,14 @@ export function BubbleSessionPlayScreen() {
                         <span>
                           {localCompletionEstimateMet
                             ? "Partner drop roll unlocked for this run"
-                            : "Keep tapping to unlock partner drop roll"}
+                            : "Qualify the run to unlock partner drop roll"}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span>Active taps: {activeTapCount}</span>
+                        <span>Run target: {Math.round(MIN_SESSION_SECONDS_FOR_COMPLETION / 60)} min</span>
                         <span>{readinessCopy}</span>
                       </div>
-                      <div className="rounded-xl border border-white/75 bg-white/62 px-3 py-2">
+                      <div className="rounded-xl border border-white/52 bg-white/30 px-3 py-2">
                         <div className="mb-1 flex items-center justify-between">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#50689a]">
                             Run objectives
@@ -1243,27 +2193,9 @@ export function BubbleSessionPlayScreen() {
                       </div>
                     </div>
                   )}
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={onStartSession}
-                      disabled={!canStartSession}
-                      className="gloss-pill flex-1 rounded-2xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-4 text-center text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                    >
-                      {isSubmitting && !isActive ? "Starting..." : "Start session"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onCompleteSession}
-                      disabled={!canCompleteSession}
-                      className="gloss-pill flex-1 rounded-2xl bg-gradient-to-r from-[#ffe0ef] to-[#e6e0ff] px-4 py-4 text-center text-sm font-semibold text-[#403165] disabled:opacity-60"
-                    >
-                      {isSubmitting && isActive ? "Submitting..." : "Complete session"}
-                    </button>
-                  </div>
-                  {startSessionStatusMessage ? (
+                  {!compactRuntimeLayout && !startSessionStatusMessage ? (
                     <p className="mt-2 text-center text-[11px] font-medium text-[#5c6f99]">
-                      {startSessionStatusMessage}
+                      Review the rules above, then start when you are ready.
                     </p>
                   ) : null}
                 </div>
@@ -1473,11 +2405,7 @@ export function BubbleSessionPlayScreen() {
                   setActiveTapCount(0);
                   setTapFeedbackPoint(null);
                   setPopBursts([]);
-                  setActivePlayBubbles(
-                    Array.from({ length: ACTIVE_PLAY_BUBBLE_COUNT }, (_, index) =>
-                      createActivePlayBubble(index),
-                    ),
-                  );
+        setActivePlayBubbles(createActivePlayBubbleSet());
                   setActionMessage("Ready for another run.");
                 }}
                 className="gloss-pill flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
@@ -1486,8 +2414,8 @@ export function BubbleSessionPlayScreen() {
               </button>
               <Link
                 href={withBubbleDropContext("/", {
-                  profileId,
-                  walletAddress: connectedWalletAddress ?? walletAddress,
+                  profileId: effectiveProfileId,
+                  walletAddress: connectedWalletAddress ?? effectiveWalletAddress,
                 }, { skipIntro: true })}
                 className="gloss-pill flex-1 rounded-xl bg-white/85 px-4 py-3 text-center text-sm font-semibold text-[#425b8a]"
               >
