@@ -498,6 +498,69 @@ async function getBackendFailureDetails(
   };
 }
 
+/** User-visible reason when POST /profile/connect-wallet fails (debug Sync profile). */
+async function getProfileConnectWalletErrorMessage(
+  response: Response,
+): Promise<string> {
+  const status = response.status;
+  let raw = "";
+  try {
+    raw = await response.text();
+  } catch {
+    return `Server error (HTTP ${status}). Tap Sync profile to retry.`;
+  }
+
+  let serverMessage = "";
+  try {
+    const parsed = JSON.parse(raw) as {
+      message?: string | string[];
+      error?: string;
+    };
+    if (Array.isArray(parsed.message)) {
+      serverMessage = parsed.message.filter(Boolean).join(". ");
+    } else if (typeof parsed.message === "string") {
+      serverMessage = parsed.message.trim();
+    }
+    if (!serverMessage && typeof parsed.error === "string") {
+      serverMessage = parsed.error.trim();
+    }
+  } catch {
+    serverMessage = raw.replace(/\s+/g, " ").trim().slice(0, 240);
+  }
+
+  if (status === 503) {
+    if (
+      serverMessage.includes("BubbleDrop live data is unavailable") ||
+      serverMessage.includes("unavailable right now")
+    ) {
+      return "API not linked: set BACKEND_URL (your Nest API URL) in Vercel → Environment Variables, redeploy, then Sync profile again.";
+    }
+    return serverMessage
+      ? `Service unavailable (503): ${serverMessage}`
+      : "Service unavailable (503). Check backend is running and BACKEND_URL is correct.";
+  }
+
+  if (status === 403) {
+    return "Session wallet mismatch: use Sign in with Base for this wallet, then Sync profile again.";
+  }
+
+  if (status === 401) {
+    return "Session expired or invalid: Sign in with Base again, then Sync profile.";
+  }
+
+  if (status >= 500) {
+    return serverMessage
+      ? `Server error (${status}): ${serverMessage.slice(0, 200)}`
+      : `Server error (${status}). Check backend logs. Retry Sync profile.`;
+  }
+
+  if (serverMessage) {
+    return `Could not create profile (${status}): ${serverMessage.slice(0, 220)}`;
+  }
+
+  return `Could not create profile (HTTP ${status}). Tap Sync profile to retry.`;
+}
+
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
@@ -1133,9 +1196,14 @@ export function BubbleDropShell() {
 
       if (!response.ok) {
         if (shouldBlockActions) {
-          setActionMessage(
-            "Profile couldn't be created just yet. Tap Sync profile below to try again.",
-          );
+          const diagnostic = await getProfileConnectWalletErrorMessage(response);
+          setActionMessage(diagnostic);
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[BubbleDrop] profile/connect-wallet failed", {
+              status: response.status,
+              hint: diagnostic,
+            });
+          }
         }
         return;
       }
@@ -1169,11 +1237,26 @@ export function BubbleDropShell() {
       if (shouldBlockActions) {
         const isTimeoutAbort =
           error instanceof DOMException && error.name === "AbortError";
-        setActionMessage(
-          isTimeoutAbort
-            ? "Profile sync timed out. Tap Sync profile below to try again."
-            : "Profile couldn't be created just yet. Tap Sync profile below to try again.",
-        );
+        if (isTimeoutAbort) {
+          setActionMessage(
+            "Profile sync timed out. Tap Sync profile below to try again.",
+          );
+        } else {
+          const msg =
+            error instanceof Error ? error.message : String(error ?? "unknown");
+          const isNetwork =
+            /failed to fetch|networkerror|load failed|network request failed/i.test(
+              msg,
+            );
+          setActionMessage(
+            isNetwork
+              ? "Network error — check connection or VPN, then Sync profile again."
+              : `Sync failed: ${msg.slice(0, 160)}`,
+          );
+          if (typeof console !== "undefined" && console.warn) {
+            console.warn("[BubbleDrop] profile/connect-wallet exception", error);
+          }
+        }
       }
     } finally {
       if (shouldBlockActions) {
