@@ -57,6 +57,7 @@ import {
   ProfileBubbleMotionShell,
   ProfileRarityChipMotion,
 } from "./profile-rarity-motion";
+import { WelcomeIntroScreen } from "./welcome-intro-screen";
 
 type ProfileBootstrapResponse = {
   profileId: string;
@@ -2252,97 +2253,18 @@ export function BubbleDropShell() {
         <span className="bubble b6" />
       </div>
       {welcomeIntroVisible ? (
-        <section className="intro-welcome-overlay">
-          <div className="intro-welcome-card">
-            <div className="intro-welcome-head">
-              <p className="intro-welcome-kicker">Bubble world entry</p>
-              <button
-                type="button"
-                onClick={onSkipIntro}
-                className="intro-welcome-skip"
-              >
-                Skip
-              </button>
-            </div>
-            <div className="intro-welcome-hero">
-              <p className="intro-welcome-brandline">A quiet entrance into the drop</p>
-              <h1 className="intro-welcome-wordmark" aria-label="BUBBLE DROP">
-                <span className="intro-welcome-word intro-welcome-word-bubble">BUBBLE</span>
-                <span className="intro-welcome-word intro-welcome-word-drop">DROP</span>
-              </h1>
-              <p className="intro-welcome-title">Pop the glowing bubbles to enter</p>
-            </div>
-            <div className="intro-welcome-meta">
-              <div className="intro-welcome-progress-stack">
-                <span className="intro-welcome-progress-label">Entry</span>
-                <span className="intro-welcome-progress">
-                  {introProgressCount}/{REQUIRED_INTRO_POPS}
-                </span>
-              </div>
-              <p className="intro-welcome-helper">
-                {introBubblesRemaining > 0
-                  ? "Pop any marked bubbles to enter"
-                  : "Entering Bubble World..."}
-              </p>
-            </div>
-          </div>
-          <div className="intro-welcome-playfield" aria-hidden="false">
-            {introBubbles.map((bubble) => {
-              const popped = introPoppedBubbleIds.includes(bubble.id);
-              if (popped) {
-                return null;
-              }
-              const isPopping = introPoppingBubbleIds.includes(bubble.id);
-              return (
-                <button
-                  key={bubble.id}
-                  type="button"
-                  onClick={(event) => onPopIntroBubble(bubble.id, event)}
-                  className={`intro-bubble intro-bubble-${bubble.role} ${
-                    introNudgedBubbleIds.includes(bubble.id) ? "intro-bubble-nudged" : ""
-                  } ${isPopping ? "intro-bubble-popping" : ""}`}
-                  aria-label="Tap bubble to enter Bubble World"
-                  style={
-                    {
-                      top: `${bubble.topPct}%`,
-                      left: `${bubble.leftPct}%`,
-                      width: `${bubble.sizeRem}rem`,
-                      height: `${bubble.sizeRem}rem`,
-                      "--intro-delay": `${bubble.delayMs}ms`,
-                      "--intro-drift-duration": `${bubble.driftDurationMs}ms`,
-                      "--intro-pulse-duration": `${bubble.pulseDurationMs}ms`,
-                      "--intro-drift-x1": bubble.driftX1,
-                      "--intro-drift-y1": bubble.driftY1,
-                      "--intro-drift-x2": bubble.driftX2,
-                      "--intro-drift-y2": bubble.driftY2,
-                      "--intro-drift-x3": bubble.driftX3,
-                      "--intro-drift-y3": bubble.driftY3,
-                      "--intro-drift-x4": bubble.driftX4,
-                      "--intro-drift-y4": bubble.driftY4,
-                      "--intro-bubble-hue": `${bubble.hue}`,
-                      "--intro-bubble-alpha": `${bubble.alpha}`,
-                    } as CSSProperties
-                  }
-                >
-                  <span className="intro-bubble-signal">TAP</span>
-                </button>
-              );
-            })}
-            {introPopBursts.map((burst) => (
-              <span
-                key={burst.id}
-                className="intro-pop-burst"
-                style={
-                  {
-                    left: `${burst.x}px`,
-                    top: `${burst.y}px`,
-                    "--intro-burst-hue": `${burst.hue}`,
-                  } as CSSProperties
-                }
-              />
-            ))}
-          </div>
-        </section>
+        <WelcomeIntroScreen
+          introProgressCount={introProgressCount}
+          requiredIntroPops={REQUIRED_INTRO_POPS}
+          introBubblesRemaining={introBubblesRemaining}
+          introBubbles={introBubbles}
+          introPoppedBubbleIds={introPoppedBubbleIds}
+          introPoppingBubbleIds={introPoppingBubbleIds}
+          introNudgedBubbleIds={introNudgedBubbleIds}
+          introPopBursts={introPopBursts}
+          onSkipIntro={onSkipIntro}
+          onPopIntroBubble={onPopIntroBubble}
+        />
       ) : null}
 
       <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
@@ -3000,3 +2922,5 @@ export function BubbleDropShell() {
     </div>
   );
 }
+
+
