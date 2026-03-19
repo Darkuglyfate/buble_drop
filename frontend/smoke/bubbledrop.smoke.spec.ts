@@ -583,9 +583,7 @@ test("runs daily check-in and shows refreshed summary state", async ({
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
-  await page
-    .getByRole("button", { name: /Next move.*Daily check-in \(\+20 XP\)/ })
-    .click();
+  await page.getByRole("button", { name: "Daily check-in (+20 XP)" }).click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
 });

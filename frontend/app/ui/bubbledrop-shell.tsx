@@ -2143,7 +2143,7 @@ export function BubbleDropShell() {
       return;
     }
     if (!dailyCheckInCompletedToday) {
-      void onDailyCheckIn({ openBubbleSessionAfter: true });
+      void onDailyCheckIn();
       return;
     }
     if (quickSessionHref) {
@@ -2329,7 +2329,7 @@ export function BubbleDropShell() {
         <section className="intro-welcome-overlay">
           <div className="intro-welcome-card">
             <div className="intro-welcome-head">
-              <p className="intro-welcome-kicker">BubbleDrop</p>
+              <p className="intro-welcome-kicker">Bubble world entry</p>
               <button
                 type="button"
                 onClick={onSkipIntro}
@@ -2338,11 +2338,21 @@ export function BubbleDropShell() {
                 Skip
               </button>
             </div>
-            <h1 className="intro-welcome-title">Pop the glowing bubbles to enter</h1>
+            <div className="intro-welcome-hero">
+              <p className="intro-welcome-brandline">A quiet entrance into the drop</p>
+              <h1 className="intro-welcome-wordmark" aria-label="BUBBLE DROP">
+                <span className="intro-welcome-word intro-welcome-word-bubble">BUBBLE</span>
+                <span className="intro-welcome-word intro-welcome-word-drop">DROP</span>
+              </h1>
+              <p className="intro-welcome-title">Pop the glowing bubbles to enter</p>
+            </div>
             <div className="intro-welcome-meta">
-              <span className="intro-welcome-progress">
-                {introProgressCount}/{REQUIRED_INTRO_POPS}
-              </span>
+              <div className="intro-welcome-progress-stack">
+                <span className="intro-welcome-progress-label">Entry</span>
+                <span className="intro-welcome-progress">
+                  {introProgressCount}/{REQUIRED_INTRO_POPS}
+                </span>
+              </div>
               <p className="intro-welcome-helper">
                 {introBubblesRemaining > 0
                   ? "Pop any marked bubbles to enter"
@@ -2852,35 +2862,7 @@ export function BubbleDropShell() {
                       <strong className="text-[#1f3561]">Daily mission</strong> to open your profile.
                     </span>
                   </p>
-                ) : showDedicatedDailyCheckSection ? null : primaryActionKind === "link" && primaryActionHref ? (
-                  <Link
-                    href={primaryActionHref}
-                    className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"
-                  >
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
-                      Play portal
-                    </span>
-                    <span className="mt-1 block">{primaryActionLabel}</span>
-                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Tap to continue.
-                    </span>
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={primaryActionHandler}
-                    disabled={primaryActionDisabled}
-                    className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
-                  >
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
-                      Next move
-                    </span>
-                    <span className="mt-1 block">{primaryActionLabel}</span>
-                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Tap to continue.
-                    </span>
-                  </button>
-                )}
+                ) : null}
 
                 {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button

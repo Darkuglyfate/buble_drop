@@ -73,9 +73,7 @@ const FUN_OVERLAY_ITEM_CONFIG = [
   { kind: "season-sigil", hue: 318, label: "Season sigil" },
 ] as const;
 const HELPER_THEME_CONFIG = [
-  { theme: "paperPlane", accentHue: 42, label: "Paper plane" },
-  { theme: "miniUfo", accentHue: 196, label: "Mini UFO" },
-  { theme: "bubbleCannon", accentHue: 318, label: "Bubble cannon" },
+  { theme: "miniUfo", accentHue: 196, label: "Orbital helper" },
 ] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
@@ -95,7 +93,7 @@ const HELPER_EVENT_ENTER_DURATION_MS = 1_020;
 const HELPER_EVENT_FIRE_DURATION_MS = 1_820;
 const HELPER_EVENT_EXIT_DURATION_MS = 1_120;
 const HELPER_SHOT_INTERVAL_MS = 360;
-const HELPER_SHOT_CUE_DURATION_MS = 760;
+const HELPER_SHOT_CUE_DURATION_MS = 920;
 const FINISH_CELEBRATION_DURATION_MS = 2950;
 const FINISH_CELEBRATION_BLOOM_BUBBLES = [
   { x: "-12.8rem", y: "-7.2rem", size: "6.2rem", hue: 196, alpha: 0.84, delayMs: 0, durationMs: 1180 },
