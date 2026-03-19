@@ -2540,14 +2540,7 @@ export function BubbleDropShell() {
                 ) : null}
               </div>
 
-              {profilePrimaryAction?.kind === "link" && profilePrimaryAction.href ? (
-                <Link
-                  href={profilePrimaryAction.href}
-                  className="gloss-pill mt-4 block w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-center text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)]"
-                >
-                  {profilePrimaryAction.label}
-                </Link>
-              ) : profilePrimaryAction ? (
+              {profilePrimaryAction ? (
                 <button
                   type="button"
                   onClick={profilePrimaryAction.onClick}
