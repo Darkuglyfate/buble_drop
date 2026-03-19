@@ -87,8 +87,10 @@ const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
 const COMBO_BURST_DURATION_MS = 980;
 const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
 const ANTICIPATION_POP_DURATION_MS = 220;
-const HELPER_EVENT_MIN_DELAY_MS = 45_000;
-const HELPER_EVENT_MAX_DELAY_MS = 90_000;
+const HELPER_EVENT_INITIAL_MIN_DELAY_MS = 12_000;
+const HELPER_EVENT_INITIAL_MAX_DELAY_MS = 18_000;
+const HELPER_EVENT_REPEAT_MIN_DELAY_MS = 45_000;
+const HELPER_EVENT_REPEAT_MAX_DELAY_MS = 75_000;
 const HELPER_EVENT_ENTER_DURATION_MS = 880;
 const HELPER_EVENT_FIRE_DURATION_MS = 1_240;
 const HELPER_EVENT_EXIT_DURATION_MS = 860;
@@ -804,6 +806,7 @@ export function BubbleSessionPlayScreen() {
   const [funOverlayItems, setFunOverlayItems] = useState<FunOverlayItem[]>([]);
   const [helperEvent, setHelperEvent] = useState<HelperEvent | null>(null);
   const [helperShotCues, setHelperShotCues] = useState<HelperShotCue[]>([]);
+  const [helperScheduleTick, setHelperScheduleTick] = useState(0);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
@@ -820,6 +823,7 @@ export function BubbleSessionPlayScreen() {
   const footerRef = useRef<HTMLDivElement | null>(null);
   const activePlayBubblesRef = useRef<ActivePlayBubble[]>(activePlayBubbles);
   const helperEventRef = useRef<HelperEvent | null>(null);
+  const helperHasAppearedRef = useRef(false);
   const finishCelebrationTimeoutRef = useRef<number | null>(null);
   const helperTimeoutsRef = useRef<number[]>([]);
   const hasShownMinimumCelebrationRef = useRef(false);
@@ -1821,7 +1825,7 @@ export function BubbleSessionPlayScreen() {
     });
   };
 
-  const triggerHelperEvent = () => {
+  const triggerHelperEvent = (): boolean => {
     const now = Date.now();
     const availableTargets = activePlayBubblesRef.current.filter(
       (bubble) =>
@@ -1830,7 +1834,7 @@ export function BubbleSessionPlayScreen() {
         bubble.spawnedUntilMs <= now,
     );
     if (availableTargets.length < 2) {
-      return;
+      return false;
     }
 
     const isCompactPlayfield = playfieldMetricsRef.current.width <= 460;
@@ -1840,7 +1844,7 @@ export function BubbleSessionPlayScreen() {
       .slice(0, Math.max(targetCount + 1, Math.ceil(availableTargets.length * 0.45)));
     const targets = upperPriority.slice(0, targetCount);
     if (targets.length === 0) {
-      return;
+      return false;
     }
 
     const helperThemeConfig =
@@ -1877,6 +1881,7 @@ export function BubbleSessionPlayScreen() {
     };
 
     setHelperEvent(nextEvent);
+    helperHasAppearedRef.current = true;
 
     const enterTimeout = window.setTimeout(() => {
       setHelperEvent((current) =>
@@ -1908,6 +1913,7 @@ export function BubbleSessionPlayScreen() {
       setHelperShotCues([]);
     }, HELPER_EVENT_ENTER_DURATION_MS + HELPER_EVENT_FIRE_DURATION_MS + HELPER_EVENT_EXIT_DURATION_MS);
     helperTimeoutsRef.current.push(cleanupTimeout);
+    return true;
   };
 
   useEffect(() => {
@@ -1920,12 +1926,18 @@ export function BubbleSessionPlayScreen() {
     if (helperEvent) {
       return;
     }
+    const [minDelayMs, maxDelayMs] = helperHasAppearedRef.current
+      ? [HELPER_EVENT_REPEAT_MIN_DELAY_MS, HELPER_EVENT_REPEAT_MAX_DELAY_MS]
+      : [HELPER_EVENT_INITIAL_MIN_DELAY_MS, HELPER_EVENT_INITIAL_MAX_DELAY_MS];
     const scheduleDelayMs = randomBetween(
-      HELPER_EVENT_MIN_DELAY_MS,
-      HELPER_EVENT_MAX_DELAY_MS,
+      minDelayMs,
+      maxDelayMs,
     );
     const timeoutId = window.setTimeout(() => {
-      triggerHelperEvent();
+      const triggered = triggerHelperEvent();
+      if (!triggered) {
+        setHelperScheduleTick((current) => current + 1);
+      }
       helperTimeoutsRef.current = helperTimeoutsRef.current.filter(
         (currentId) => currentId !== timeoutId,
       );
@@ -1939,6 +1951,7 @@ export function BubbleSessionPlayScreen() {
     };
   }, [
     helperEvent,
+    helperScheduleTick,
     isActive,
     postTimerChoiceVisible,
     sessionCompleted,
@@ -2054,6 +2067,8 @@ export function BubbleSessionPlayScreen() {
         setPopBursts([]);
         setComboBursts([]);
         setFunOverlayItems([]);
+        helperHasAppearedRef.current = false;
+        setHelperScheduleTick(0);
         clearHelperTimeouts();
         setHelperEvent(null);
         setHelperShotCues([]);
@@ -3189,6 +3204,8 @@ export function BubbleSessionPlayScreen() {
                   setPopBursts([]);
                   setComboBursts([]);
                   setFunOverlayItems([]);
+                  helperHasAppearedRef.current = false;
+                  setHelperScheduleTick(0);
                   clearHelperTimeouts();
                   setHelperEvent(null);
                   setHelperShotCues([]);

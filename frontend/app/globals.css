@@ -1021,11 +1021,11 @@ button.gloss-pill:disabled {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.2rem;
-  min-height: 3rem;
+  min-height: 2.75rem;
   border-radius: 0.9rem;
   border: 1px solid rgba(199, 215, 249, 0.9);
   background: rgba(255, 255, 255, 0.82);
-  padding: 0.55rem 0.65rem;
+  padding: 0.5rem 0.62rem;
   color: #3b578a;
   font-size: 0.78rem;
   font-weight: 700;
@@ -1056,6 +1056,54 @@ button.gloss-pill:disabled {
 .inventory-item-card {
   border-color: #dce6ff;
   background: rgba(255, 255, 255, 0.88);
+}
+
+.inventory-starter-avatar-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 4.25rem;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+.inventory-starter-avatar-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.inventory-starter-avatar-card-idle {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.inventory-starter-avatar-card-active {
+  border-color: rgba(132, 220, 255, 0.54);
+  background: linear-gradient(160deg, rgba(129, 191, 237, 0.22), rgba(118, 91, 198, 0.16));
+  box-shadow:
+    0 12px 28px rgba(8, 16, 34, 0.24),
+    0 0 0 1px rgba(196, 241, 255, 0.18) inset;
+}
+
+.inventory-starter-avatar-swatch {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+}
+
+.inventory-starter-avatar-sheen {
+  position: absolute;
+  inset: 0.22rem;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0) 62%);
+  opacity: 0.88;
 }
 
 .inventory-item-card.rarity-common {
@@ -1143,14 +1191,30 @@ button.gloss-pill:disabled {
 .vault-drop-surface .inventory-item-card {
   position: relative;
   overflow: hidden;
-  border-radius: 1.5rem;
-  padding: 1rem 0.9rem 0.85rem;
+  border-radius: 1.35rem;
+  padding: 0.9rem 0.8rem 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06));
   backdrop-filter: blur(11px);
   -webkit-backdrop-filter: blur(11px);
   box-shadow: 0 14px 42px rgba(0, 0, 0, 0.34);
   color: #eef4ff;
+}
+
+.vault-drop-surface .inventory-starter-avatar-card-idle {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.vault-drop-surface .inventory-starter-avatar-card-active {
+  border-color: rgba(148, 224, 255, 0.62);
+  background:
+    linear-gradient(160deg, rgba(129, 191, 237, 0.22), rgba(48, 104, 171, 0.18)),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(190, 238, 255, 0.2) inset;
 }
 
 .vault-drop-surface .inventory-item-card.rarity-common {

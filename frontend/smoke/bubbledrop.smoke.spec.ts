@@ -51,6 +51,7 @@ function buildProfileSummary(
               id: starterAvatarId,
               key: "starter-bubble-blue",
               label: "Starter Bubble Blue",
+              paletteKey: "blue",
             },
       unlockedAvatarCount: overrides.needsOnboarding ?? false ? 0 : 2,
     },
@@ -172,11 +173,13 @@ async function mockBubbleDropApi(page: Page) {
             id: starterAvatarId,
             key: "starter-bubble-blue",
             label: "Starter Bubble Blue",
+            paletteKey: "blue",
           },
           {
             id: "avatar-starter-lilac",
             key: "starter-bubble-lilac",
             label: "Starter Bubble Lilac",
+            paletteKey: "lilac",
           },
         ],
       });
@@ -644,7 +647,7 @@ test("navigates season hub, token detail, and partner transparency", async ({
   );
 
   await page.getByRole("link", { name: "Season" }).click();
-  await expect(page.getByText("Season hub")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Season hub" })).toBeVisible();
   await expect(page.getByText("Genesis Bloom")).toBeVisible();
 
   await page.getByRole("link", { name: "Details" }).click();

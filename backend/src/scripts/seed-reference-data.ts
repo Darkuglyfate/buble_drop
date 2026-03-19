@@ -47,15 +47,57 @@ const RANK_FRAMES: Array<
   { key: 'legend', label: 'Legend', order: 7, minLifetimeXp: 7000 },
 ];
 
-const STARTER_AVATARS: Array<Pick<Avatar, 'key' | 'label' | 'isStarter'>> = [
-  { key: 'starter-bubble-blue', label: 'Starter Bubble Blue', isStarter: true },
+const STARTER_AVATARS: Array<
+  Pick<Avatar, 'key' | 'label' | 'paletteKey' | 'isStarter'>
+> = [
+  {
+    key: 'starter-bubble-blue',
+    label: 'Starter Bubble Blue',
+    paletteKey: 'blue',
+    isStarter: true,
+  },
   {
     key: 'starter-bubble-lilac',
     label: 'Starter Bubble Lilac',
+    paletteKey: 'lilac',
     isStarter: true,
   },
-  { key: 'starter-bubble-rose', label: 'Starter Bubble Rose', isStarter: true },
-  { key: 'starter-bubble-mint', label: 'Starter Bubble Mint', isStarter: true },
+  {
+    key: 'starter-bubble-rose',
+    label: 'Starter Bubble Rose',
+    paletteKey: 'rose',
+    isStarter: true,
+  },
+  {
+    key: 'starter-bubble-mint',
+    label: 'Starter Bubble Mint',
+    paletteKey: 'mint',
+    isStarter: true,
+  },
+  {
+    key: 'starter-bubble-peach',
+    label: 'Starter Bubble Peach',
+    paletteKey: 'peach',
+    isStarter: true,
+  },
+  {
+    key: 'starter-bubble-amber',
+    label: 'Starter Bubble Amber',
+    paletteKey: 'amber',
+    isStarter: true,
+  },
+  {
+    key: 'starter-bubble-sky',
+    label: 'Starter Bubble Sky',
+    paletteKey: 'sky',
+    isStarter: true,
+  },
+  {
+    key: 'starter-bubble-violet',
+    label: 'Starter Bubble Violet',
+    paletteKey: 'violet',
+    isStarter: true,
+  },
 ];
 
 const SEASONS: Array<

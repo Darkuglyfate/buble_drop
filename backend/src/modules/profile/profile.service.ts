@@ -72,6 +72,7 @@ export interface ProfileSummary {
       id: string;
       key: string;
       label: string;
+      paletteKey: string;
     } | null;
     unlockedAvatarCount: number;
   };
@@ -141,6 +142,7 @@ export interface StarterAvatarView {
   id: string;
   key: string;
   label: string;
+  paletteKey: string;
 }
 
 export interface LeaderboardEntry {
@@ -398,6 +400,7 @@ export class ProfileService {
         id: avatar.id,
         key: avatar.key,
         label: avatar.label,
+        paletteKey: avatar.paletteKey,
       }));
     } catch (error) {
       const durationMs = Date.now() - startedAt;
@@ -522,6 +525,7 @@ export class ProfileService {
               id: currentAvatar.id,
               key: currentAvatar.key,
               label: currentAvatar.label,
+              paletteKey: currentAvatar.paletteKey,
             }
           : null,
         unlockedAvatarCount,

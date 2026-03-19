@@ -14,6 +14,7 @@ import {
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
 import { saveSelectedAvatarOverride } from "./avatar-selection-sync";
+import { getAvatarBubbleTone } from "./avatar-bubble-palette";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import {
   getPrimaryEquippedStyle,
@@ -63,6 +64,7 @@ type StarterAvatar = {
   id: string;
   key: string;
   label: string;
+  paletteKey: string;
 };
 
 type AvatarSelectionResponse = {
@@ -90,6 +92,7 @@ async function fetchOnboardingStateForProfile(
 ): Promise<{
   needsOnboarding: boolean;
   currentAvatarId: string | null;
+  currentAvatarPaletteKey: string | null;
   equippedStyle: EquippedStyleSnapshot | null;
   equippedStyleRewardId: string | null;
 } | null> {
@@ -109,6 +112,7 @@ async function fetchOnboardingStateForProfile(
   return {
     needsOnboarding: payload.onboardingState.needsOnboarding,
     currentAvatarId: payload.avatarState.currentAvatar?.id ?? null,
+    currentAvatarPaletteKey: payload.avatarState.currentAvatar?.paletteKey ?? null,
     equippedStyle: backendEquippedStyle,
     equippedStyleRewardId: primary?.rewardId ?? null,
   };
@@ -191,6 +195,13 @@ function slotLabel(slot: CosmeticSlot): string {
 
 function rarityLabel(rarity: RarityLevel): string {
   return rarity[0].toUpperCase() + rarity.slice(1);
+}
+
+function getCompactStarterAvatarLabel(label: string): string {
+  return label
+    .replace(/^Starter\s+Bubble\s+/i, "")
+    .replace(/^Bubble\s+/i, "")
+    .trim();
 }
 
 const SLOT_ORDER: CosmeticSlot[] = ["avatar", "bubbleSkin", "trail", "badge"];
@@ -421,7 +432,11 @@ export function RewardsInventoryScreen() {
       setNeedsOnboarding(onboardingState.needsOnboarding);
       setSelectedAvatarId(onboardingState.currentAvatarId);
       if (onboardingState.currentAvatarId) {
-        saveSelectedAvatarOverride(resolvedProfileId, onboardingState.currentAvatarId);
+              saveSelectedAvatarOverride(
+                resolvedProfileId,
+                onboardingState.currentAvatarId,
+                onboardingState.currentAvatarPaletteKey,
+              );
       }
       setEquippedStyleRewardId(onboardingState.equippedStyleRewardId);
       const persistedBySlot = loadPersistedEquippedStyles(resolvedProfileId);
@@ -495,12 +510,16 @@ export function RewardsInventoryScreen() {
       );
       const resolvedAvatarId =
         refreshedOnboardingState?.currentAvatarId ?? payload.avatarId;
+      const resolvedAvatarPaletteKey =
+        refreshedOnboardingState?.currentAvatarPaletteKey ??
+        starterAvatars.find((avatar) => avatar.id === resolvedAvatarId)?.paletteKey ??
+        null;
       setSelectedAvatarId(resolvedAvatarId);
       setEquippedBySlot((current) => ({
         ...current,
         avatar: resolvedAvatarId,
       }));
-      saveSelectedAvatarOverride(profileId, resolvedAvatarId);
+      saveSelectedAvatarOverride(profileId, resolvedAvatarId, resolvedAvatarPaletteKey);
     } catch {
       setErrorMessage("We couldn't switch avatar right now.");
     } finally {
@@ -724,27 +743,49 @@ export function RewardsInventoryScreen() {
 
           {!needsOnboarding && activeSlot === "avatar" && starterAvatars.length > 0 ? (
             <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.07] p-3">
-              <p className="vault-drop-muted text-xs font-semibold uppercase tracking-[0.1em]">
-                Starter avatars
-              </p>
-              <div className="mt-2 grid grid-cols-1 gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="vault-drop-muted text-[11px] font-semibold uppercase tracking-[0.14em]">
+                  Starter avatars
+                </p>
+                <span className="vault-drop-muted text-[11px]">
+                  {starterAvatars.length} colors
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {starterAvatars.map((avatar) => {
                   const isEquipped = selectedAvatarId === avatar.id;
+                  const bubbleTone = getAvatarBubbleTone(avatar.paletteKey, avatar.key);
                   return (
                     <button
                       key={avatar.id}
                       type="button"
                       onClick={() => void onSelectAvatar(avatar.id)}
                       disabled={isSwitchingAvatar || !authSessionToken}
-                      className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm transition-all ${
+                      className={`inventory-starter-avatar-card rounded-2xl border px-3 py-2 text-left transition-all ${
                         isEquipped
-                          ? "border-cyan-400/50 bg-gradient-to-r from-cyan-500/20 to-violet-500/15 text-[#eef4ff]"
-                          : "border-white/15 bg-white/5 text-[#d7e5ff]"
+                          ? "inventory-starter-avatar-card-active"
+                          : "inventory-starter-avatar-card-idle"
                       } disabled:opacity-60`}
                     >
-                      <span className="font-semibold">{avatar.label}</span>
-                      <span className="vault-drop-muted ml-2 text-xs uppercase tracking-[0.08em]">
-                        {isEquipped ? "Equipped" : "Tap to equip"}
+                      <span className="flex items-center gap-2.5">
+                        <span
+                          className="inventory-starter-avatar-swatch"
+                          style={{
+                            background: `radial-gradient(circle at 30% 28%, ${bubbleTone.highlight} 0%, ${bubbleTone.base} 52%, color-mix(in srgb, ${bubbleTone.base} 72%, #8b95b5 28%) 100%)`,
+                            boxShadow: `0 0 0 1px ${bubbleTone.ring} inset, 0 10px 20px ${bubbleTone.glow}`,
+                          }}
+                          aria-hidden="true"
+                        >
+                          <span className="inventory-starter-avatar-sheen" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-[#eef4ff]">
+                            {getCompactStarterAvatarLabel(avatar.label)}
+                          </span>
+                          <span className="vault-drop-muted block text-[10px] uppercase tracking-[0.1em]">
+                            {isEquipped ? "Equipped" : "Tap to equip"}
+                          </span>
+                        </span>
                       </span>
                     </button>
                   );

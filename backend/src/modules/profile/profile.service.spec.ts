@@ -38,7 +38,10 @@ describe('ProfileService', () => {
   let profileCosmeticUnlockRepository: MockRepository<ProfileCosmeticUnlock>;
   let cosmeticDefinitionRepository: MockRepository<CosmeticDefinition>;
   let claimableTokenBalanceRepository: MockRepository<ClaimableTokenBalance>;
-  let qualificationService: { evaluateProgress: jest.Mock };
+  let qualificationService: {
+    evaluateProgress: jest.Mock;
+    getSeasonProgress: jest.Mock;
+  };
   let xpService: { grantXp: jest.Mock };
   let configService: { get: jest.Mock };
 
@@ -51,6 +54,7 @@ describe('ProfileService', () => {
 
     profileRepository = {
       findOne: jest.fn(),
+      query: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
     };
@@ -84,6 +88,7 @@ describe('ProfileService', () => {
     };
     qualificationService = {
       evaluateProgress: jest.fn(),
+      getSeasonProgress: jest.fn(),
     };
     xpService = {
       grantXp: jest.fn(),
@@ -253,6 +258,7 @@ describe('ProfileService', () => {
       id: 'avatar-1',
       key: 'starter-blue',
       label: 'Starter Blue',
+      paletteKey: 'blue',
     });
     profileAvatarUnlockRepository.count!.mockResolvedValue(4);
     rankFrameDefinitionRepository.find!.mockResolvedValue([
@@ -265,10 +271,23 @@ describe('ProfileService', () => {
       qualificationStatus: QualificationStatus.QUALIFIED,
       rareRewardAccessActive: true,
     });
+    qualificationService.getSeasonProgress.mockResolvedValue({
+      qualificationStatus: QualificationStatus.QUALIFIED,
+      eligibleAtSeasonEnd: true,
+      streak: 6,
+      xp: 710,
+      activeSessions: 5,
+      requiredStreak: 5,
+      requiredXp: 300,
+      requiredActiveSessions: 4,
+    });
     claimableTokenBalanceRepository.find!.mockResolvedValue([
       { tokenSymbol: 'AAA', claimableAmount: '0' },
       { tokenSymbol: 'BBB', claimableAmount: '100' },
       { tokenSymbol: 'CCC', claimableAmount: '25' },
+    ]);
+    profileRepository.query!.mockResolvedValue([
+      { equippedStyleSnapshot: null },
     ]);
 
     const result = await service.getProfileSummary(
@@ -287,6 +306,7 @@ describe('ProfileService', () => {
       '125',
     );
     expect(result.claimableTokenBalanceSummary.tokenCount).toBe(2);
+    expect(result.avatarState.currentAvatar?.paletteKey).toBe('blue');
   });
 
   it('completes onboarding with starter avatar and grants onboarding xp', async () => {
@@ -423,11 +443,13 @@ describe('ProfileService', () => {
         id: 'avatar-1',
         key: 'starter-bubble-blue',
         label: 'Starter Bubble Blue',
+        paletteKey: 'blue',
       },
       {
         id: 'avatar-2',
         key: 'starter-bubble-lilac',
         label: 'Starter Bubble Lilac',
+        paletteKey: 'lilac',
       },
     ]);
 
@@ -438,11 +460,13 @@ describe('ProfileService', () => {
         id: 'avatar-1',
         key: 'starter-bubble-blue',
         label: 'Starter Bubble Blue',
+        paletteKey: 'blue',
       },
       {
         id: 'avatar-2',
         key: 'starter-bubble-lilac',
         label: 'Starter Bubble Lilac',
+        paletteKey: 'lilac',
       },
     ]);
   });

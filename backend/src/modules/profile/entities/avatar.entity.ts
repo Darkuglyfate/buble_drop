@@ -22,6 +22,9 @@ export class Avatar {
   @Column({ type: 'varchar', length: 64 })
   label: string;
 
+  @Column({ type: 'varchar', length: 32, default: 'blue' })
+  paletteKey: string;
+
   @Column({ type: 'boolean', default: false })
   isStarter: boolean;
 

@@ -18,6 +18,7 @@ export type BackendProfileSummary = {
       id: string;
       key: string;
       label: string;
+      paletteKey: string;
     } | null;
     unlockedAvatarCount: number;
   };

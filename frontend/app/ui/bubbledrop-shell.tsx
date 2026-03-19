@@ -41,9 +41,11 @@ import {
   fetchBackendProfileSummary,
 } from "./backend-profile-summary";
 import {
+  loadSelectedAvatarOverrideState,
   loadSelectedAvatarOverride,
   saveSelectedAvatarOverride,
 } from "./avatar-selection-sync";
+import { getAvatarBubbleTone } from "./avatar-bubble-palette";
 import {
   getPrimaryEquippedStyle,
   inferSlotFromRewardKey,
@@ -264,22 +266,6 @@ function getAvatarGlyph(
   }
 
   return cleaned.slice(0, 2).toUpperCase() || "BD";
-}
-
-function createAvatarBubbleTone(seed: string): {
-  base: string;
-  highlight: string;
-  glow: string;
-} {
-  const hash = Array.from(seed).reduce((acc, char, index) => {
-    return (acc + char.charCodeAt(0) * (index + 13)) % 360;
-  }, 0);
-  const hue = 180 + (hash % 120);
-  return {
-    base: `hsl(${hue} 85% 84%)`,
-    highlight: `hsl(${(hue + 24) % 360} 90% 89%)`,
-    glow: `hsla(${hue} 85% 68% / 0.42)`,
-  };
 }
 
 function formatRewardKeyLabel(rewardKey: string): string {
@@ -754,6 +740,8 @@ export function BubbleDropShell() {
   const [equippedStyleSnapshot, setEquippedStyleSnapshot] =
     useState<EquippedStyleSnapshot | null>(null);
   const [selectedAvatarOverrideId, setSelectedAvatarOverrideId] = useState<string | null>(null);
+  const [selectedAvatarOverridePaletteKey, setSelectedAvatarOverridePaletteKey] =
+    useState<string | null>(null);
   const [cosmeticTierPreviewActive, setCosmeticTierPreviewActive] = useState(false);
   const [cosmeticPreviewIndex, setCosmeticPreviewIndex] = useState(0);
   const [introPoppedBubbleIds, setIntroPoppedBubbleIds] = useState<string[]>([]);
@@ -857,11 +845,15 @@ export function BubbleDropShell() {
   const profileVisualSeed =
     profileCardEquippedStyle?.rewardKey ??
     profileCardEquippedStyle?.rewardId ??
+    profileSummary?.avatarState.currentAvatar?.key ??
     selectedAvatarOverrideId ??
     profileSummary?.avatarState.currentAvatar?.id ??
-    profileSummary?.avatarState.currentAvatar?.key ??
     "bubble-default";
-  const profileBubbleTone = createAvatarBubbleTone(profileVisualSeed);
+  const profileBubbleTone = getAvatarBubbleTone(
+    profileSummary?.avatarState.currentAvatar?.paletteKey ??
+      selectedAvatarOverridePaletteKey,
+    profileVisualSeed,
+  );
   const equippedRarity = profileCardEquippedStyle?.rarity ?? null;
   const profileStyleShellClass =
     equippedRarity === "legendary"
@@ -1120,9 +1112,12 @@ export function BubbleDropShell() {
   useEffect(() => {
     if (!profileId) {
       setSelectedAvatarOverrideId(null);
+      setSelectedAvatarOverridePaletteKey(null);
       return;
     }
-    setSelectedAvatarOverrideId(loadSelectedAvatarOverride(profileId));
+    const override = loadSelectedAvatarOverrideState(profileId);
+    setSelectedAvatarOverrideId(override?.avatarId ?? loadSelectedAvatarOverride(profileId));
+    setSelectedAvatarOverridePaletteKey(override?.paletteKey ?? null);
   }, [profileId]);
 
   useEffect(() => {
@@ -1130,12 +1125,19 @@ export function BubbleDropShell() {
       return;
     }
     const currentAvatarId = profileSummary?.avatarState.currentAvatar?.id ?? null;
+    const currentAvatarPaletteKey =
+      profileSummary?.avatarState.currentAvatar?.paletteKey ?? null;
     if (!currentAvatarId) {
       return;
     }
-    saveSelectedAvatarOverride(profileId, currentAvatarId);
+    saveSelectedAvatarOverride(profileId, currentAvatarId, currentAvatarPaletteKey);
     setSelectedAvatarOverrideId(currentAvatarId);
-  }, [profileId, profileSummary?.avatarState.currentAvatar?.id]);
+    setSelectedAvatarOverridePaletteKey(currentAvatarPaletteKey);
+  }, [
+    profileId,
+    profileSummary?.avatarState.currentAvatar?.id,
+    profileSummary?.avatarState.currentAvatar?.paletteKey,
+  ]);
 
   useEffect(() => {
     const resolveFirstEntry = async () => {
