@@ -2852,7 +2852,7 @@ export function BubbleDropShell() {
                       <strong className="text-[#1f3561]">Daily mission</strong> to open your profile.
                     </span>
                   </p>
-                ) : primaryActionKind === "link" && primaryActionHref ? (
+                ) : showDedicatedDailyCheckSection ? null : primaryActionKind === "link" && primaryActionHref ? (
                   <Link
                     href={primaryActionHref}
                     className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"

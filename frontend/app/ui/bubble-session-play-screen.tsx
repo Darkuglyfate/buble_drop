@@ -91,10 +91,10 @@ const HELPER_EVENT_INITIAL_MIN_DELAY_MS = 12_000;
 const HELPER_EVENT_INITIAL_MAX_DELAY_MS = 18_000;
 const HELPER_EVENT_REPEAT_MIN_DELAY_MS = 45_000;
 const HELPER_EVENT_REPEAT_MAX_DELAY_MS = 75_000;
-const HELPER_EVENT_ENTER_DURATION_MS = 880;
-const HELPER_EVENT_FIRE_DURATION_MS = 1_240;
-const HELPER_EVENT_EXIT_DURATION_MS = 860;
-const HELPER_SHOT_INTERVAL_MS = 240;
+const HELPER_EVENT_ENTER_DURATION_MS = 1_020;
+const HELPER_EVENT_FIRE_DURATION_MS = 1_820;
+const HELPER_EVENT_EXIT_DURATION_MS = 1_120;
+const HELPER_SHOT_INTERVAL_MS = 360;
 const HELPER_SHOT_CUE_DURATION_MS = 760;
 const FINISH_CELEBRATION_DURATION_MS = 2950;
 const FINISH_CELEBRATION_BLOOM_BUBBLES = [
@@ -1742,15 +1742,16 @@ export function BubbleSessionPlayScreen() {
     yPercent: number;
   }) => {
     const metrics = playfieldMetricsRef.current;
+    const isCompactPlayfield = metrics.width <= 460;
     const originXPercent = clampPercent(
       event.anchorXPercent + randomBetween(-2.4, 2.4),
-      -8,
-      108,
+      isCompactPlayfield ? 4 : -8,
+      isCompactPlayfield ? 96 : 108,
     );
     const originYPercent = clampPercent(
       event.anchorYPercent + randomBetween(-1.2, 1.2),
-      0,
-      100,
+      isCompactPlayfield ? 14 : 0,
+      isCompactPlayfield ? 86 : 100,
     );
     const originXpx = (metrics.width * originXPercent) / 100;
     const originYpx = (metrics.height * originYPercent) / 100;
@@ -1790,13 +1791,33 @@ export function BubbleSessionPlayScreen() {
       return;
     }
     const now = Date.now();
-    const targetBubble = activePlayBubblesRef.current.find(
-      (bubble) =>
-        bubble.id === bubbleId &&
-        bubble.poppedUntilMs <= now &&
-        bubble.respawnAtMs <= now &&
-        bubble.spawnedUntilMs <= now,
-    );
+    const findEligibleBubble = (candidateId?: number) =>
+      activePlayBubblesRef.current.find(
+        (bubble) =>
+          (candidateId == null || bubble.id === candidateId) &&
+          bubble.poppedUntilMs <= now &&
+          bubble.respawnAtMs <= now &&
+          bubble.spawnedUntilMs <= now,
+      );
+    const targetBubble =
+      findEligibleBubble(bubbleId) ??
+      [...activePlayBubblesRef.current]
+        .filter(
+          (bubble) =>
+            bubble.poppedUntilMs <= now &&
+            bubble.respawnAtMs <= now &&
+            bubble.spawnedUntilMs <= now,
+        )
+        .sort((first, second) => {
+          const firstDistance =
+            Math.abs(first.left - currentEvent.anchorXPercent) +
+            Math.abs(first.top - currentEvent.anchorYPercent);
+          const secondDistance =
+            Math.abs(second.left - currentEvent.anchorXPercent) +
+            Math.abs(second.top - currentEvent.anchorYPercent);
+          return firstDistance - secondDistance;
+        })[0] ??
+      null;
     if (!targetBubble) {
       return;
     }
@@ -1833,19 +1854,36 @@ export function BubbleSessionPlayScreen() {
         bubble.respawnAtMs <= now &&
         bubble.spawnedUntilMs <= now,
     );
-    if (availableTargets.length < 2) {
+    if (availableTargets.length === 0) {
       return false;
     }
 
     const isCompactPlayfield = playfieldMetricsRef.current.width <= 460;
-    const targetCount = Math.min(availableTargets.length, isCompactPlayfield ? 2 : 3);
+    const targetCount = Math.max(
+      1,
+      Math.min(availableTargets.length, isCompactPlayfield ? 2 : 3),
+    );
     const upperPriority = [...availableTargets]
       .sort((first, second) => first.top - second.top)
-      .slice(0, Math.max(targetCount + 1, Math.ceil(availableTargets.length * 0.45)));
+      .slice(
+        0,
+        Math.max(
+          targetCount + 1,
+          Math.ceil(availableTargets.length * (isCompactPlayfield ? 0.62 : 0.45)),
+        ),
+      );
     const targets = upperPriority.slice(0, targetCount);
     if (targets.length === 0) {
       return false;
     }
+    const shotTargetIds = Array.from(
+      {
+        length: isCompactPlayfield
+          ? Math.max(2, targets.length)
+          : Math.max(3, targets.length),
+      },
+      (_, index) => targets[index % targets.length]?.id,
+    ).filter((bubbleId): bubbleId is number => typeof bubbleId === "number");
 
     const helperThemeConfig =
       HELPER_THEME_CONFIG[Math.floor(Math.random() * HELPER_THEME_CONFIG.length)];
@@ -1855,14 +1893,14 @@ export function BubbleSessionPlayScreen() {
       targets.reduce((sum, bubble) => sum + bubble.top, 0) / targets.length;
     const enterFromLeft = Math.random() < 0.5;
     const anchorXPercent = clampPercent(
-      averageLeft + randomBetween(-4, 4),
-      18,
-      82,
+      averageLeft + randomBetween(isCompactPlayfield ? -2.6 : -4, isCompactPlayfield ? 2.6 : 4),
+      isCompactPlayfield ? 24 : 18,
+      isCompactPlayfield ? 76 : 82,
     );
     const anchorYPercent = clampPercent(
-      averageTop - randomBetween(10, 16),
-      16,
-      44,
+      averageTop - randomBetween(isCompactPlayfield ? 6 : 10, isCompactPlayfield ? 10 : 16),
+      isCompactPlayfield ? 24 : 16,
+      isCompactPlayfield ? 58 : 44,
     );
     const eventId = Math.floor(Math.random() * 1_000_000_000);
     const nextEvent: HelperEvent = {
@@ -1873,10 +1911,30 @@ export function BubbleSessionPlayScreen() {
       phase: "entering",
       anchorXPercent,
       anchorYPercent,
-      startXPercent: enterFromLeft ? -14 : 114,
-      startYPercent: clampPercent(anchorYPercent - randomBetween(3, 8), 6, 36),
-      exitXPercent: enterFromLeft ? 114 : -14,
-      exitYPercent: clampPercent(anchorYPercent - randomBetween(6, 10), 4, 34),
+      startXPercent: enterFromLeft
+        ? isCompactPlayfield
+          ? -6
+          : -14
+        : isCompactPlayfield
+          ? 106
+          : 114,
+      startYPercent: clampPercent(
+        anchorYPercent - randomBetween(isCompactPlayfield ? 2 : 3, isCompactPlayfield ? 5 : 8),
+        isCompactPlayfield ? 16 : 6,
+        isCompactPlayfield ? 62 : 36,
+      ),
+      exitXPercent: enterFromLeft
+        ? isCompactPlayfield
+          ? 104
+          : 114
+        : isCompactPlayfield
+          ? -4
+          : -14,
+      exitYPercent: clampPercent(
+        anchorYPercent - randomBetween(isCompactPlayfield ? 3 : 6, isCompactPlayfield ? 6 : 10),
+        isCompactPlayfield ? 14 : 4,
+        isCompactPlayfield ? 54 : 34,
+      ),
       targetBubbleIds: targets.map((bubble) => bubble.id),
     };
 
@@ -1892,9 +1950,9 @@ export function BubbleSessionPlayScreen() {
     }, HELPER_EVENT_ENTER_DURATION_MS);
     helperTimeoutsRef.current.push(enterTimeout);
 
-    targets.forEach((bubble, index) => {
+    shotTargetIds.forEach((targetBubbleId, index) => {
       const shotTimeout = window.setTimeout(() => {
-        fireHelperShot(eventId, bubble.id);
+        fireHelperShot(eventId, targetBubbleId);
       }, HELPER_EVENT_ENTER_DURATION_MS + 160 + index * HELPER_SHOT_INTERVAL_MS);
       helperTimeoutsRef.current.push(shotTimeout);
     });
@@ -2682,7 +2740,7 @@ export function BubbleSessionPlayScreen() {
                   <div
                     ref={playfieldRef}
                     onClick={onPlayfieldTap}
-                    className="absolute"
+                    className="absolute overflow-visible"
                     style={playfieldBoundariesStyle}
                   >
                     <div className="session-current-layer absolute inset-0">

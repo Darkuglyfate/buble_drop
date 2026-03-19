@@ -2062,8 +2062,7 @@ body.glass-strong .bubble {
   }
 
   .session-runtime-shell .session-combo-burst-orbit,
-  .session-runtime-shell .session-fun-overlay-item-label,
-  .session-runtime-shell .session-helper-event-chip {
+  .session-runtime-shell .session-fun-overlay-item-label {
     display: none;
   }
 
@@ -2078,19 +2077,27 @@ body.glass-strong .bubble {
   }
 
   .session-runtime-shell .session-helper-event {
-    width: 4.4rem;
-    height: 2.3rem;
+    width: 5.2rem;
+    height: 2.7rem;
   }
 
   .session-runtime-shell .session-helper-event-trail {
-    width: 2.7rem;
-    filter: blur(7px);
-    opacity: 0.58;
+    width: 3.1rem;
+    filter: blur(8px);
+    opacity: 0.68;
+  }
+
+  .session-runtime-shell .session-helper-event-chip {
+    top: calc(100% + 0.08rem);
+    padding: 0.14rem 0.34rem;
+    font-size: 0.34rem;
+    letter-spacing: 0.1em;
+    opacity: 0.88;
   }
 
   .session-runtime-shell .session-helper-shot-hit {
-    width: 0.78rem;
-    height: 0.78rem;
+    width: 0.92rem;
+    height: 0.92rem;
     box-shadow:
       0 0 0 4px hsla(var(--session-helper-hue, 196), 96%, 82%, 0.06),
       0 0 10px hsla(var(--session-helper-hue, 196), 96%, 76%, 0.16);
@@ -2266,11 +2273,12 @@ body.glass-strong .bubble {
 }
 
 .session-helper-event {
-  z-index: 17;
+  z-index: 22;
   width: 5.2rem;
   height: 2.8rem;
   transform: translate(-50%, -50%);
   transform-origin: center;
+  filter: drop-shadow(0 12px 24px rgba(70, 116, 192, 0.18));
 }
 
 .session-helper-event-trail {
@@ -2435,7 +2443,7 @@ body.glass-strong .bubble {
 }
 
 .session-helper-shot {
-  z-index: 17;
+  z-index: 22;
   height: 0;
   transform-origin: left center;
   animation: sessionHelperShotFade 760ms ease-out forwards;
