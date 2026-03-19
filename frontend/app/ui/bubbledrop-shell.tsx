@@ -2075,13 +2075,7 @@ export function BubbleDropShell() {
               onClick: onBootstrapProfile,
               disabled: !canSyncProfile,
             }
-          : quickSessionHref
-            ? {
-                kind: "link" as const,
-                label: "Tap to play",
-                href: quickSessionHref,
-              }
-            : null;
+          : null;
 
   const dailyCheckInAction = dailyCheckInCompletedToday
     ? {
@@ -2092,6 +2086,24 @@ export function BubbleDropShell() {
         label: isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)",
         disabled: isSubmittingAction,
       };
+
+  const dailyMissionPrimaryAction =
+    profileId && quickSessionHref && dailyCheckInCompletedToday
+      ? {
+          kind: "link" as const,
+          label: "Tap to play",
+          href: quickSessionHref,
+        }
+      : profileId
+        ? {
+            kind: "button" as const,
+            label: dailyCheckInAction.label,
+            disabled: dailyCheckInAction.disabled,
+            onClick: () => {
+              void onDailyCheckIn();
+            },
+          }
+        : null;
 
   const onAnswer = (index: number) => {
     setSelectedOption(index);
@@ -2589,34 +2601,58 @@ export function BubbleDropShell() {
                   showDropRadar ? "grid-cols-[1.2fr_0.8fr]" : "grid-cols-1"
                 }`}
               >
-                <div className="rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
-                    Daily mission
-                  </p>
-                  <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">Today</h3>
-                  <p className="mt-2 text-sm text-[#5f749f]">{dailyMissionHint}</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
-                        Streak
-                      </p>
-                      <p className="mt-1 text-sm font-black text-[#233b67]">{currentStreak}</p>
-                    </div>
-                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
-                        XP
-                      </p>
-                      <p className="mt-1 text-sm font-black text-[#233b67]">{totalXp}</p>
-                    </div>
-                    <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
-                      <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
-                        Rare
-                      </p>
-                      <p className="mt-1 text-sm font-black text-[#233b67]">
-                        {isRareRewardAccessActive ? "On" : "Off"}
-                      </p>
+                <div
+                  data-testid="daily-mission-card"
+                  className="flex min-h-[18rem] flex-col justify-between rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]"
+                >
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
+                      Daily mission
+                    </p>
+                    <h3 className="mt-2 text-base font-black tracking-[-0.03em] text-[#20365d]">Today</h3>
+                    <p className="mt-2 text-sm text-[#5f749f]">{dailyMissionHint}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                        <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
+                          Streak
+                        </p>
+                        <p className="mt-1 text-sm font-black text-[#233b67]">{currentStreak}</p>
+                      </div>
+                      <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                        <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
+                          XP
+                        </p>
+                        <p className="mt-1 text-sm font-black text-[#233b67]">{totalXp}</p>
+                      </div>
+                      <div className="min-w-0 rounded-xl bg-white/72 px-2 py-2 text-center">
+                        <p className="block truncate text-[8px] leading-none uppercase tracking-[0.02em] text-[#7b8fb8]">
+                          Rare
+                        </p>
+                        <p className="mt-1 text-sm font-black text-[#233b67]">
+                          {isRareRewardAccessActive ? "On" : "Off"}
+                        </p>
+                      </div>
                     </div>
                   </div>
+                  {dailyMissionPrimaryAction?.kind === "link" ? (
+                    <Link
+                      href={dailyMissionPrimaryAction.href}
+                      className="gloss-pill mt-5 block rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-center text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)]"
+                    >
+                      {dailyMissionPrimaryAction.label}
+                    </Link>
+                  ) : dailyMissionPrimaryAction ? (
+                    <button
+                      type="button"
+                      onClick={dailyMissionPrimaryAction.onClick}
+                      disabled={dailyMissionPrimaryAction.disabled}
+                      className="gloss-pill mt-5 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
+                    >
+                      {dailyMissionPrimaryAction.label}
+                    </button>
+                  ) : (
+                    <div className="mt-5 h-[3.625rem]" aria-hidden="true" />
+                  )}
                 </div>
 
                 {showDropRadar ? (
@@ -2769,32 +2805,11 @@ export function BubbleDropShell() {
                   </p>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (dailyCheckInAction.disabled) {
-                      return;
-                    }
-                    void onDailyCheckIn();
-                  }}
-                  disabled={dailyCheckInAction.disabled}
-                  className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
-                >
-                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
-                    Base check-in
-                  </span>
-                  <span className="mt-1 block">{dailyCheckInAction.label}</span>
-                  <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                    {dailyCheckInCompletedToday
-                      ? "Daily mission landed."
-                      : "Mark today before your run."}
-                  </span>
-                </button>
-
-
-
-
-
+                {!effectiveIsConnected ? (
+                  <div className="mt-5 rounded-[1.1rem] border border-white/40 bg-white/35 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
+                    Daily mission unlocks after wallet connection and profile setup.
+                  </div>
+                ) : null}
                 {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button
                     type="button"

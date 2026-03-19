@@ -540,12 +540,13 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
+  const dailyMissionCard = page.getByTestId("daily-mission-card");
   await expect(page.getByText("Signed in")).toBeVisible();
   await expect(page.getByText("0x1000...0001")).toBeVisible();
   await expect(page.getByText("Season chance live")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tap to play" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "Tap to play" })).toHaveCount(0);
+  await expect(dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
+  await expect(dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tokens" })).toBeVisible();
 });
@@ -585,11 +586,12 @@ test("runs daily check-in and shows refreshed summary state", async ({
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
-  await page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
+  const dailyMissionCard = page.getByTestId("daily-mission-card");
+  await dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Daily check-in complete" })).toBeDisabled();
-  await expect(page.getByRole("link", { name: "Tap to play" })).toBeVisible();
+  await expect(dailyMissionCard.getByRole("link", { name: "Tap to play" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tap to play" })).toHaveCount(1);
 });
 
 test("completes session and reveals confirmed season progress", async ({
