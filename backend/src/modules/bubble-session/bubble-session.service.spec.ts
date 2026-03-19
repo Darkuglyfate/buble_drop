@@ -9,7 +9,6 @@ import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
 import { RedisService } from '../../redis/redis.service';
-import { RareRewardService } from '../rewards/rare-reward.service';
 import { XpService } from '../rewards/xp.service';
 import { BubbleSession } from './entities/bubble-session.entity';
 import { BubbleSessionService } from './bubble-session.service';
@@ -23,8 +22,10 @@ describe('BubbleSessionService', () => {
   let sessionRepository: MockRepository<BubbleSession>;
   let profileRepository: MockRepository<Profile>;
   let xpService: { grantXp: jest.Mock };
-  let qualificationService: { evaluateProgress: jest.Mock };
-  let rareRewardService: { issueSessionRareRewards: jest.Mock };
+  let qualificationService: {
+    evaluateProgress: jest.Mock;
+    getSeasonProgress: jest.Mock;
+  };
   let redisService: {
     getClient: jest.Mock;
   };
@@ -53,17 +54,15 @@ describe('BubbleSessionService', () => {
         qualificationStatus: QualificationStatus.IN_PROGRESS,
         rareRewardAccessActive: false,
       }),
-    };
-    rareRewardService = {
-      issueSessionRareRewards: jest.fn().mockResolvedValue({
-        tokenSymbolAwarded: null,
-        tokenAmountAwarded: '0',
-        weeklyTicketsIssued: 0,
-        nftIdsAwarded: [],
-        cosmeticIdsAwarded: [],
-        tokenReward: null,
-        nftRewards: [],
-        cosmeticRewards: [],
+      getSeasonProgress: jest.fn().mockResolvedValue({
+        qualificationStatus: QualificationStatus.IN_PROGRESS,
+        eligibleAtSeasonEnd: false,
+        streak: 0,
+        xp: 0,
+        activeSessions: 0,
+        requiredStreak: 5,
+        requiredXp: 300,
+        requiredActiveSessions: 4,
       }),
     };
     redisClient = {
@@ -86,7 +85,6 @@ describe('BubbleSessionService', () => {
         { provide: getRepositoryToken(Profile), useValue: profileRepository },
         { provide: XpService, useValue: xpService },
         { provide: QualificationService, useValue: qualificationService },
-        { provide: RareRewardService, useValue: rareRewardService },
         { provide: RedisService, useValue: redisService },
       ],
     }).compile();
@@ -167,6 +165,16 @@ describe('BubbleSessionService', () => {
     expect(result.activeSeconds).toBe(360);
     expect(xpService.grantXp).toHaveBeenCalled();
     expect(result.qualificationStatus).toBe(QualificationStatus.IN_PROGRESS);
+    expect(result.seasonProgress).toEqual({
+      qualificationStatus: QualificationStatus.IN_PROGRESS,
+      eligibleAtSeasonEnd: false,
+      streak: 0,
+      xp: 0,
+      activeSessions: 0,
+      requiredStreak: 5,
+      requiredXp: 300,
+      requiredActiveSessions: 4,
+    });
     expect(result.rareRewardOutcome).toEqual({
       tokenSymbolAwarded: null,
       tokenAmountAwarded: '0',
@@ -177,11 +185,8 @@ describe('BubbleSessionService', () => {
       nftRewards: [],
       cosmeticRewards: [],
     });
-    expect(rareRewardService.issueSessionRareRewards).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rareRewardAccessActive: false,
-        isCompletionEligible: true,
-      }),
+    expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
     );
   });
 
@@ -225,15 +230,12 @@ describe('BubbleSessionService', () => {
     expect(result.totalXp).toBe(80);
     expect(xpService.grantXp).toHaveBeenCalled();
     expect(result.qualificationStatus).toBe(QualificationStatus.IN_PROGRESS);
-    expect(rareRewardService.issueSessionRareRewards).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rareRewardAccessActive: false,
-        isCompletionEligible: false,
-      }),
+    expect(result.seasonProgress.qualificationStatus).toBe(
+      QualificationStatus.IN_PROGRESS,
     );
   });
 
-  it('passes active rare reward access to reward runtime', async () => {
+  it('returns active rare reward access and season progress when qualified', async () => {
     const startedAt = new Date(Date.now() - 600_000);
     redisClient.zrange.mockResolvedValue(
       Array.from({ length: 25 }, (_, index) =>
@@ -243,6 +245,16 @@ describe('BubbleSessionService', () => {
     qualificationService.evaluateProgress.mockResolvedValue({
       qualificationStatus: QualificationStatus.QUALIFIED,
       rareRewardAccessActive: true,
+    });
+    qualificationService.getSeasonProgress.mockResolvedValue({
+      qualificationStatus: QualificationStatus.QUALIFIED,
+      eligibleAtSeasonEnd: true,
+      streak: 6,
+      xp: 320,
+      activeSessions: 4,
+      requiredStreak: 5,
+      requiredXp: 300,
+      requiredActiveSessions: 4,
     });
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
@@ -278,11 +290,8 @@ describe('BubbleSessionService', () => {
       300,
     );
 
-    expect(rareRewardService.issueSessionRareRewards).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rareRewardAccessActive: true,
-        isCompletionEligible: true,
-      }),
+    expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
     );
   });
 

@@ -10,7 +10,6 @@ import { DataSource, Repository } from 'typeorm';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
 import { Profile } from '../profile/entities/profile.entity';
 import { UserWallet } from '../profile/entities/user-wallet.entity';
-import { QualificationService } from '../qualification/qualification.service';
 import { ClaimableTokenBalance } from './entities/claimable-token-balance.entity';
 import { TokenClaim, TokenClaimStatus } from './entities/token-claim.entity';
 import { ClaimService } from './claim.service';
@@ -37,7 +36,6 @@ describe('ClaimService', () => {
   let partnerTokenRepository: MockRepository<PartnerToken>;
   let claimableRepository: MockRepository<ClaimableTokenBalance>;
   let tokenClaimRepository: MockRepository<TokenClaim>;
-  let qualificationService: { evaluateProgress: jest.Mock };
   let payoutService: { processPendingPayout: jest.Mock };
   let dataSource: { transaction: jest.Mock };
 
@@ -68,12 +66,6 @@ describe('ClaimService', () => {
       find: jest.fn(),
     };
     tokenClaimRepository = {};
-    qualificationService = {
-      evaluateProgress: jest.fn().mockResolvedValue({
-        qualificationStatus: 'qualified',
-        rareRewardAccessActive: true,
-      }),
-    };
     payoutService = {
       processPendingPayout: jest.fn(),
     };
@@ -102,7 +94,6 @@ describe('ClaimService', () => {
           provide: getRepositoryToken(TokenClaim),
           useValue: tokenClaimRepository,
         },
-        { provide: QualificationService, useValue: qualificationService },
         { provide: RewardWalletPayoutService, useValue: payoutService },
       ],
     }).compile();
@@ -351,30 +342,6 @@ describe('ClaimService', () => {
     expect(managerState.claim?.processedAt).toBeInstanceOf(Date);
   });
 
-  it('rejects claim requests when rare reward access is inactive', async () => {
-    profileRepository.findOne!.mockResolvedValue({
-      id: '11111111-1111-4111-8111-111111111111',
-      walletId: 'wallet-1',
-      nickname: 'ready',
-      currentAvatarId: 'avatar-1',
-      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
-    });
-    qualificationService.evaluateProgress.mockResolvedValue({
-      qualificationStatus: 'paused',
-      rareRewardAccessActive: false,
-    });
-
-    await expect(
-      service.createTokenClaim({
-        profileId: '11111111-1111-4111-8111-111111111111',
-        tokenSymbol: 'BBB',
-        amount: '1',
-      }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(dataSource.transaction).not.toHaveBeenCalled();
-    expect(payoutService.processPendingPayout).not.toHaveBeenCalled();
-  });
-
   it('rejects claim requests when onboarding is incomplete', async () => {
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
@@ -391,7 +358,6 @@ describe('ClaimService', () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
-    expect(qualificationService.evaluateProgress).not.toHaveBeenCalled();
     expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(payoutService.processPendingPayout).not.toHaveBeenCalled();
   });

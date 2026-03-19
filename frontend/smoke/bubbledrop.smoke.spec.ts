@@ -7,6 +7,7 @@ const onboardingProfileId = "20000000-0000-4000-8000-000000000099";
 const claimGatedProfileId = "20000000-0000-4000-8000-000000000055";
 const starterAvatarId = "avatar-starter-blue";
 const tokenId = "token-bubl";
+const todayDateKey = new Date().toISOString().slice(0, 10);
 
 type SummaryOverrides = Partial<{
   needsOnboarding: boolean;
@@ -208,7 +209,7 @@ async function mockBubbleDropApi(page: Page) {
       await route.fulfill({
         json: {
           success: true,
-          checkInDate: "2026-03-15",
+          checkInDate: todayDateKey,
           xpAwarded: 20,
           newStreak: state.currentStreak,
           rareAccessActive: true,
@@ -542,6 +543,7 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await expect(page.getByText("Signed in")).toBeVisible();
   await expect(page.getByText("0x1000...0001")).toBeVisible();
   await expect(page.getByText("Season chance live")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Tap to play" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
@@ -586,6 +588,8 @@ test("runs daily check-in and shows refreshed summary state", async ({
   await page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Daily check-in complete" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Tap to play" })).toBeVisible();
 });
 
 test("completes session and reveals confirmed season progress", async ({

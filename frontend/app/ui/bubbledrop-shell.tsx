@@ -1892,25 +1892,11 @@ export function BubbleDropShell() {
     "Pop bubbles in runs, check in daily to grow your streak, and build your season-end reward chance. Your first move: connect your wallet, sign in, and mark the day on Base.";
   let heroAccentClass =
     "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
-  let primaryActionLabel = "Sign in with Base";
-  let primaryActionDisabled = false;
-  let primaryActionHandler: () => void = onConnectWallet;
-  let primaryActionHref: string | null = null;
-  let primaryActionKind: "button" | "link" = "button";
-  let secondaryHeroActionLabel: string | null = null;
-  let secondaryHeroActionDisabled = false;
-  let secondaryHeroActionHandler: (() => void) | null = null;
+  const secondaryHeroActionLabel: string | null = null;
+  const secondaryHeroActionDisabled = false;
+  const secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
-  let showHeroSection = true;
-  const awaitingProfileCreationOnly =
-    !profileId &&
-    effectiveIsConnected &&
-    isConnectedToBase &&
-    Boolean(authenticatedSessionToken);
-  const signInOnlyOnProfileCard =
-    effectiveIsConnected &&
-    isConnectedToBase &&
-    !authenticatedSessionToken;
+  const showHeroSection = true;
   const dailyMissionHint = isFirstEntry
     ? "Finish onboarding first."
     : isRareRewardAccessActive
@@ -1998,20 +1984,12 @@ export function BubbleDropShell() {
     heroTitle = "Start here — then play, streak, earn.";
     heroBody =
       "Pop bubbles in runs, check in daily to grow your streak, and build your season-end reward chance. Your first move: connect your wallet, sign in, and mark the day on Base.";
-    primaryActionLabel = "Sign in with Base";
-    primaryActionHandler = onConnectWallet;
-    primaryActionKind = "button";
-    primaryActionHref = null;
   } else if (effectiveIsConnected && !isConnectedToBase) {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
     heroAccentClass =
       "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
-    primaryActionLabel = "Switch to Base";
-    primaryActionHandler = onSwitchToBase;
-    primaryActionKind = "button";
-    primaryActionHref = null;
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
@@ -2020,10 +1998,6 @@ export function BubbleDropShell() {
       "Use the Sign in with Base button on your Player profile card above — only place to sign in.";
     heroAccentClass =
       "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
-    primaryActionLabel = "Sign in with Base";
-    primaryActionHandler = onSignInWithBase;
-    primaryActionKind = "button";
-    primaryActionHref = null;
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
@@ -2031,10 +2005,6 @@ export function BubbleDropShell() {
     heroBody = "Create your player profile.";
     heroAccentClass =
       "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
-    primaryActionLabel = "Sync profile";
-    primaryActionHandler = onBootstrapProfile;
-    primaryActionKind = "button";
-    primaryActionHref = null;
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
@@ -2042,10 +2012,6 @@ export function BubbleDropShell() {
     heroBody = "Updating profile state...";
     heroAccentClass =
       "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
-    primaryActionLabel = "Refresh profile";
-    primaryActionHandler = onRefreshProfile;
-    primaryActionKind = "button";
-    primaryActionHref = null;
     heroPortalCopy = "Glow calibrating";
   } else if (!dailyCheckInCompletedToday) {
     /* ARRIVAL: ежедневный check-in на Base (газ), пока визит не отмечен */
@@ -2055,13 +2021,6 @@ export function BubbleDropShell() {
       "Daily check-in is an on-chain tap — small gas on Base, +XP and streak. Do it once per day.";
     heroAccentClass =
       "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
-    primaryActionLabel = isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)";
-    primaryActionHandler = () => {
-      void onDailyCheckIn();
-    };
-    primaryActionKind = "button";
-    primaryActionHref = null;
-    primaryActionDisabled = isSubmittingAction;
     heroPortalCopy = "Base check-in";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Season paused";
@@ -2069,10 +2028,6 @@ export function BubbleDropShell() {
     heroBody = "Check in again, rebuild momentum, and return to active runs.";
     heroAccentClass =
       "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
-    primaryActionLabel = "Enter a warm-up run";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
-    primaryActionDisabled = false;
     heroPortalCopy = "Season lane resting";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
@@ -2080,10 +2035,6 @@ export function BubbleDropShell() {
     heroBody = "Season-end reward chance is active today. Keep the streak alive and keep earning XP.";
     heroAccentClass =
       "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
-    primaryActionLabel = "Tap to play";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
-    primaryActionDisabled = false;
     heroPortalCopy = "Season lane live";
   } else if (!isRareRewardAccessActive) {
     heroStatusLabel = "Season build";
@@ -2091,10 +2042,6 @@ export function BubbleDropShell() {
     heroBody = "XP progress is active. Keep the streak alive and bank more active-play XP.";
     heroAccentClass =
       "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
-    primaryActionLabel = "Tap to play";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
-    primaryActionDisabled = false;
     heroPortalCopy = "XP lane open";
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
@@ -2102,12 +2049,49 @@ export function BubbleDropShell() {
     heroBody = "Open the bubble session when you're ready.";
     heroAccentClass =
       "from-[#b7f0ff]/95 via-[#d8dcff]/92 to-[#ffe0f0]/92 text-[#173056]";
-    primaryActionLabel = "Tap to play";
-    primaryActionKind = "link";
-    primaryActionHref = quickSessionHref;
-    primaryActionDisabled = false;
     heroPortalCopy = "Play portal ready";
   }
+
+  const profilePrimaryAction = !effectiveIsConnected
+    ? null
+    : !isConnectedToBase
+      ? {
+          kind: "button" as const,
+          label: "Switch to Base",
+          onClick: onSwitchToBase,
+          disabled: isWalletFlowBusy || isSubmittingAction,
+        }
+      : !authenticatedSessionToken
+        ? {
+            kind: "button" as const,
+            label: isSigningInWithBase ? "Signing in…" : "Sign in with Base",
+            onClick: onSignInWithBase,
+            disabled: isWalletFlowBusy || isSubmittingAction,
+          }
+        : !profileId
+          ? {
+              kind: "button" as const,
+              label: "Sync profile",
+              onClick: onBootstrapProfile,
+              disabled: !canSyncProfile,
+            }
+          : quickSessionHref
+            ? {
+                kind: "link" as const,
+                label: "Tap to play",
+                href: quickSessionHref,
+              }
+            : null;
+
+  const dailyCheckInAction = dailyCheckInCompletedToday
+    ? {
+        label: "Daily check-in complete",
+        disabled: true,
+      }
+    : {
+        label: isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)",
+        disabled: isSubmittingAction,
+      };
 
   const onAnswer = (index: number) => {
     setSelectedOption(index);
@@ -2544,14 +2528,21 @@ export function BubbleDropShell() {
                 ) : null}
               </div>
 
-              {signInOnlyOnProfileCard ? (
+              {profilePrimaryAction?.kind === "link" && profilePrimaryAction.href ? (
+                <Link
+                  href={profilePrimaryAction.href}
+                  className="gloss-pill mt-4 block w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-center text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)]"
+                >
+                  {profilePrimaryAction.label}
+                </Link>
+              ) : profilePrimaryAction ? (
                 <button
                   type="button"
-                  onClick={onSignInWithBase}
-                  disabled={isWalletFlowBusy || isSubmittingAction}
+                  onClick={profilePrimaryAction.onClick}
+                  disabled={profilePrimaryAction.disabled}
                   className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
                 >
-                  {isSigningInWithBase ? "Signing in…" : "Sign in with Base"}
+                  {profilePrimaryAction.label}
                 </button>
               ) : null}
 
@@ -2766,52 +2757,43 @@ export function BubbleDropShell() {
                   ))}
                 </div>
 
-                {signInOnlyOnProfileCard ? (
-                  <p className="mt-5 rounded-[1.2rem] border border-white/45 bg-white/45 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
-                    <strong className="text-[#1f3561]">Sign in with Base</strong> is only on your{" "}
-                    <strong>Player profile</strong> card above — scroll up and tap it there.
-                  </p>
-                ) : !effectiveIsConnected ? (
+                {!effectiveIsConnected ? (
                   <p className="mt-5 rounded-[1.1rem] border border-white/40 bg-white/35 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
                     <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-[#5d729d]">
                       Do this next
                     </span>
                     <span className="mt-2 block">
-                      Connect your wallet first, then continue through{" "}
-                      <strong className="text-[#1f3561]">Daily mission</strong> to open your profile.
+                      Connect your wallet first, then use the{" "}
+                      <strong className="text-[#1f3561]">profile card</strong> action above to sign in.
                     </span>
                   </p>
                 ) : null}
 
-                {signInOnlyOnProfileCard ? null : primaryActionKind === "link" && primaryActionHref ? (
-                  <Link
-                    href={primaryActionHref}
-                    className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"
-                  >
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
-                      {heroPortalCopy}
-                    </span>
-                    <span className="mt-1 block">{primaryActionLabel}</span>
-                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Tap to continue.
-                    </span>
-                  </Link>
-                ) : signInOnlyOnProfileCard ? null : (
-                  <button
-                    type="button"
-                    onClick={primaryActionHandler}
-                    disabled={primaryActionDisabled}
-                    className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
-                  >
-                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
-                      {heroPortalCopy}
-                    </span>
-                    <span className="mt-1 block">{primaryActionLabel}</span>
-                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
-                      Tap to continue.
-                    </span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (dailyCheckInAction.disabled) {
+                      return;
+                    }
+                    void onDailyCheckIn();
+                  }}
+                  disabled={dailyCheckInAction.disabled}
+                  className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
+                >
+                  <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
+                    Base check-in
+                  </span>
+                  <span className="mt-1 block">{dailyCheckInAction.label}</span>
+                  <span className="mt-1 block text-sm font-medium text-[#63789f]">
+                    {dailyCheckInCompletedToday
+                      ? "Daily mission landed."
+                      : "Mark today before your run."}
+                  </span>
+                </button>
+
+
+
+
 
                 {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button
