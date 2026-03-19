@@ -2087,8 +2087,10 @@ export function BubbleDropShell() {
         disabled: isSubmittingAction,
       };
 
+  const hasEnteredBubbleDropApp = Boolean(authenticatedSessionToken && profileId);
+
   const dailyMissionPrimaryAction =
-    profileId && quickSessionHref
+    hasEnteredBubbleDropApp && quickSessionHref
       ? {
           kind: "link" as const,
           label: "Tap to play",
@@ -2096,7 +2098,7 @@ export function BubbleDropShell() {
         }
       : null;
 
-  const dailyCheckInCardAction = profileId
+  const dailyCheckInCardAction = hasEnteredBubbleDropApp
     ? {
         label: dailyCheckInAction.label,
         disabled: dailyCheckInAction.disabled,
@@ -2635,15 +2637,6 @@ export function BubbleDropShell() {
                     >
                       {dailyMissionPrimaryAction.label}
                     </Link>
-                  ) : dailyMissionPrimaryAction ? (
-                    <button
-                      type="button"
-                      onClick={dailyMissionPrimaryAction.onClick}
-                      disabled={dailyMissionPrimaryAction.disabled}
-                      className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
-                    >
-                      {dailyMissionPrimaryAction.label}
-                    </button>
                   ) : (
                     <div className="mt-4 h-[3.625rem]" aria-hidden="true" />
                   )}
@@ -2864,7 +2857,7 @@ export function BubbleDropShell() {
               </section>
             ) : null}
 
-            {profileId ? (
+            {hasEnteredBubbleDropApp ? (
               <section
                 data-testid="daily-checkin-card"
                 className="bubble-card overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(245,251,255,0.76))] p-5 shadow-[0_18px_38px_rgba(109,145,219,0.12)]"
