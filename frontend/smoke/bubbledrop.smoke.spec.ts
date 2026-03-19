@@ -541,12 +541,13 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   );
 
   const dailyMissionCard = page.getByTestId("daily-mission-card");
-  await expect(page.getByText("Signed in")).toBeVisible();
+  const dailyCheckInCard = page.getByTestId("daily-checkin-card");
   await expect(page.getByText("0x1000...0001")).toBeVisible();
-  await expect(page.getByText("Season chance live")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tap to play" })).toHaveCount(0);
-  await expect(dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
-  await expect(dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
+  await expect(page.getByText("Daily mission")).toBeVisible();
+  await expect(dailyCheckInCard.getByText("Daily Check-in", { exact: true })).toBeVisible();
+  await expect(dailyMissionCard.getByRole("link", { name: "Tap to play" })).toBeVisible();
+  await expect(dailyCheckInCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
+  await expect(dailyCheckInCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tokens" })).toBeVisible();
 });
@@ -587,11 +588,12 @@ test("runs daily check-in and shows refreshed summary state", async ({
   );
 
   const dailyMissionCard = page.getByTestId("daily-mission-card");
-  await dailyMissionCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
+  const dailyCheckInCard = page.getByTestId("daily-checkin-card");
+  await dailyCheckInCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
   await expect(dailyMissionCard.getByRole("link", { name: "Tap to play" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tap to play" })).toHaveCount(1);
+  await expect(dailyCheckInCard.getByRole("button", { name: "Daily check-in complete" })).toBeDisabled();
 });
 
 test("completes session and reveals confirmed season progress", async ({

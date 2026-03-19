@@ -2088,22 +2088,23 @@ export function BubbleDropShell() {
       };
 
   const dailyMissionPrimaryAction =
-    profileId && quickSessionHref && dailyCheckInCompletedToday
+    profileId && quickSessionHref
       ? {
           kind: "link" as const,
           label: "Tap to play",
           href: quickSessionHref,
         }
-      : profileId
-        ? {
-            kind: "button" as const,
-            label: dailyCheckInAction.label,
-            disabled: dailyCheckInAction.disabled,
-            onClick: () => {
-              void onDailyCheckIn();
-            },
-          }
-        : null;
+      : null;
+
+  const dailyCheckInCardAction = profileId
+    ? {
+        label: dailyCheckInAction.label,
+        disabled: dailyCheckInAction.disabled,
+        onClick: () => {
+          void onDailyCheckIn();
+        },
+      }
+    : null;
 
   const onAnswer = (index: number) => {
     setSelectedOption(index);
@@ -2715,7 +2716,7 @@ export function BubbleDropShell() {
 
             {showFullBubbleDropMenu ? (
             <>
-            {showHeroSection ? (
+            {showHeroSection && !profileId ? (
               <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
               <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
               <div className="absolute -bottom-12 left-0 h-32 w-32 rounded-full bg-white/20 blur-3xl" />
@@ -2797,12 +2798,6 @@ export function BubbleDropShell() {
                     </span>
                   </p>
                 ) : null}
-
-                {!effectiveIsConnected ? (
-                  <div className="mt-5 rounded-[1.1rem] border border-white/40 bg-white/35 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
-                    Daily mission unlocks after wallet connection and profile setup.
-                  </div>
-                ) : null}
                 {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button
                     type="button"
@@ -2866,6 +2861,35 @@ export function BubbleDropShell() {
                   </div>
                 ) : null}
               </div>
+              </section>
+            ) : null}
+
+            {profileId ? (
+              <section
+                data-testid="daily-checkin-card"
+                className="bubble-card overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(245,251,255,0.76))] p-5 shadow-[0_18px_38px_rgba(109,145,219,0.12)]"
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
+                  Daily Check-in
+                </p>
+                <h2 className="mt-3 max-w-[18rem] text-[2rem] font-black leading-[0.98] tracking-[-0.05em] text-[#20365d]">
+                  Mark today in Base
+                </h2>
+                <p className="mt-3 max-w-[24rem] text-sm leading-6 text-[#5f749f]">
+                  Use this separate button to mark the day before your run.
+                </p>
+                {dailyCheckInCardAction ? (
+                  <button
+                    type="button"
+                    onClick={dailyCheckInCardAction.onClick}
+                    disabled={dailyCheckInCardAction.disabled}
+                    className="gloss-pill mt-6 w-full rounded-xl bg-gradient-to-r from-[#d7f5ff] via-[#dbe6ff] to-[#d8d2ff] px-4 py-4 text-center text-base font-black text-[#51688f] shadow-[0_12px_28px_rgba(72,105,175,0.12)] disabled:opacity-100"
+                  >
+                    {dailyCheckInCardAction.label}
+                  </button>
+                ) : (
+                  <div className="mt-6 h-[3.875rem]" aria-hidden="true" />
+                )}
               </section>
             ) : null}
 
