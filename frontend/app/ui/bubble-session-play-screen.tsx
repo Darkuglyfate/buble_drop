@@ -1889,17 +1889,78 @@ export function BubbleSessionPlayScreen() {
       targets.reduce((sum, bubble) => sum + bubble.left, 0) / targets.length;
     const averageTop =
       targets.reduce((sum, bubble) => sum + bubble.top, 0) / targets.length;
-    const enterFromLeft = Math.random() < 0.5;
     const anchorXPercent = clampPercent(
-      averageLeft + randomBetween(isCompactPlayfield ? -2.6 : -4, isCompactPlayfield ? 2.6 : 4),
-      isCompactPlayfield ? 24 : 18,
-      isCompactPlayfield ? 76 : 82,
+      averageLeft + randomBetween(isCompactPlayfield ? -4.8 : -7.5, isCompactPlayfield ? 4.8 : 7.5),
+      isCompactPlayfield ? 20 : 16,
+      isCompactPlayfield ? 80 : 84,
     );
     const anchorYPercent = clampPercent(
-      averageTop - randomBetween(isCompactPlayfield ? 6 : 10, isCompactPlayfield ? 10 : 16),
-      isCompactPlayfield ? 24 : 16,
-      isCompactPlayfield ? 58 : 44,
+      averageTop - randomBetween(isCompactPlayfield ? 7 : 11, isCompactPlayfield ? 14 : 20),
+      isCompactPlayfield ? 20 : 14,
+      isCompactPlayfield ? 62 : 50,
     );
+    const helperFlightPattern = (() => {
+      const leftEdge = isCompactPlayfield ? -14 : -22;
+      const rightEdge = isCompactPlayfield ? 114 : 122;
+      const topEdge = isCompactPlayfield ? -12 : -18;
+      const leftSweepStartY = clampPercent(
+        anchorYPercent - randomBetween(isCompactPlayfield ? 2 : 4, isCompactPlayfield ? 8 : 14),
+        isCompactPlayfield ? 14 : 8,
+        isCompactPlayfield ? 70 : 58,
+      );
+      const rightSweepStartY = clampPercent(
+        anchorYPercent - randomBetween(isCompactPlayfield ? 1 : 3, isCompactPlayfield ? 7 : 13),
+        isCompactPlayfield ? 14 : 8,
+        isCompactPlayfield ? 70 : 58,
+      );
+      const exitHighY = clampPercent(
+        anchorYPercent - randomBetween(isCompactPlayfield ? 8 : 12, isCompactPlayfield ? 16 : 24),
+        isCompactPlayfield ? 8 : 2,
+        isCompactPlayfield ? 48 : 34,
+      );
+      const exitLowY = clampPercent(
+        anchorYPercent + randomBetween(isCompactPlayfield ? 4 : 6, isCompactPlayfield ? 10 : 16),
+        isCompactPlayfield ? 34 : 26,
+        isCompactPlayfield ? 80 : 74,
+      );
+
+      const patterns = [
+        {
+          startXPercent: leftEdge,
+          startYPercent: leftSweepStartY,
+          exitXPercent: rightEdge,
+          exitYPercent: exitHighY,
+        },
+        {
+          startXPercent: rightEdge,
+          startYPercent: rightSweepStartY,
+          exitXPercent: leftEdge,
+          exitYPercent: exitHighY,
+        },
+        {
+          startXPercent: clampPercent(
+            anchorXPercent - randomBetween(isCompactPlayfield ? 16 : 24, isCompactPlayfield ? 26 : 36),
+            leftEdge,
+            isCompactPlayfield ? 30 : 26,
+          ),
+          startYPercent: topEdge,
+          exitXPercent: rightEdge,
+          exitYPercent: exitLowY,
+        },
+        {
+          startXPercent: clampPercent(
+            anchorXPercent + randomBetween(isCompactPlayfield ? 16 : 24, isCompactPlayfield ? 26 : 36),
+            isCompactPlayfield ? 70 : 74,
+            rightEdge,
+          ),
+          startYPercent: topEdge,
+          exitXPercent: leftEdge,
+          exitYPercent: exitLowY,
+        },
+      ] as const;
+
+      return patterns[Math.floor(Math.random() * patterns.length)];
+    })();
     const eventId = Math.floor(Math.random() * 1_000_000_000);
     const nextEvent: HelperEvent = {
       id: eventId,
@@ -1909,30 +1970,10 @@ export function BubbleSessionPlayScreen() {
       phase: "entering",
       anchorXPercent,
       anchorYPercent,
-      startXPercent: enterFromLeft
-        ? isCompactPlayfield
-          ? -6
-          : -14
-        : isCompactPlayfield
-          ? 106
-          : 114,
-      startYPercent: clampPercent(
-        anchorYPercent - randomBetween(isCompactPlayfield ? 2 : 3, isCompactPlayfield ? 5 : 8),
-        isCompactPlayfield ? 16 : 6,
-        isCompactPlayfield ? 62 : 36,
-      ),
-      exitXPercent: enterFromLeft
-        ? isCompactPlayfield
-          ? 104
-          : 114
-        : isCompactPlayfield
-          ? -4
-          : -14,
-      exitYPercent: clampPercent(
-        anchorYPercent - randomBetween(isCompactPlayfield ? 3 : 6, isCompactPlayfield ? 6 : 10),
-        isCompactPlayfield ? 14 : 4,
-        isCompactPlayfield ? 54 : 34,
-      ),
+      startXPercent: helperFlightPattern.startXPercent,
+      startYPercent: helperFlightPattern.startYPercent,
+      exitXPercent: helperFlightPattern.exitXPercent,
+      exitYPercent: helperFlightPattern.exitYPercent,
       targetBubbleIds: targets.map((bubble) => bubble.id),
     };
 
@@ -2859,30 +2900,55 @@ export function BubbleSessionPlayScreen() {
                           );
                         })()
                       ))}
-                      {helperEvent ? (
-                        <div
-                          className={`session-helper-event session-helper-event-${helperEvent.theme} session-helper-event-${helperEvent.phase} pointer-events-none absolute`}
-                          style={{
-                            left: `${helperEvent.anchorXPercent}%`,
-                            top: `${helperEvent.anchorYPercent}%`,
-                            "--session-helper-enter-x": `${helperEvent.startXPercent - helperEvent.anchorXPercent}%`,
-                            "--session-helper-enter-y": `${helperEvent.startYPercent - helperEvent.anchorYPercent}%`,
-                            "--session-helper-exit-x": `${helperEvent.exitXPercent - helperEvent.anchorXPercent}%`,
-                            "--session-helper-exit-y": `${helperEvent.exitYPercent - helperEvent.anchorYPercent}%`,
-                            "--session-helper-hue": `${helperEvent.accentHue}`,
-                          } as CSSProperties}
-                          aria-hidden="true"
-                        >
-                          <span className="session-helper-event-trail" />
-                          <span className="session-helper-event-body">
-                            <span className="session-helper-event-core" />
-                            <span className="session-helper-event-wing session-helper-event-wing-a" />
-                            <span className="session-helper-event-wing session-helper-event-wing-b" />
-                            <span className="session-helper-event-glow" />
-                          </span>
-                          <span className="session-helper-event-chip">{helperEvent.label}</span>
-                        </div>
-                      ) : null}
+                      {helperEvent
+                        ? (() => {
+                            const playfieldMetrics = playfieldMetricsRef.current;
+                            const enterOffsetXPx =
+                              ((helperEvent.startXPercent - helperEvent.anchorXPercent) / 100) *
+                              playfieldMetrics.width;
+                            const enterOffsetYPx =
+                              ((helperEvent.startYPercent - helperEvent.anchorYPercent) / 100) *
+                              playfieldMetrics.height;
+                            const exitOffsetXPx =
+                              ((helperEvent.exitXPercent - helperEvent.anchorXPercent) / 100) *
+                              playfieldMetrics.width;
+                            const exitOffsetYPx =
+                              ((helperEvent.exitYPercent - helperEvent.anchorYPercent) / 100) *
+                              playfieldMetrics.height;
+                            const enteringFromLeft =
+                              helperEvent.startXPercent <= helperEvent.anchorXPercent;
+                            return (
+                              <div
+                                className={`session-helper-event session-helper-event-${helperEvent.theme} session-helper-event-${helperEvent.phase} pointer-events-none absolute`}
+                                style={{
+                                  left: `${helperEvent.anchorXPercent}%`,
+                                  top: `${helperEvent.anchorYPercent}%`,
+                                  "--session-helper-enter-x": `${enterOffsetXPx}px`,
+                                  "--session-helper-enter-y": `${enterOffsetYPx}px`,
+                                  "--session-helper-exit-x": `${exitOffsetXPx}px`,
+                                  "--session-helper-exit-y": `${exitOffsetYPx}px`,
+                                  "--session-helper-hue": `${helperEvent.accentHue}`,
+                                  "--session-helper-start-tilt": `${enteringFromLeft ? -14 : 14}deg`,
+                                  "--session-helper-hover-tilt-a": `${enteringFromLeft ? -1.6 : 1.6}deg`,
+                                  "--session-helper-hover-tilt-b": `${enteringFromLeft ? 1.6 : -1.6}deg`,
+                                  "--session-helper-exit-tilt": `${exitOffsetXPx >= 0 ? 16 : -16}deg`,
+                                  "--session-helper-trail-left": enteringFromLeft ? "-1.8rem" : "3.8rem",
+                                  "--session-helper-trail-scale-x": enteringFromLeft ? "1" : "-1",
+                                } as CSSProperties}
+                                aria-hidden="true"
+                              >
+                                <span className="session-helper-event-trail" />
+                                <span className="session-helper-event-body">
+                                  <span className="session-helper-event-core" />
+                                  <span className="session-helper-event-wing session-helper-event-wing-a" />
+                                  <span className="session-helper-event-wing session-helper-event-wing-b" />
+                                  <span className="session-helper-event-glow" />
+                                </span>
+                                <span className="session-helper-event-chip">{helperEvent.label}</span>
+                              </div>
+                            );
+                          })()
+                        : null}
                       {helperShotCues.map((cue) => (
                         <span
                           key={cue.id}

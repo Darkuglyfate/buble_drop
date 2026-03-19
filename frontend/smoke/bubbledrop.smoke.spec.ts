@@ -542,8 +542,8 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await expect(page.getByText("Signed in")).toBeVisible();
   await expect(page.getByText("0x1000...0001")).toBeVisible();
   await expect(page.getByText("Season chance live")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Daily check-in (+20 XP)", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Daily check-in (+20 XP)", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
   await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Tokens" })).toBeVisible();
 });
@@ -583,7 +583,7 @@ test("runs daily check-in and shows refreshed summary state", async ({
     `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
   );
 
-  await page.getByRole("button", { name: "Daily check-in (+20 XP)" }).click();
+  await page.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ }).click();
 
   await expect(page.getByText("Daily check-in complete. +20 XP. Streak: 7.")).toBeVisible();
 });

@@ -618,7 +618,7 @@ type IntroBubbleSpec = {
   alpha: number;
 };
 const REQUIRED_INTRO_POPS = 4;
-const INTRO_SEEN_STORAGE_KEY = "bubbledrop:intro-seen:v2";
+const INTRO_SKIP_SESSION_KEY = "bubbledrop:intro-skip-once";
 
 function seededUnit(seed: number): number {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -1436,14 +1436,19 @@ export function BubbleDropShell() {
     }
 
     const url = new URL(window.location.href);
-    const skipIntro = url.searchParams.get("skipIntro") === "1";
-    const introAlreadySeen =
-      window.localStorage.getItem(INTRO_SEEN_STORAGE_KEY) === "1";
-    setWelcomeIntroVisible(!(skipIntro || introAlreadySeen));
+    const skipIntroFromQuery = url.searchParams.get("skipIntro") === "1";
+    const skipIntroFromSession =
+      window.sessionStorage.getItem(INTRO_SKIP_SESSION_KEY) === "1";
+    const skipIntro = skipIntroFromQuery || skipIntroFromSession;
+    setWelcomeIntroVisible(!skipIntro);
 
-    if (skipIntro) {
+    if (skipIntroFromQuery) {
+      window.sessionStorage.setItem(INTRO_SKIP_SESSION_KEY, "1");
       url.searchParams.delete("skipIntro");
       window.history.replaceState(null, "", url.toString());
+    }
+    if (skipIntroFromSession) {
+      window.sessionStorage.removeItem(INTRO_SKIP_SESSION_KEY);
     }
   }, []);
 
@@ -1716,9 +1721,6 @@ export function BubbleDropShell() {
   };
 
   const onReplayIntro = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(INTRO_SEEN_STORAGE_KEY);
-    }
     setIntroPoppedBubbleIds([]);
     setIntroPopBursts([]);
     setIntroPatternSeed(Math.floor(Math.random() * 1_000_000));
@@ -1726,9 +1728,6 @@ export function BubbleDropShell() {
   };
 
   const onSkipIntro = () => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
-    }
     setWelcomeIntroVisible(false);
   };
 
@@ -1903,7 +1902,6 @@ export function BubbleDropShell() {
   let secondaryHeroActionHandler: (() => void) | null = null;
   let heroPortalCopy = "Bubble lane offline";
   let showHeroSection = true;
-  let showDedicatedDailyCheckSection = false;
   const awaitingProfileCreationOnly =
     !profileId &&
     effectiveIsConnected &&
@@ -1962,9 +1960,6 @@ export function BubbleDropShell() {
       return;
     }
     const timer = window.setTimeout(() => {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(INTRO_SEEN_STORAGE_KEY, "1");
-      }
       setWelcomeIntroVisible(false);
     }, 320);
     return () => window.clearTimeout(timer);
@@ -2101,8 +2096,6 @@ export function BubbleDropShell() {
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
     heroPortalCopy = "XP lane open";
-    showHeroSection = false;
-    showDedicatedDailyCheckSection = true;
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
     heroTitle = "You're checked in — time for bubbles.";
@@ -2114,72 +2107,6 @@ export function BubbleDropShell() {
     primaryActionHref = quickSessionHref;
     primaryActionDisabled = false;
     heroPortalCopy = "Play portal ready";
-  }
-
-  const onDailyMissionPrimary = () => {
-    if (!effectiveIsConnected) {
-      onConnectWallet();
-      return;
-    }
-    if (!isConnectedToBase) {
-      onSwitchToBase();
-      return;
-    }
-    if (!authenticatedSessionToken) {
-      return;
-    }
-    if (!profileId) {
-      void onBootstrapProfile();
-      return;
-    }
-    if (!profileSummary) {
-      void onRefreshProfile();
-      return;
-    }
-    if (showDedicatedDailyCheckSection) {
-      if (quickSessionHref) {
-        window.location.assign(quickSessionHref);
-      }
-      return;
-    }
-    if (!dailyCheckInCompletedToday) {
-      void onDailyCheckIn();
-      return;
-    }
-    if (quickSessionHref) {
-      window.location.assign(quickSessionHref);
-    }
-  };
-
-  let dailyMissionPrimaryLabel = "Open daily mission";
-  let dailyMissionPrimaryDisabled = false;
-  if (!effectiveIsConnected) {
-    dailyMissionPrimaryLabel = isWalletFlowBusy ? "Signing in…" : "Sign in with Base";
-    dailyMissionPrimaryDisabled = isWalletFlowBusy;
-  } else if (!isConnectedToBase) {
-    dailyMissionPrimaryLabel = "Switch to Base";
-    dailyMissionPrimaryDisabled = isWalletFlowBusy;
-  } else if (!authenticatedSessionToken) {
-    dailyMissionPrimaryLabel = "Daily check-in (+20 XP)";
-    dailyMissionPrimaryDisabled = true;
-  } else if (!profileId) {
-    dailyMissionPrimaryLabel = isSubmittingAction ? "Syncing…" : "Sync profile";
-    dailyMissionPrimaryDisabled = !canSyncProfile || isSubmittingAction;
-  } else if (!profileSummary) {
-    dailyMissionPrimaryLabel = isSubmittingAction ? "Refreshing…" : "Refresh profile";
-    dailyMissionPrimaryDisabled = isSubmittingAction;
-  } else if (showDedicatedDailyCheckSection) {
-    dailyMissionPrimaryLabel = "Tap to play";
-    dailyMissionPrimaryDisabled = !quickSessionHref;
-  } else {
-    dailyMissionPrimaryLabel = isSubmittingAction
-      ? "Checking in…"
-      : dailyCheckInCompletedToday
-        ? "Tap to play"
-        : "Daily check-in (+20 XP)";
-    dailyMissionPrimaryDisabled =
-      isSubmittingAction ||
-      (dailyCheckInCompletedToday ? !quickSessionHref : false);
   }
 
   const onAnswer = (index: number) => {
@@ -2699,14 +2626,6 @@ export function BubbleDropShell() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onDailyMissionPrimary}
-                    disabled={dailyMissionPrimaryDisabled}
-                    className="gloss-pill mt-3 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-3 py-2.5 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                  >
-                    {dailyMissionPrimaryLabel}
-                  </button>
                 </div>
 
                 {showDropRadar ? (
@@ -2864,6 +2783,36 @@ export function BubbleDropShell() {
                   </p>
                 ) : null}
 
+                {signInOnlyOnProfileCard ? null : primaryActionKind === "link" && primaryActionHref ? (
+                  <Link
+                    href={primaryActionHref}
+                    className="hero-entry-cta gloss-pill mt-5 block w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)]"
+                  >
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
+                      {heroPortalCopy}
+                    </span>
+                    <span className="mt-1 block">{primaryActionLabel}</span>
+                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
+                      Tap to continue.
+                    </span>
+                  </Link>
+                ) : signInOnlyOnProfileCard ? null : (
+                  <button
+                    type="button"
+                    onClick={primaryActionHandler}
+                    disabled={primaryActionDisabled}
+                    className="hero-entry-cta gloss-pill mt-5 w-full rounded-[1.45rem] bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,252,255,0.88))] px-4 py-4 text-left text-base font-black tracking-[-0.02em] text-[#20365d] shadow-[0_20px_40px_rgba(72,105,175,0.18)] disabled:opacity-60"
+                  >
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6d80ab]">
+                      {heroPortalCopy}
+                    </span>
+                    <span className="mt-1 block">{primaryActionLabel}</span>
+                    <span className="mt-1 block text-sm font-medium text-[#63789f]">
+                      Tap to continue.
+                    </span>
+                  </button>
+                )}
+
                 {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
                   <button
                     type="button"
@@ -2927,30 +2876,6 @@ export function BubbleDropShell() {
                   </div>
                 ) : null}
               </div>
-              </section>
-            ) : null}
-
-            {showDedicatedDailyCheckSection ? (
-              <section className="bubble-card p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                  Daily check-in
-                </p>
-                <h3 className="mt-2 text-xl font-black tracking-[-0.03em] text-[#20365d]">
-                  Mark today in Base
-                </h3>
-                <p className="mt-2 text-sm text-[#5f749f]">
-                  Use this separate button to mark the day before your run.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void onDailyCheckIn();
-                  }}
-                  disabled={isSubmittingAction || dailyCheckInCompletedToday}
-                  className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561] disabled:opacity-60"
-                >
-                  {dailyCheckInCompletedToday ? "Daily check-in complete" : "Daily check-in (+20 XP)"}
-                </button>
               </section>
             ) : null}
 
