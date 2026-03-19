@@ -2596,7 +2596,7 @@ export function BubbleDropShell() {
               >
                 <div
                   data-testid="daily-mission-card"
-                  className="flex min-h-[18rem] flex-col justify-between rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]"
+                  className="flex min-h-[16.5rem] flex-col justify-between rounded-[1.35rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.7))] p-3 shadow-[0_16px_36px_rgba(109,145,219,0.12)]"
                 >
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7387b2]">
@@ -2630,7 +2630,7 @@ export function BubbleDropShell() {
                   {dailyMissionPrimaryAction?.kind === "link" ? (
                     <Link
                       href={dailyMissionPrimaryAction.href}
-                      className="gloss-pill mt-5 block rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-center text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)]"
+                      className="gloss-pill mt-4 block rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-center text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)]"
                     >
                       {dailyMissionPrimaryAction.label}
                     </Link>
@@ -2639,12 +2639,12 @@ export function BubbleDropShell() {
                       type="button"
                       onClick={dailyMissionPrimaryAction.onClick}
                       disabled={dailyMissionPrimaryAction.disabled}
-                      className="gloss-pill mt-5 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
+                      className="gloss-pill mt-4 w-full rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3.5 text-sm font-black text-[#1f3561] shadow-[0_12px_28px_rgba(72,105,175,0.2)] disabled:opacity-60"
                     >
                       {dailyMissionPrimaryAction.label}
                     </button>
                   ) : (
-                    <div className="mt-5 h-[3.625rem]" aria-hidden="true" />
+                    <div className="mt-4 h-[3.625rem]" aria-hidden="true" />
                   )}
                 </div>
 
