@@ -58,6 +58,7 @@ export function WelcomeIntroScreen({
   const progressRatio = Math.min(1, Math.max(0, introProgressCount / requiredIntroPops));
   const [portalPressed, setPortalPressed] = useState(false);
   const [portalWakeActive, setPortalWakeActive] = useState(false);
+  const activeTargetBubbles = introBubbles.filter((bubble) => bubble.role !== "ambient");
 
   useEffect(() => {
     if (introPopBursts.length === 0) {
@@ -80,6 +81,46 @@ export function WelcomeIntroScreen({
     window.setTimeout(() => {
       setPortalWakeActive(false);
     }, 320);
+  };
+
+  const getAmbientDisplayPosition = (bubble: IntroBubbleSpec) => {
+    let topPct = bubble.topPct;
+    let leftPct = bubble.leftPct;
+
+    const insideTitleSafeZone = topPct <= 31 && leftPct >= 18 && leftPct <= 82;
+    const insidePortalSafeZone = topPct >= 34 && topPct <= 72 && leftPct >= 28 && leftPct <= 72;
+
+    if (insideTitleSafeZone) {
+      topPct = Math.max(8, topPct - 10);
+      leftPct += leftPct < 50 ? -12 : 12;
+    }
+
+    if (insidePortalSafeZone) {
+      leftPct += leftPct < 50 ? -14 : 14;
+      topPct += topPct < 53 ? -6 : 8;
+    }
+
+    return {
+      topPct: Math.min(90, Math.max(6, topPct)),
+      leftPct: Math.min(92, Math.max(8, leftPct)),
+    };
+  };
+
+  const getTargetDisplayPosition = (bubble: IntroBubbleSpec, targetIndex: number) => {
+    const targetSlots = [
+      { topPct: 39, leftPct: 28 },
+      { topPct: 40, leftPct: 72 },
+      { topPct: 70, leftPct: 26 },
+      { topPct: 69, leftPct: 74 },
+    ];
+    const fallbackSlot = targetSlots[targetIndex % targetSlots.length];
+    const heroSlot = { topPct: 27, leftPct: 72 };
+
+    if (bubble.role === "heroTarget") {
+      return heroSlot;
+    }
+
+    return fallbackSlot;
   };
 
   return (
@@ -153,9 +194,14 @@ export function WelcomeIntroScreen({
               return null;
             }
             const isPopping = introPoppingBubbleIds.includes(bubble.id);
+            const targetIndex = activeTargetBubbles.findIndex((candidate) => candidate.id === bubble.id);
+            const displayPosition =
+              bubble.role === "ambient"
+                ? getAmbientDisplayPosition(bubble)
+                : getTargetDisplayPosition(bubble, Math.max(0, targetIndex));
             const bubbleStyle = {
-              top: `${bubble.topPct}%`,
-              left: `${bubble.leftPct}%`,
+              top: `${displayPosition.topPct}%`,
+              left: `${displayPosition.leftPct}%`,
               width: `${bubble.sizeRem}rem`,
               height: `${bubble.sizeRem}rem`,
               "--intro-delay": `${bubble.delayMs}ms`,

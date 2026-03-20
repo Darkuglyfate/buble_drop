@@ -1446,13 +1446,13 @@ export function BubbleSessionPlayScreen() {
   } as CSSProperties;
   const runtimeHeaderStyle = {
     paddingTop: compactRuntimeLayout
-      ? "max(0.5rem, calc(env(safe-area-inset-top) + 0.32rem))"
+      ? "max(0.35rem, calc(env(safe-area-inset-top) + 0.18rem))"
       : "max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem))",
     paddingLeft: compactRuntimeLayout
-      ? "max(0.75rem, calc(env(safe-area-inset-left) + 0.45rem))"
+      ? "max(0.65rem, calc(env(safe-area-inset-left) + 0.32rem))"
       : "max(1rem, calc(env(safe-area-inset-left) + 0.75rem))",
     paddingRight: compactRuntimeLayout
-      ? "max(0.75rem, calc(env(safe-area-inset-right) + 0.45rem))"
+      ? "max(0.65rem, calc(env(safe-area-inset-right) + 0.32rem))"
       : "max(1rem, calc(env(safe-area-inset-right) + 0.75rem))",
   } satisfies CSSProperties;
   const playfieldLayoutStyle = {
@@ -1472,7 +1472,7 @@ export function BubbleSessionPlayScreen() {
   } satisfies CSSProperties;
   const playfieldBoundariesStyle = {
     top: compactRuntimeLayout
-      ? "max(0.25rem, calc(env(safe-area-inset-top) + 0.12rem))"
+      ? "calc(var(--session-header-offset) - 0.15rem)"
       : "calc(var(--session-header-offset) + 0.4rem)",
     bottom: compactRuntimeLayout
       ? "calc(var(--session-footer-offset) + 0.55rem)"
@@ -1905,20 +1905,20 @@ export function BubbleSessionPlayScreen() {
     const helperFlightPattern = (() => {
       const leftEdge = isCompactPlayfield ? -14 : -22;
       const rightEdge = isCompactPlayfield ? 114 : 122;
-      const topEdge = isCompactPlayfield ? -12 : -18;
+      const topEdge = isCompactPlayfield ? 6 : 4;
       const leftSweepStartY = clampPercent(
         anchorYPercent - randomBetween(isCompactPlayfield ? 2 : 4, isCompactPlayfield ? 8 : 14),
-        isCompactPlayfield ? 14 : 8,
+        isCompactPlayfield ? 18 : 12,
         isCompactPlayfield ? 70 : 58,
       );
       const rightSweepStartY = clampPercent(
         anchorYPercent - randomBetween(isCompactPlayfield ? 1 : 3, isCompactPlayfield ? 7 : 13),
-        isCompactPlayfield ? 14 : 8,
+        isCompactPlayfield ? 18 : 12,
         isCompactPlayfield ? 70 : 58,
       );
       const exitHighY = clampPercent(
         anchorYPercent - randomBetween(isCompactPlayfield ? 8 : 12, isCompactPlayfield ? 16 : 24),
-        isCompactPlayfield ? 8 : 2,
+        isCompactPlayfield ? 14 : 8,
         isCompactPlayfield ? 48 : 34,
       );
       const exitLowY = clampPercent(
@@ -2546,12 +2546,12 @@ export function BubbleSessionPlayScreen() {
             className="pointer-events-none absolute inset-x-0 top-0 z-20 sm:p-5"
             style={runtimeHeaderStyle}
           >
-            <div className="mx-auto flex w-full max-w-md flex-col items-stretch gap-2 min-[520px]:flex-row min-[520px]:items-start min-[520px]:justify-between">
+            <div className="mx-auto flex w-full max-w-md flex-col items-stretch gap-1.5 min-[520px]:flex-row min-[520px]:items-start min-[520px]:justify-between">
               <Link
                 href={backHomeHref}
                 className={`session-runtime-back-button pointer-events-auto self-start rounded-full border text-xs font-semibold text-[#425b8a] shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all ${
                   compactRuntimeLayout
-                    ? "border-white/30 bg-white/14 px-3.5 py-2"
+                    ? "border-white/30 bg-white/14 px-3 py-1.5 text-[11px]"
                     : "border-white/48 bg-white/28 px-4 py-2"
                 }`}
               >
@@ -2560,48 +2560,48 @@ export function BubbleSessionPlayScreen() {
               <div
                 className={`session-runtime-hud-card pointer-events-auto min-w-0 w-full self-stretch shadow-[0_10px_24px_rgba(96,132,203,0.07)] backdrop-blur-[10px] transition-all max-w-full min-[520px]:max-w-[17rem] ${
                   compactRuntimeLayout
-                    ? "rounded-[1.1rem] border border-white/30 bg-white/12 px-2.5 py-1.5"
+                    ? "rounded-[0.95rem] border border-white/30 bg-white/12 px-2 py-1.25"
                     : "rounded-[1.3rem] border border-white/48 bg-white/24 px-3 py-2"
                 }`}
               >
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Bubble session
                     </p>
                     <p
                       className={`mt-1 font-bold leading-none text-[#2d477f] ${
-                        compactRuntimeLayout ? "text-[1.05rem]" : "text-xl"
+                        compactRuntimeLayout ? "text-[0.96rem]" : "text-xl"
                       }`}
                     >
                       {formatTime(displayElapsedSeconds)}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#5b72a3]">
                       Status
                     </p>
-                    <p className="mt-1 text-[11px] font-semibold text-[#3a4f86]">
+                    <p className="mt-0.5 text-[10px] font-semibold text-[#3a4f86]">
                       {readinessLabel}
                     </p>
                   </div>
                 </div>
                 {compactRuntimeLayout ? (
                   <>
-                    <div className="mt-1.5 h-1.5 rounded-full bg-[#e7eeff]/76">
+                    <div className="mt-1 h-1.5 rounded-full bg-[#e7eeff]/76">
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-[#98d8ff] to-[#becfff] transition-all"
                         style={{ width: `${elapsedProgressPercent}%` }}
                       />
                     </div>
-                    <div className="mt-1.5 grid grid-cols-3 gap-1 text-[9px]">
-                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
+                    <div className="mt-1 grid grid-cols-3 gap-1 text-[8px]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-1 text-center font-semibold text-[#47608f]">
                         Combo x{tapCombo}
                       </span>
-                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-1 text-center font-semibold text-[#47608f]">
                         Hunt {huntReadinessPercent}%
                       </span>
-                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-[0.32rem] text-center font-semibold text-[#47608f]">
+                      <span className="rounded-full border border-white/34 bg-white/16 px-1.5 py-1 text-center font-semibold text-[#47608f]">
                         Goals {runObjectiveCompletedCount}/{runObjectives.length}
                       </span>
                     </div>
@@ -2992,6 +2992,21 @@ export function BubbleSessionPlayScreen() {
                       ))}
                       {popBursts.map((burst) => (
                         <span key={burst.id}>
+                          <span
+                            className={`session-pop-bloom pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
+                              burst.source === "helper" ? "session-pop-bloom-helper" : ""
+                            }`}
+                            style={{
+                              left: `${burst.xPercent}%`,
+                              top: `${burst.yPercent}%`,
+                              width: `${burst.sizeRem * (burst.isBonus ? 2.2 : burst.comboTier ? 1.92 : 1.72)}rem`,
+                              height: `${burst.sizeRem * (burst.isBonus ? 2.2 : burst.comboTier ? 1.92 : 1.72)}rem`,
+                              background: burst.isBonus
+                                ? "radial-gradient(circle, rgba(255,248,223,0.92) 0%, rgba(255,223,174,0.44) 44%, rgba(255,223,174,0) 100%)"
+                                : `radial-gradient(circle, hsla(${burst.hue + 6}, 100%, 98%, 0.92) 0%, hsla(${burst.hue + 18}, 92%, 84%, 0.34) 48%, hsla(${burst.hue + 24}, 92%, 78%, 0) 100%)`,
+                              animationDuration: `${burst.comboTier ? 700 : 620}ms`,
+                            }}
+                          />
                           <span
                             className={`session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
                               burst.source === "helper" ? "session-pop-ring-helper" : ""
