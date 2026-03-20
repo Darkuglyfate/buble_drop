@@ -73,7 +73,9 @@ const FUN_OVERLAY_ITEM_CONFIG = [
   { kind: "season-sigil", hue: 318, label: "Season sigil" },
 ] as const;
 const HELPER_THEME_CONFIG = [
-  { theme: "miniUfo", accentHue: 196, label: "Orbital helper" },
+  { theme: "pearlDrone", accentHue: 196, label: "Pearl drone" },
+  { theme: "prismSkiff", accentHue: 282, label: "Prism skiff" },
+  { theme: "haloRay", accentHue: 38, label: "Halo ray" },
 ] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
@@ -85,15 +87,16 @@ const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
 const COMBO_BURST_DURATION_MS = 980;
 const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
 const ANTICIPATION_POP_DURATION_MS = 220;
-const HELPER_EVENT_INITIAL_MIN_DELAY_MS = 12_000;
-const HELPER_EVENT_INITIAL_MAX_DELAY_MS = 18_000;
-const HELPER_EVENT_REPEAT_MIN_DELAY_MS = 45_000;
-const HELPER_EVENT_REPEAT_MAX_DELAY_MS = 75_000;
-const HELPER_EVENT_ENTER_DURATION_MS = 1_020;
-const HELPER_EVENT_FIRE_DURATION_MS = 1_820;
-const HELPER_EVENT_EXIT_DURATION_MS = 1_120;
-const HELPER_SHOT_INTERVAL_MS = 360;
-const HELPER_SHOT_CUE_DURATION_MS = 920;
+const HELPER_EVENT_INITIAL_MIN_DELAY_MS = 18_000;
+const HELPER_EVENT_INITIAL_MAX_DELAY_MS = 32_000;
+const HELPER_EVENT_REPEAT_MIN_DELAY_MS = 55_000;
+const HELPER_EVENT_REPEAT_MAX_DELAY_MS = 95_000;
+const HELPER_EVENT_ENTER_DURATION_MS = 1_320;
+const HELPER_EVENT_FIRE_DURATION_MS = 2_420;
+const HELPER_EVENT_EXIT_DURATION_MS = 1_420;
+const HELPER_SHOT_INTERVAL_MS = 440;
+const HELPER_SHOT_CUE_DURATION_MS = 1_080;
+const HELPER_SHOT_LEAD_IN_MS = 320;
 const FINISH_CELEBRATION_DURATION_MS = 2950;
 const FINISH_CELEBRATION_BLOOM_BUBBLES = [
   { x: "-12.8rem", y: "-7.2rem", size: "6.2rem", hue: 196, alpha: 0.84, delayMs: 0, durationMs: 1180 },
@@ -1924,6 +1927,12 @@ export function BubbleSessionPlayScreen() {
         isCompactPlayfield ? 80 : 74,
       );
 
+      const lowerEntryY = clampPercent(
+        anchorYPercent + randomBetween(isCompactPlayfield ? 8 : 10, isCompactPlayfield ? 15 : 20),
+        isCompactPlayfield ? 38 : 32,
+        isCompactPlayfield ? 78 : 72,
+      );
+
       const patterns = [
         {
           startXPercent: leftEdge,
@@ -1956,6 +1965,18 @@ export function BubbleSessionPlayScreen() {
           startYPercent: topEdge,
           exitXPercent: leftEdge,
           exitYPercent: exitLowY,
+        },
+        {
+          startXPercent: leftEdge,
+          startYPercent: lowerEntryY,
+          exitXPercent: clampPercent(anchorXPercent + randomBetween(16, 28), 68, rightEdge),
+          exitYPercent: exitHighY,
+        },
+        {
+          startXPercent: rightEdge,
+          startYPercent: lowerEntryY,
+          exitXPercent: clampPercent(anchorXPercent - randomBetween(16, 28), leftEdge, 32),
+          exitYPercent: exitHighY,
         },
       ] as const;
 
@@ -1992,7 +2013,7 @@ export function BubbleSessionPlayScreen() {
     shotTargetIds.forEach((targetBubbleId, index) => {
       const shotTimeout = window.setTimeout(() => {
         fireHelperShot(eventId, targetBubbleId);
-      }, HELPER_EVENT_ENTER_DURATION_MS + 160 + index * HELPER_SHOT_INTERVAL_MS);
+      }, HELPER_EVENT_ENTER_DURATION_MS + HELPER_SHOT_LEAD_IN_MS + index * HELPER_SHOT_INTERVAL_MS);
       helperTimeoutsRef.current.push(shotTimeout);
     });
 
@@ -2939,9 +2960,11 @@ export function BubbleSessionPlayScreen() {
                               >
                                 <span className="session-helper-event-trail" />
                                 <span className="session-helper-event-body">
+                                  <span className="session-helper-event-orbit" />
                                   <span className="session-helper-event-core" />
                                   <span className="session-helper-event-wing session-helper-event-wing-a" />
                                   <span className="session-helper-event-wing session-helper-event-wing-b" />
+                                  <span className="session-helper-event-crown" />
                                   <span className="session-helper-event-glow" />
                                 </span>
                                 <span className="session-helper-event-chip">{helperEvent.label}</span>
@@ -2963,6 +2986,7 @@ export function BubbleSessionPlayScreen() {
                           aria-hidden="true"
                         >
                           <span className="session-helper-shot-beam" />
+                          <span className="session-helper-shot-wave" />
                           <span className="session-helper-shot-hit" />
                         </span>
                       ))}
@@ -3354,3 +3378,7 @@ export function BubbleSessionPlayScreen() {
     </div>
   );
 }
+
+
+
+
