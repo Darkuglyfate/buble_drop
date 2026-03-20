@@ -95,8 +95,8 @@ export function WelcomeIntroScreen({
 
           <div className="intro-welcome-center">
             <div className="intro-welcome-hero">
-              <h1 className="intro-welcome-title">Wake the pearl portal.</h1>
-              <p className="intro-welcome-subtitle">Pop four glowing pearls to enter BubbleDrop.</p>
+              <h1 className="intro-welcome-title">BUBBLEDROP</h1>
+              <p className="intro-welcome-subtitle">Wake four glowing pearls to open the portal.</p>
             </div>
 
             <div className="intro-welcome-portal-cluster">
@@ -153,6 +153,39 @@ export function WelcomeIntroScreen({
               return null;
             }
             const isPopping = introPoppingBubbleIds.includes(bubble.id);
+            const bubbleStyle = {
+              top: `${bubble.topPct}%`,
+              left: `${bubble.leftPct}%`,
+              width: `${bubble.sizeRem}rem`,
+              height: `${bubble.sizeRem}rem`,
+              "--intro-delay": `${bubble.delayMs}ms`,
+              "--intro-drift-duration": `${bubble.driftDurationMs}ms`,
+              "--intro-pulse-duration": `${bubble.pulseDurationMs}ms`,
+              "--intro-drift-x1": bubble.driftX1,
+              "--intro-drift-y1": bubble.driftY1,
+              "--intro-drift-x2": bubble.driftX2,
+              "--intro-drift-y2": bubble.driftY2,
+              "--intro-drift-x3": bubble.driftX3,
+              "--intro-drift-y3": bubble.driftY3,
+              "--intro-drift-x4": bubble.driftX4,
+              "--intro-drift-y4": bubble.driftY4,
+              "--intro-bubble-hue": `${bubble.hue}`,
+              "--intro-bubble-alpha": `${bubble.alpha}`,
+            } as CSSProperties;
+
+            if (bubble.role === "ambient") {
+              return (
+                <span
+                  key={bubble.id}
+                  className="intro-bubble intro-bubble-ambient"
+                  aria-hidden="true"
+                  style={bubbleStyle}
+                >
+                  <span className="intro-bubble-beacon" />
+                </span>
+              );
+            }
+
             return (
               <button
                 key={bubble.id}
@@ -162,31 +195,9 @@ export function WelcomeIntroScreen({
                   introNudgedBubbleIds.includes(bubble.id) ? "intro-bubble-nudged" : ""
                 } ${isPopping ? "intro-bubble-popping" : ""}`}
                 aria-label="Tap bubble to enter Bubble World"
-                style={
-                  {
-                    top: `${bubble.topPct}%`,
-                    left: `${bubble.leftPct}%`,
-                    width: `${bubble.sizeRem}rem`,
-                    height: `${bubble.sizeRem}rem`,
-                    "--intro-delay": `${bubble.delayMs}ms`,
-                    "--intro-drift-duration": `${bubble.driftDurationMs}ms`,
-                    "--intro-pulse-duration": `${bubble.pulseDurationMs}ms`,
-                    "--intro-drift-x1": bubble.driftX1,
-                    "--intro-drift-y1": bubble.driftY1,
-                    "--intro-drift-x2": bubble.driftX2,
-                    "--intro-drift-y2": bubble.driftY2,
-                    "--intro-drift-x3": bubble.driftX3,
-                    "--intro-drift-y3": bubble.driftY3,
-                    "--intro-drift-x4": bubble.driftX4,
-                    "--intro-drift-y4": bubble.driftY4,
-                    "--intro-bubble-hue": `${bubble.hue}`,
-                    "--intro-bubble-alpha": `${bubble.alpha}`,
-                  } as CSSProperties
-                }
+                style={bubbleStyle}
               >
-                {bubble.role === "ambient" ? (
-                  <span className="intro-bubble-beacon" />
-                ) : bubble.role === "heroTarget" ? (
+                {bubble.role === "heroTarget" ? (
                   <span className="intro-bubble-signal">TAP</span>
                 ) : (
                   <span className="intro-bubble-indicator" />
