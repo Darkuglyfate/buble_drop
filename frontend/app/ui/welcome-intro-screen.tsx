@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 type IntroBubbleRole = "ambient" | "interactive" | "heroTarget";
 
@@ -56,16 +56,38 @@ export function WelcomeIntroScreen({
   onPopIntroBubble,
 }: WelcomeIntroScreenProps) {
   const progressRatio = Math.min(1, Math.max(0, introProgressCount / requiredIntroPops));
+  const [portalPressed, setPortalPressed] = useState(false);
+  const [portalWakeActive, setPortalWakeActive] = useState(false);
+
+  useEffect(() => {
+    if (introPopBursts.length === 0) {
+      return;
+    }
+    setPortalWakeActive(true);
+    const timeoutId = window.setTimeout(() => {
+      setPortalWakeActive(false);
+    }, 460);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [introPopBursts.length]);
+
+  const triggerPortalWake = () => {
+    setPortalWakeActive(true);
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate(10);
+    }
+    window.setTimeout(() => {
+      setPortalWakeActive(false);
+    }, 320);
+  };
 
   return (
     <section className="intro-welcome-overlay">
       <div className="intro-welcome-card">
         <div className="intro-welcome-shell">
           <div className="intro-welcome-head">
-            <div className="intro-welcome-head-copy">
-              <p className="intro-welcome-kicker">Pearl portal entry</p>
-              <p className="intro-welcome-headline">A polished entrance into BubbleDrop</p>
-            </div>
+            <p className="intro-welcome-kicker">Pearl portal entry</p>
             <button type="button" onClick={onSkipIntro} className="intro-welcome-skip">
               Skip
             </button>
@@ -73,43 +95,49 @@ export function WelcomeIntroScreen({
 
           <div className="intro-welcome-center">
             <div className="intro-welcome-hero">
-              <p className="intro-welcome-brandline">Luxury drop sequence</p>
-              <h1 className="intro-welcome-wordmark" aria-label="BUBBLE DROP">
-                <span className="intro-welcome-word intro-welcome-word-bubble">BUBBLE</span>
-                <span className="intro-welcome-word intro-welcome-word-drop">DROP</span>
-              </h1>
-              <p className="intro-welcome-title">Wake the pearl portal and step into the drop.</p>
-              <p className="intro-welcome-subtitle">
-                Pop the glowing marked bubbles to unlock your entrance. The ritual stays the same,
-                only the welcome now feels worthy of the world behind it.
-              </p>
+              <h1 className="intro-welcome-title">Wake the pearl portal.</h1>
+              <p className="intro-welcome-subtitle">Pop four glowing pearls to enter BubbleDrop.</p>
             </div>
 
             <div className="intro-welcome-portal-cluster">
-              <div className="intro-welcome-portal-ring" style={{ "--intro-progress-ratio": `${progressRatio * 100}%` } as CSSProperties}>
-                <div className="intro-welcome-portal-core-shell">
-                  <div className="intro-welcome-portal-core">
-                    <span className="intro-welcome-portal-overline">Portal status</span>
-                    <span className="intro-welcome-portal-state">
-                      {introBubblesRemaining > 0 ? "Awaiting touch" : "Opening"}
-                    </span>
-                    <span className="intro-welcome-portal-caption">
-                      {introProgressCount}/{requiredIntroPops} pearls awakened
-                    </span>
+              <button
+                type="button"
+                className={`intro-welcome-portal-button ${portalPressed ? "intro-welcome-portal-button-pressed" : ""} ${
+                  portalWakeActive ? "intro-welcome-portal-button-waking" : ""
+                }`}
+                onPointerDown={() => {
+                  setPortalPressed(true);
+                  triggerPortalWake();
+                }}
+                onPointerUp={() => {
+                  setPortalPressed(false);
+                }}
+                onPointerLeave={() => {
+                  setPortalPressed(false);
+                }}
+                aria-label="Pearl portal"
+              >
+                <div
+                  className="intro-welcome-portal-ring"
+                  style={{ "--intro-progress-ratio": `${progressRatio * 100}%` } as CSSProperties}
+                >
+                  <div className="intro-welcome-portal-halo" />
+                  <div className="intro-welcome-portal-core-shell">
+                    <div className="intro-welcome-portal-core">
+                      <span className="intro-welcome-portal-specular" />
+                      <span className="intro-welcome-portal-heart" />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </button>
 
-              <div className="intro-welcome-progress-panel">
-                <div className="intro-welcome-progress-stack">
-                  <span className="intro-welcome-progress-label">Entry progress</span>
-                  <span className="intro-welcome-progress">{introProgressCount}/{requiredIntroPops}</span>
-                </div>
-                <p className="intro-welcome-helper">
+              <div className="intro-welcome-progress-chip">
+                <span className="intro-welcome-progress-label">Entry</span>
+                <span className="intro-welcome-progress-value">
                   {introBubblesRemaining > 0
-                    ? "Pop the glowing pearls around the portal to enter Bubble World."
-                    : "Portal unlocked. Entering Bubble World..."}
-                </p>
+                    ? `${introProgressCount}/${requiredIntroPops}`
+                    : "Opening"}
+                </span>
               </div>
             </div>
           </div>
@@ -158,8 +186,10 @@ export function WelcomeIntroScreen({
               >
                 {bubble.role === "ambient" ? (
                   <span className="intro-bubble-beacon" />
-                ) : (
+                ) : bubble.role === "heroTarget" ? (
                   <span className="intro-bubble-signal">TAP</span>
+                ) : (
+                  <span className="intro-bubble-indicator" />
                 )}
               </button>
             );
