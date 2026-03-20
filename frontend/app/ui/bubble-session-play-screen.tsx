@@ -72,10 +72,23 @@ const FUN_OVERLAY_ITEM_CONFIG = [
   { kind: "xp-crystal", hue: 42, label: "XP crystal" },
   { kind: "season-sigil", hue: 318, label: "Season sigil" },
 ] as const;
+const SPECIAL_BUBBLE_CONFIG = [
+  { kind: "cat", hue: 314, accentHue: 332 },
+  { kind: "heart", hue: 336, accentHue: 348 },
+  { kind: "balloon", hue: 28, accentHue: 42 },
+  { kind: "cloud", hue: 202, accentHue: 214 },
+  { kind: "crown", hue: 44, accentHue: 52 },
+  { kind: "gem", hue: 256, accentHue: 272 },
+  { kind: "chain", hue: 222, accentHue: 236 },
+  { kind: "golden", hue: 42, accentHue: 54 },
+] as const;
+const SPECIAL_BUBBLE_MAX_ACTIVE = 2;
+const SPECIAL_BUBBLE_SPAWN_CHANCE = 0.12;
 const HELPER_THEME_CONFIG = [
   { theme: "pearlDrone", accentHue: 196, label: "Pearl drone" },
   { theme: "prismSkiff", accentHue: 282, label: "Prism skiff" },
   { theme: "haloRay", accentHue: 38, label: "Halo ray" },
+  { theme: "ribbonBloom", accentHue: 326, label: "Ribbon bloom" },
 ] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
@@ -87,6 +100,11 @@ const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
 const COMBO_BURST_DURATION_MS = 980;
 const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
 const ANTICIPATION_POP_DURATION_MS = 220;
+const CHAIN_POP_TRIGGER_CHANCE = 0.1;
+const CHAIN_POP_BONUS_TRIGGER_CHANCE = 0.16;
+const CHAIN_POP_MAX_TARGETS = 2;
+const CHAIN_POP_STEP_DELAY_MS = 110;
+const CHAIN_POP_MAX_RADIUS_PX = 154;
 const HELPER_EVENT_INITIAL_MIN_DELAY_MS = 18_000;
 const HELPER_EVENT_INITIAL_MAX_DELAY_MS = 32_000;
 const HELPER_EVENT_REPEAT_MIN_DELAY_MS = 55_000;
@@ -134,6 +152,7 @@ type SessionStartResponse = {
 };
 
 type BubbleSizeTier = "small" | "medium" | "large";
+type SpecialBubbleKind = (typeof SPECIAL_BUBBLE_CONFIG)[number]["kind"];
 
 type ActivePlayBubble = {
   id: number;
@@ -154,6 +173,7 @@ type ActivePlayBubble = {
   deformRotationDeg: number;
   deformStretch: number;
   isBonus: boolean;
+  specialKind: SpecialBubbleKind | null;
   nextShiftAtMs: number;
   poppedUntilMs: number;
   respawnAtMs: number;
@@ -167,8 +187,9 @@ type PopBurst = {
   hue: number;
   sizeRem: number;
   isBonus: boolean;
+  specialKind: SpecialBubbleKind | null;
   comboTier: number | null;
-  source: "user" | "helper";
+  source: "user" | "helper" | "chain";
 };
 
 type ComboBurst = {
@@ -699,6 +720,17 @@ function createActivePlayBubble(
         : [-4, 4];
   const bonusChance =
     sizeTier === "large" ? 0.24 : sizeTier === "medium" ? 0.16 : 0.11;
+  const currentSpecialCount = existingBubbles.filter((bubble) => bubble.specialKind !== null).length;
+  const previousSpecialKind = previous?.specialKind ?? null;
+  const specialKind =
+    previousSpecialKind && Math.random() < 0.56
+      ? previousSpecialKind
+      : currentSpecialCount < SPECIAL_BUBBLE_MAX_ACTIVE && Math.random() < SPECIAL_BUBBLE_SPAWN_CHANCE
+        ? SPECIAL_BUBBLE_CONFIG[Math.floor(Math.random() * SPECIAL_BUBBLE_CONFIG.length)].kind
+        : null;
+  const specialConfig = specialKind
+    ? SPECIAL_BUBBLE_CONFIG.find((entry) => entry.kind === specialKind) ?? null
+    : null;
   const [speedMin, speedMax] = getBubbleSpeedRange(sizeTier);
   const [steerMin, steerMax] = getBubbleSteerWindow(sizeTier);
   const angle = randomBetween(0, Math.PI * 2);
@@ -720,13 +752,17 @@ function createActivePlayBubble(
     sizeRem,
     sizeTier,
     hue:
-      sizeTier === "small"
+      specialConfig
+        ? randomBetween(specialConfig.hue - 8, specialConfig.hue + 8)
+        : sizeTier === "small"
         ? randomBetween(196, 288)
         : sizeTier === "medium"
           ? randomBetween(208, 312)
           : randomBetween(220, 330),
     alpha:
-      sizeTier === "small"
+      specialConfig
+        ? randomBetween(0.58, 0.76)
+        : sizeTier === "small"
         ? randomBetween(0.4, 0.56)
         : sizeTier === "medium"
           ? randomBetween(0.46, 0.66)
@@ -743,7 +779,8 @@ function createActivePlayBubble(
     deformUntilMs: 0,
     deformRotationDeg: 0,
     deformStretch: 0,
-    isBonus: Math.random() < bonusChance,
+    isBonus: specialKind ? false : Math.random() < bonusChance,
+    specialKind,
     nextShiftAtMs: now + randomBetween(steerMin, steerMax),
     poppedUntilMs: 0,
     respawnAtMs: 0,
@@ -1658,6 +1695,7 @@ export function BubbleSessionPlayScreen() {
     hue,
     sizeRem,
     isBonus,
+    specialKind,
     comboTier,
     source,
   }: {
@@ -1666,6 +1704,7 @@ export function BubbleSessionPlayScreen() {
     hue: number;
     sizeRem: number;
     isBonus: boolean;
+    specialKind: SpecialBubbleKind | null;
     comboTier: number | null;
     source: PopBurst["source"];
   }) => {
@@ -1679,6 +1718,7 @@ export function BubbleSessionPlayScreen() {
         hue,
         sizeRem,
         isBonus,
+        specialKind,
         comboTier,
         source,
       },
@@ -1836,6 +1876,7 @@ export function BubbleSessionPlayScreen() {
       hue: currentEvent.accentHue,
       sizeRem: targetBubble.isBonus ? 0.86 : 0.58,
       isBonus: targetBubble.isBonus,
+      specialKind: targetBubble.specialKind,
       comboTier: null,
       source: "helper",
     });
@@ -2124,6 +2165,91 @@ export function BubbleSessionPlayScreen() {
     });
   };
 
+  const triggerChainPopFromBubble = ({
+    sourceBubble,
+    sourcePoint,
+    now,
+    force,
+  }: {
+    sourceBubble: ActivePlayBubble;
+    sourcePoint: { xPercent: number; yPercent: number };
+    now: number;
+    force?: boolean;
+  }) => {
+    const triggerChance = sourceBubble.isBonus
+      ? CHAIN_POP_BONUS_TRIGGER_CHANCE
+      : CHAIN_POP_TRIGGER_CHANCE;
+    if (!force && Math.random() >= triggerChance) {
+      return;
+    }
+
+    const metrics = playfieldMetricsRef.current;
+    const eligibleNeighbors = activePlayBubblesRef.current
+      .filter(
+        (bubble) =>
+          bubble.id !== sourceBubble.id &&
+          bubble.poppedUntilMs <= now &&
+          bubble.respawnAtMs <= now &&
+          bubble.spawnedUntilMs <= now,
+      )
+      .map((bubble) => {
+        const deltaXPx = ((bubble.left - sourcePoint.xPercent) / 100) * metrics.width;
+        const deltaYPx = ((bubble.top - sourcePoint.yPercent) / 100) * metrics.height;
+        return {
+          bubble,
+          distancePx: Math.hypot(deltaXPx, deltaYPx),
+        };
+      })
+      .filter((entry) => entry.distancePx <= CHAIN_POP_MAX_RADIUS_PX)
+      .sort((first, second) => first.distancePx - second.distancePx)
+      .slice(0, force ? CHAIN_POP_MAX_TARGETS : CHAIN_POP_MAX_TARGETS);
+
+    if (eligibleNeighbors.length < (force ? 1 : 2)) {
+      return;
+    }
+
+    eligibleNeighbors.forEach((entry, index) => {
+      window.setTimeout(() => {
+        const chainNow = Date.now();
+        const chainBubble = activePlayBubblesRef.current.find(
+          (bubble) =>
+            bubble.id === entry.bubble.id &&
+            bubble.poppedUntilMs <= chainNow &&
+            bubble.respawnAtMs <= chainNow &&
+            bubble.spawnedUntilMs <= chainNow,
+        );
+        if (!chainBubble) {
+          return;
+        }
+
+        applyBubblePopLifecycle(chainBubble.id, chainBubble, chainNow, {
+          anticipationMs: 70,
+          deformStretch: chainBubble.isBonus ? 0.18 : 0.14,
+          deformRotationDeg: chainBubble.left >= sourcePoint.xPercent ? 2 : -2,
+        });
+        queuePopBurst({
+          xPercent: chainBubble.left,
+          yPercent: chainBubble.top,
+          hue: chainBubble.isBonus ? 46 : chainBubble.hue + 10,
+          sizeRem: chainBubble.isBonus ? 0.84 : 0.56,
+          isBonus: chainBubble.isBonus,
+          specialKind: chainBubble.specialKind,
+          comboTier: null,
+          source: "chain",
+        });
+        showPlayfieldTouchCue("assist", {
+          topPercent: chainBubble.top,
+          leftPercent: chainBubble.left,
+        });
+        triggerNeighborRipple(
+          chainBubble.id,
+          { xPercent: chainBubble.left, yPercent: chainBubble.top },
+          chainBubble.isBonus,
+        );
+      }, (index + 1) * CHAIN_POP_STEP_DELAY_MS);
+    });
+  };
+
   const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
     void rewardCard;
     setActionMessage(
@@ -2271,6 +2397,7 @@ export function BubbleSessionPlayScreen() {
           hue: tappedBubble.isBonus ? 44 : tappedBubble.hue,
           sizeRem: tappedBubble.isBonus ? 0.92 : 0.62,
           isBonus: tappedBubble.isBonus,
+          specialKind: tappedBubble.specialKind,
           comboTier,
           source: "user",
         });
@@ -2279,6 +2406,12 @@ export function BubbleSessionPlayScreen() {
           { xPercent, yPercent },
           tappedBubble.isBonus,
         );
+        triggerChainPopFromBubble({
+          sourceBubble: tappedBubble,
+          sourcePoint: { xPercent, yPercent },
+          now,
+          force: tappedBubble.specialKind === "chain",
+        });
         spawnFunOverlayItem(
           { xPercent, yPercent },
           tappedBubble.isBonus,
@@ -2833,6 +2966,9 @@ export function BubbleSessionPlayScreen() {
                           const helperTargeted =
                             helperEvent?.phase === "firing" &&
                             helperEvent.targetBubbleIds.includes(bubble.id);
+                          const specialBubbleClass = bubble.specialKind
+                            ? `session-active-bubble-special session-active-bubble-special-${bubble.specialKind}`
+                            : "";
 
                           return (
                             <button
@@ -2857,6 +2993,8 @@ export function BubbleSessionPlayScreen() {
                                 bubble.sizeTier === "small" ? "session-active-bubble-small" : ""
                               } ${
                                 helperTargeted ? "session-active-bubble-helper-targeted" : ""
+                              } ${
+                                specialBubbleClass
                               }`}
                               style={{
                                 top: `${bubble.top}%`,
@@ -2878,6 +3016,7 @@ export function BubbleSessionPlayScreen() {
                                 "--session-helper-hue": `${helperTargeted ? helperEvent?.accentHue ?? 196 : 196}`,
                                 "--bubble-pop-duration": `${ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS}ms`,
                                 "--bubble-pop-intensity": `${bubble.isBonus ? 1.08 : bubble.sizeTier === "small" ? 0.92 : 1}`,
+                                "--bubble-special-hue": `${bubble.hue}`,
                                 opacity:
                                   bubble.poppedUntilMs > now
                                     ? 0.06
@@ -2916,6 +3055,12 @@ export function BubbleSessionPlayScreen() {
                               <span className="session-bubble-sheen-band" />
                               {bubble.isBonus ? <span className="session-bubble-bonus-tease" /> : null}
                               {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
+                              {bubble.specialKind ? (
+                                <>
+                                  <span className="session-bubble-special-mark" />
+                                  <span className="session-bubble-special-glyph" />
+                                </>
+                              ) : null}
                               {helperTargeted ? <span className="session-bubble-helper-lock" /> : null}
                             </button>
                           );
@@ -2992,9 +3137,24 @@ export function BubbleSessionPlayScreen() {
                       ))}
                       {popBursts.map((burst) => (
                         <span key={burst.id}>
+                          {burst.specialKind ? (
+                            <span
+                              className={`session-pop-special session-pop-special-${burst.specialKind} pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full`}
+                              style={{
+                                left: `${burst.xPercent}%`,
+                                top: `${burst.yPercent}%`,
+                                width: `${burst.sizeRem * (burst.isBonus ? 2.4 : 1.8)}rem`,
+                                height: `${burst.sizeRem * (burst.isBonus ? 2.4 : 1.8)}rem`,
+                              }}
+                            />
+                          ) : null}
                           <span
                             className={`session-pop-bloom pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                              burst.source === "helper" ? "session-pop-bloom-helper" : ""
+                              burst.source === "helper"
+                                ? "session-pop-bloom-helper"
+                                : burst.source === "chain"
+                                  ? "session-pop-bloom-chain"
+                                  : ""
                             }`}
                             style={{
                               left: `${burst.xPercent}%`,
@@ -3009,7 +3169,11 @@ export function BubbleSessionPlayScreen() {
                           />
                           <span
                             className={`session-pop-ring pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                              burst.source === "helper" ? "session-pop-ring-helper" : ""
+                              burst.source === "helper"
+                                ? "session-pop-ring-helper"
+                                : burst.source === "chain"
+                                  ? "session-pop-ring-chain"
+                                  : ""
                             }`}
                             style={{
                               left: `${burst.xPercent}%`,
@@ -3025,7 +3189,11 @@ export function BubbleSessionPlayScreen() {
                           />
                           <span
                             className={`session-pop-core pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                              burst.source === "helper" ? "session-pop-core-helper" : ""
+                              burst.source === "helper"
+                                ? "session-pop-core-helper"
+                                : burst.source === "chain"
+                                  ? "session-pop-core-chain"
+                                  : ""
                             }`}
                             style={{
                               left: `${burst.xPercent}%`,
@@ -3039,7 +3207,11 @@ export function BubbleSessionPlayScreen() {
                             <span
                               key={`${burst.id}-sparkle-${index}`}
                               className={`session-pop-sparkle pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full ${
-                                burst.source === "helper" ? "session-pop-sparkle-helper" : ""
+                                burst.source === "helper"
+                                  ? "session-pop-sparkle-helper"
+                                  : burst.source === "chain"
+                                    ? "session-pop-sparkle-chain"
+                                    : ""
                               }`}
                               style={{
                                 left: `calc(${burst.xPercent}% + ${sparkle.xRem * burst.sizeRem}rem)`,
