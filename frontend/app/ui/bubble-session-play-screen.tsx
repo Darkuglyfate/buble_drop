@@ -75,20 +75,18 @@ const FUN_OVERLAY_ITEM_CONFIG = [
 const SPECIAL_BUBBLE_CONFIG = [
   { kind: "cat", hue: 314, accentHue: 332 },
   { kind: "heart", hue: 336, accentHue: 348 },
+  { kind: "star", hue: 52, accentHue: 66 },
   { kind: "balloon", hue: 28, accentHue: 42 },
   { kind: "cloud", hue: 202, accentHue: 214 },
   { kind: "crown", hue: 44, accentHue: 52 },
   { kind: "gem", hue: 256, accentHue: 272 },
-  { kind: "chain", hue: 222, accentHue: 236 },
   { kind: "golden", hue: 42, accentHue: 54 },
 ] as const;
 const SPECIAL_BUBBLE_MAX_ACTIVE = 2;
-const SPECIAL_BUBBLE_SPAWN_CHANCE = 0.12;
+const SPECIAL_BUBBLE_SPAWN_CHANCE = 0.1;
 const HELPER_THEME_CONFIG = [
   { theme: "pearlDrone", accentHue: 196, label: "Pearl drone" },
-  { theme: "prismSkiff", accentHue: 282, label: "Prism skiff" },
-  { theme: "haloRay", accentHue: 38, label: "Halo ray" },
-  { theme: "ribbonBloom", accentHue: 326, label: "Ribbon bloom" },
+  { theme: "ribbonSprite", accentHue: 326, label: "Ribbon sprite" },
 ] as const;
 const DEFAULT_PLAYFIELD_WIDTH_PX = 390;
 const DEFAULT_PLAYFIELD_HEIGHT_PX = 760;
@@ -115,6 +113,10 @@ const HELPER_EVENT_EXIT_DURATION_MS = 1_420;
 const HELPER_SHOT_INTERVAL_MS = 440;
 const HELPER_SHOT_CUE_DURATION_MS = 1_080;
 const HELPER_SHOT_LEAD_IN_MS = 320;
+const SESSION_EVENT_INITIAL_MIN_DELAY_MS = 22_000;
+const SESSION_EVENT_INITIAL_MAX_DELAY_MS = 38_000;
+const SESSION_EVENT_REPEAT_MIN_DELAY_MS = 32_000;
+const SESSION_EVENT_REPEAT_MAX_DELAY_MS = 58_000;
 const FINISH_CELEBRATION_DURATION_MS = 2950;
 const FINISH_CELEBRATION_BLOOM_BUBBLES = [
   { x: "-12.8rem", y: "-7.2rem", size: "6.2rem", hue: 196, alpha: 0.84, delayMs: 0, durationMs: 1180 },
@@ -153,6 +155,7 @@ type SessionStartResponse = {
 
 type BubbleSizeTier = "small" | "medium" | "large";
 type SpecialBubbleKind = (typeof SPECIAL_BUBBLE_CONFIG)[number]["kind"];
+type SessionMicroEventKind = "goldenCluster" | "specialCluster" | "chainPulse";
 
 type ActivePlayBubble = {
   id: number;
@@ -190,6 +193,21 @@ type PopBurst = {
   specialKind: SpecialBubbleKind | null;
   comboTier: number | null;
   source: "user" | "helper" | "chain";
+};
+
+type SessionMicroEventTarget = {
+  bubbleId: number;
+  specialKind: SpecialBubbleKind | null;
+};
+
+type SessionMicroEvent = {
+  id: number;
+  kind: SessionMicroEventKind;
+  label: string;
+  accentHue: number;
+  startedAtMs: number;
+  expiresAtMs: number;
+  targets: SessionMicroEventTarget[];
 };
 
 type ComboBurst = {
@@ -845,6 +863,8 @@ export function BubbleSessionPlayScreen() {
   const [helperEvent, setHelperEvent] = useState<HelperEvent | null>(null);
   const [helperShotCues, setHelperShotCues] = useState<HelperShotCue[]>([]);
   const [helperScheduleTick, setHelperScheduleTick] = useState(0);
+  const [sessionMicroEvent, setSessionMicroEvent] = useState<SessionMicroEvent | null>(null);
+  const [sessionEventScheduleTick, setSessionEventScheduleTick] = useState(0);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
@@ -862,8 +882,14 @@ export function BubbleSessionPlayScreen() {
   const activePlayBubblesRef = useRef<ActivePlayBubble[]>(activePlayBubbles);
   const helperEventRef = useRef<HelperEvent | null>(null);
   const helperHasAppearedRef = useRef(false);
+  const sessionMicroEventRef = useRef<SessionMicroEvent | null>(null);
+  const sessionEventHasAppearedRef = useRef(false);
+  const lastSessionEventKindRef = useRef<SessionMicroEventKind | null>(null);
+  const lastHelperThemeRef = useRef<HelperTheme | null>(null);
+  const lastHelperPatternRef = useRef<string | null>(null);
   const finishCelebrationTimeoutRef = useRef<number | null>(null);
   const helperTimeoutsRef = useRef<number[]>([]);
+  const sessionEventTimeoutsRef = useRef<number[]>([]);
   const hasShownMinimumCelebrationRef = useRef(false);
   const hasShownTimerChoiceRef = useRef(false);
   const popAudioContextRef = useRef<AudioContext | null>(null);
@@ -949,6 +975,13 @@ export function BubbleSessionPlayScreen() {
     helperTimeoutsRef.current = [];
   };
 
+  const clearSessionEventTimeouts = () => {
+    sessionEventTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId);
+    });
+    sessionEventTimeoutsRef.current = [];
+  };
+
   useEffect(() => {
     activePlayBubblesRef.current = activePlayBubbles;
   }, [activePlayBubbles]);
@@ -956,6 +989,10 @@ export function BubbleSessionPlayScreen() {
   useEffect(() => {
     helperEventRef.current = helperEvent;
   }, [helperEvent]);
+
+  useEffect(() => {
+    sessionMicroEventRef.current = sessionMicroEvent;
+  }, [sessionMicroEvent]);
 
   useEffect(() => {
     setAuthSession(
@@ -971,6 +1008,7 @@ export function BubbleSessionPlayScreen() {
         finishCelebrationTimeoutRef.current = null;
       }
       clearHelperTimeouts();
+      clearSessionEventTimeouts();
       const currentAudioContext = popAudioContextRef.current;
       if (currentAudioContext) {
         void currentAudioContext.close();
@@ -1876,7 +1914,7 @@ export function BubbleSessionPlayScreen() {
       hue: currentEvent.accentHue,
       sizeRem: targetBubble.isBonus ? 0.86 : 0.58,
       isBonus: targetBubble.isBonus,
-      specialKind: targetBubble.specialKind,
+      specialKind: getEffectiveBubbleSpecialKind(targetBubble),
       comboTier: null,
       source: "helper",
     });
@@ -1927,8 +1965,12 @@ export function BubbleSessionPlayScreen() {
       (_, index) => targets[index % targets.length]?.id,
     ).filter((bubbleId): bubbleId is number => typeof bubbleId === "number");
 
+    const helperThemePool = HELPER_THEME_CONFIG.filter(
+      (entry) => entry.theme !== lastHelperThemeRef.current,
+    );
     const helperThemeConfig =
-      HELPER_THEME_CONFIG[Math.floor(Math.random() * HELPER_THEME_CONFIG.length)];
+      helperThemePool[Math.floor(Math.random() * helperThemePool.length)] ??
+      HELPER_THEME_CONFIG[0];
     const averageLeft =
       targets.reduce((sum, bubble) => sum + bubble.left, 0) / targets.length;
     const averageTop =
@@ -1976,18 +2018,21 @@ export function BubbleSessionPlayScreen() {
 
       const patterns = [
         {
+          key: "left-glide",
           startXPercent: leftEdge,
           startYPercent: leftSweepStartY,
           exitXPercent: rightEdge,
           exitYPercent: exitHighY,
         },
         {
+          key: "right-glide",
           startXPercent: rightEdge,
           startYPercent: rightSweepStartY,
           exitXPercent: leftEdge,
           exitYPercent: exitHighY,
         },
         {
+          key: "top-arc-left",
           startXPercent: clampPercent(
             anchorXPercent - randomBetween(isCompactPlayfield ? 16 : 24, isCompactPlayfield ? 26 : 36),
             leftEdge,
@@ -1998,6 +2043,7 @@ export function BubbleSessionPlayScreen() {
           exitYPercent: exitLowY,
         },
         {
+          key: "top-arc-right",
           startXPercent: clampPercent(
             anchorXPercent + randomBetween(isCompactPlayfield ? 16 : 24, isCompactPlayfield ? 26 : 36),
             isCompactPlayfield ? 70 : 74,
@@ -2008,20 +2054,37 @@ export function BubbleSessionPlayScreen() {
           exitYPercent: exitLowY,
         },
         {
+          key: "low-swoop-left",
           startXPercent: leftEdge,
           startYPercent: lowerEntryY,
           exitXPercent: clampPercent(anchorXPercent + randomBetween(16, 28), 68, rightEdge),
           exitYPercent: exitHighY,
         },
         {
+          key: "low-swoop-right",
           startXPercent: rightEdge,
           startYPercent: lowerEntryY,
           exitXPercent: clampPercent(anchorXPercent - randomBetween(16, 28), leftEdge, 32),
           exitYPercent: exitHighY,
         },
+        {
+          key: "high-arc-left",
+          startXPercent: clampPercent(anchorXPercent - randomBetween(24, 34), leftEdge, 26),
+          startYPercent: clampPercent(anchorYPercent - randomBetween(18, 26), isCompactPlayfield ? 18 : 12, 36),
+          exitXPercent: clampPercent(anchorXPercent + randomBetween(22, 34), 72, rightEdge),
+          exitYPercent: clampPercent(anchorYPercent + randomBetween(2, 10), 34, 70),
+        },
+        {
+          key: "high-arc-right",
+          startXPercent: clampPercent(anchorXPercent + randomBetween(24, 34), 74, rightEdge),
+          startYPercent: clampPercent(anchorYPercent - randomBetween(18, 26), isCompactPlayfield ? 18 : 12, 36),
+          exitXPercent: clampPercent(anchorXPercent - randomBetween(22, 34), leftEdge, 28),
+          exitYPercent: clampPercent(anchorYPercent + randomBetween(2, 10), 34, 70),
+        },
       ] as const;
 
-      return patterns[Math.floor(Math.random() * patterns.length)];
+      const patternPool = patterns.filter((pattern) => pattern.key !== lastHelperPatternRef.current);
+      return patternPool[Math.floor(Math.random() * patternPool.length)] ?? patterns[0];
     })();
     const eventId = Math.floor(Math.random() * 1_000_000_000);
     const nextEvent: HelperEvent = {
@@ -2041,6 +2104,8 @@ export function BubbleSessionPlayScreen() {
 
     setHelperEvent(nextEvent);
     helperHasAppearedRef.current = true;
+    lastHelperThemeRef.current = helperThemeConfig.theme;
+    lastHelperPatternRef.current = helperFlightPattern.key;
 
     const enterTimeout = window.setTimeout(() => {
       setHelperEvent((current) =>
@@ -2076,7 +2141,7 @@ export function BubbleSessionPlayScreen() {
   };
 
   useEffect(() => {
-    if (!isActive || sessionCompleted || sessionTimerGoalReached || postTimerChoiceVisible) {
+    if (!isActive || sessionCompleted || sessionTimerGoalReached || postTimerChoiceVisible || sessionMicroEvent) {
       clearHelperTimeouts();
       setHelperEvent(null);
       setHelperShotCues([]);
@@ -2114,6 +2179,48 @@ export function BubbleSessionPlayScreen() {
     isActive,
     postTimerChoiceVisible,
     sessionCompleted,
+    sessionMicroEvent,
+    sessionTimerGoalReached,
+  ]);
+
+  useEffect(() => {
+    if (!isActive || sessionCompleted || sessionTimerGoalReached || postTimerChoiceVisible) {
+      setSessionMicroEvent(null);
+      clearSessionEventTimeouts();
+      return;
+    }
+
+    if (sessionMicroEvent || helperEvent) {
+      return;
+    }
+
+    const [minDelayMs, maxDelayMs] = sessionEventHasAppearedRef.current
+      ? [SESSION_EVENT_REPEAT_MIN_DELAY_MS, SESSION_EVENT_REPEAT_MAX_DELAY_MS]
+      : [SESSION_EVENT_INITIAL_MIN_DELAY_MS, SESSION_EVENT_INITIAL_MAX_DELAY_MS];
+    const scheduleDelayMs = randomBetween(minDelayMs, maxDelayMs);
+    const timeoutId = window.setTimeout(() => {
+      const triggered = triggerSessionMicroEvent();
+      if (!triggered) {
+        setSessionEventScheduleTick((current) => current + 1);
+      }
+      sessionEventTimeoutsRef.current = sessionEventTimeoutsRef.current.filter(
+        (currentId) => currentId !== timeoutId,
+      );
+    }, scheduleDelayMs);
+    sessionEventTimeoutsRef.current.push(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      sessionEventTimeoutsRef.current = sessionEventTimeoutsRef.current.filter(
+        (currentId) => currentId !== timeoutId,
+      );
+    };
+  }, [
+    helperEvent,
+    isActive,
+    postTimerChoiceVisible,
+    sessionCompleted,
+    sessionEventScheduleTick,
+    sessionMicroEvent,
     sessionTimerGoalReached,
   ]);
 
@@ -2250,6 +2357,109 @@ export function BubbleSessionPlayScreen() {
     });
   };
 
+  const getSessionEventTarget = (
+    bubbleId: number,
+    eventCandidate: SessionMicroEvent | null = sessionMicroEventRef.current,
+  ) =>
+    eventCandidate?.targets.find((target) => target.bubbleId === bubbleId) ?? null;
+
+  const getEffectiveBubbleSpecialKind = (
+    bubble: ActivePlayBubble,
+    eventCandidate: SessionMicroEvent | null = sessionMicroEventRef.current,
+  ) => getSessionEventTarget(bubble.id, eventCandidate)?.specialKind ?? bubble.specialKind;
+
+  const triggerSessionMicroEvent = () => {
+    if (helperEventRef.current || sessionMicroEventRef.current) {
+      return false;
+    }
+
+    const now = Date.now();
+    const metrics = playfieldMetricsRef.current;
+    const eligibleBubbles = activePlayBubblesRef.current.filter(
+      (bubble) =>
+        bubble.poppedUntilMs <= now &&
+        bubble.respawnAtMs <= now &&
+        bubble.spawnedUntilMs <= now,
+    );
+
+    if (eligibleBubbles.length < 3) {
+      return false;
+    }
+
+    const eventKinds = (
+      ["goldenCluster", "specialCluster", "chainPulse"] as const
+    ).filter((kind) => kind !== lastSessionEventKindRef.current);
+    const eventKind =
+      eventKinds[Math.floor(Math.random() * eventKinds.length)] ?? "goldenCluster";
+    const anchorBubble = eligibleBubbles[Math.floor(Math.random() * eligibleBubbles.length)];
+    const targetBubbles = eligibleBubbles
+      .map((bubble) => {
+        const deltaXPx = ((bubble.left - anchorBubble.left) / 100) * metrics.width;
+        const deltaYPx = ((bubble.top - anchorBubble.top) / 100) * metrics.height;
+        return {
+          bubble,
+          distancePx: Math.hypot(deltaXPx, deltaYPx),
+        };
+      })
+      .sort((first, second) => first.distancePx - second.distancePx)
+      .slice(0, 3)
+      .map((entry) => entry.bubble);
+
+    if (targetBubbles.length < 3) {
+      return false;
+    }
+
+    const durationMs =
+      eventKind === "goldenCluster"
+        ? 9_200
+        : eventKind === "specialCluster"
+          ? 10_400
+          : 8_600;
+    const startedAtMs = now;
+    const expiresAtMs = now + durationMs;
+    const specialClusterKinds: SpecialBubbleKind[][] = [
+      ["cat", "heart", "star"],
+      ["cloud", "gem", "balloon"],
+      ["crown", "heart", "star"],
+    ];
+    const selectedClusterKinds =
+      specialClusterKinds[Math.floor(Math.random() * specialClusterKinds.length)] ??
+      specialClusterKinds[0];
+    const nextEvent: SessionMicroEvent = {
+      id: Math.floor(Math.random() * 1_000_000_000),
+      kind: eventKind,
+      label:
+        eventKind === "goldenCluster"
+          ? "Golden cluster"
+          : eventKind === "specialCluster"
+            ? "Rare cluster"
+            : "Chain pulse",
+      accentHue:
+        eventKind === "goldenCluster" ? 44 : eventKind === "specialCluster" ? 318 : 212,
+      startedAtMs,
+      expiresAtMs,
+      targets: targetBubbles.map((bubble, index) => ({
+        bubbleId: bubble.id,
+        specialKind:
+          eventKind === "goldenCluster"
+            ? "golden"
+            : eventKind === "specialCluster"
+              ? selectedClusterKinds[index % selectedClusterKinds.length] ?? "heart"
+              : null,
+      })),
+    };
+
+    setSessionMicroEvent(nextEvent);
+    sessionEventHasAppearedRef.current = true;
+    lastSessionEventKindRef.current = eventKind;
+
+    const cleanupTimeout = window.setTimeout(() => {
+      setSessionMicroEvent((current) => (current?.id === nextEvent.id ? null : current));
+    }, durationMs);
+    sessionEventTimeoutsRef.current.push(cleanupTimeout);
+    return true;
+  };
+
   const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
     void rewardCard;
     setActionMessage(
@@ -2316,6 +2526,11 @@ export function BubbleSessionPlayScreen() {
         clearHelperTimeouts();
         setHelperEvent(null);
         setHelperShotCues([]);
+        sessionEventHasAppearedRef.current = false;
+        lastSessionEventKindRef.current = null;
+        setSessionEventScheduleTick(0);
+        clearSessionEventTimeouts();
+        setSessionMicroEvent(null);
         if (finishCelebrationTimeoutRef.current !== null) {
           window.clearTimeout(finishCelebrationTimeoutRef.current);
           finishCelebrationTimeoutRef.current = null;
@@ -2389,6 +2604,10 @@ export function BubbleSessionPlayScreen() {
               (playfieldRect.height * (tappedBubble?.top ?? 50)) / 100;
         const xPercent = ((burstX - playfieldRect.left) / playfieldRect.width) * 100;
         const yPercent = ((burstY - playfieldRect.top) / playfieldRect.height) * 100;
+        const effectiveSpecialKind = getEffectiveBubbleSpecialKind(tappedBubble);
+        const isChainPulseTarget =
+          sessionMicroEventRef.current?.kind === "chainPulse" &&
+          !!getSessionEventTarget(tappedBubble.id);
         setTapFeedbackPoint(touchPointOverride ?? { topPercent: yPercent, leftPercent: xPercent });
         const comboTier = triggerComboBurst(nextCombo, { xPercent, yPercent });
         queuePopBurst({
@@ -2397,7 +2616,7 @@ export function BubbleSessionPlayScreen() {
           hue: tappedBubble.isBonus ? 44 : tappedBubble.hue,
           sizeRem: tappedBubble.isBonus ? 0.92 : 0.62,
           isBonus: tappedBubble.isBonus,
-          specialKind: tappedBubble.specialKind,
+          specialKind: effectiveSpecialKind,
           comboTier,
           source: "user",
         });
@@ -2410,7 +2629,7 @@ export function BubbleSessionPlayScreen() {
           sourceBubble: tappedBubble,
           sourcePoint: { xPercent, yPercent },
           now,
-          force: tappedBubble.specialKind === "chain",
+          force: isChainPulseTarget,
         });
         spawnFunOverlayItem(
           { xPercent, yPercent },
@@ -2937,6 +3156,16 @@ export function BubbleSessionPlayScreen() {
                     style={playfieldBoundariesStyle}
                   >
                     <div className="session-current-layer absolute inset-0">
+                      {sessionMicroEvent ? (
+                        <div className="pointer-events-none absolute left-1/2 top-[4%] z-[19] -translate-x-1/2">
+                          <span
+                            className={`session-event-chip session-event-chip-${sessionMicroEvent.kind}`}
+                            style={{ "--session-event-hue": `${sessionMicroEvent.accentHue}` } as CSSProperties}
+                          >
+                            {sessionMicroEvent.label}
+                          </span>
+                        </div>
+                      ) : null}
                       {activePlayBubbles.map((bubble) => (
                         (() => {
                           const now = Date.now();
@@ -2966,8 +3195,14 @@ export function BubbleSessionPlayScreen() {
                           const helperTargeted =
                             helperEvent?.phase === "firing" &&
                             helperEvent.targetBubbleIds.includes(bubble.id);
-                          const specialBubbleClass = bubble.specialKind
-                            ? `session-active-bubble-special session-active-bubble-special-${bubble.specialKind}`
+                          const activeEventTarget = getSessionEventTarget(bubble.id, sessionMicroEvent);
+                          const effectiveSpecialKind =
+                            activeEventTarget?.specialKind ?? bubble.specialKind;
+                          const specialBubbleClass = effectiveSpecialKind
+                            ? `session-active-bubble-special session-active-bubble-special-${effectiveSpecialKind}`
+                            : "";
+                          const sessionEventClass = activeEventTarget
+                            ? `session-active-bubble-evented session-active-bubble-event-${sessionMicroEvent?.kind ?? "specialCluster"}`
                             : "";
 
                           return (
@@ -2994,6 +3229,8 @@ export function BubbleSessionPlayScreen() {
                               } ${
                                 helperTargeted ? "session-active-bubble-helper-targeted" : ""
                               } ${
+                                sessionEventClass
+                              } ${
                                 specialBubbleClass
                               }`}
                               style={{
@@ -3016,7 +3253,11 @@ export function BubbleSessionPlayScreen() {
                                 "--session-helper-hue": `${helperTargeted ? helperEvent?.accentHue ?? 196 : 196}`,
                                 "--bubble-pop-duration": `${ANTICIPATION_POP_DURATION_MS + BUBBLE_POP_DURATION_MS}ms`,
                                 "--bubble-pop-intensity": `${bubble.isBonus ? 1.08 : bubble.sizeTier === "small" ? 0.92 : 1}`,
-                                "--bubble-special-hue": `${bubble.hue}`,
+                                "--bubble-special-hue": `${
+                                  activeEventTarget && sessionMicroEvent
+                                    ? sessionMicroEvent.accentHue
+                                    : bubble.hue
+                                }`,
                                 opacity:
                                   bubble.poppedUntilMs > now
                                     ? 0.06
@@ -3055,12 +3296,13 @@ export function BubbleSessionPlayScreen() {
                               <span className="session-bubble-sheen-band" />
                               {bubble.isBonus ? <span className="session-bubble-bonus-tease" /> : null}
                               {bubble.isBonus ? <span className="session-bubble-glint" /> : null}
-                              {bubble.specialKind ? (
+                              {effectiveSpecialKind ? (
                                 <>
                                   <span className="session-bubble-special-mark" />
                                   <span className="session-bubble-special-glyph" />
                                 </>
                               ) : null}
+                              {activeEventTarget ? <span className="session-bubble-event-ring" /> : null}
                               {helperTargeted ? <span className="session-bubble-helper-lock" /> : null}
                             </button>
                           );
@@ -3542,6 +3784,11 @@ export function BubbleSessionPlayScreen() {
                   clearHelperTimeouts();
                   setHelperEvent(null);
                   setHelperShotCues([]);
+                  sessionEventHasAppearedRef.current = false;
+                  lastSessionEventKindRef.current = null;
+                  setSessionEventScheduleTick(0);
+                  clearSessionEventTimeouts();
+                  setSessionMicroEvent(null);
                   setActivePlayBubbles(createActivePlayBubbleSet());
                   setActionMessage("Ready for another run.");
                 }}
