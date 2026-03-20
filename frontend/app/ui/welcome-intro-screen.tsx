@@ -58,7 +58,12 @@ export function WelcomeIntroScreen({
   const progressRatio = Math.min(1, Math.max(0, introProgressCount / requiredIntroPops));
   const [portalPressed, setPortalPressed] = useState(false);
   const [portalWakeActive, setPortalWakeActive] = useState(false);
+  const [portalRippleActive, setPortalRippleActive] = useState(false);
   const activeTargetBubbles = introBubbles.filter((bubble) => bubble.role !== "ambient");
+  const remainingTargetBubble = activeTargetBubbles.find(
+    (bubble) => !introPoppedBubbleIds.includes(bubble.id),
+  );
+  const introComplete = introBubblesRemaining <= 0;
 
   useEffect(() => {
     if (introPopBursts.length === 0) {
@@ -73,11 +78,28 @@ export function WelcomeIntroScreen({
     };
   }, [introPopBursts.length]);
 
+  useEffect(() => {
+    if (!introComplete) {
+      return;
+    }
+    setPortalWakeActive(true);
+    const timeoutId = window.setTimeout(() => {
+      setPortalWakeActive(false);
+    }, 900);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [introComplete]);
+
   const triggerPortalWake = () => {
     setPortalWakeActive(true);
+    setPortalRippleActive(true);
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
       navigator.vibrate(10);
     }
+    window.setTimeout(() => {
+      setPortalRippleActive(false);
+    }, 420);
     window.setTimeout(() => {
       setPortalWakeActive(false);
     }, 320);
@@ -123,6 +145,14 @@ export function WelcomeIntroScreen({
     return fallbackSlot;
   };
 
+  const onPortalActivate = (event: MouseEvent<HTMLButtonElement>) => {
+    triggerPortalWake();
+    if (!remainingTargetBubble) {
+      return;
+    }
+    onPopIntroBubble(remainingTargetBubble.id, event);
+  };
+
   return (
     <section className="intro-welcome-overlay">
       <div className="intro-welcome-card">
@@ -145,10 +175,11 @@ export function WelcomeIntroScreen({
                 type="button"
                 className={`intro-welcome-portal-button ${portalPressed ? "intro-welcome-portal-button-pressed" : ""} ${
                   portalWakeActive ? "intro-welcome-portal-button-waking" : ""
+                } ${portalRippleActive ? "intro-welcome-portal-button-rippling" : ""} ${
+                  introComplete ? "intro-welcome-portal-button-complete" : ""
                 }`}
                 onPointerDown={() => {
                   setPortalPressed(true);
-                  triggerPortalWake();
                 }}
                 onPointerUp={() => {
                   setPortalPressed(false);
@@ -156,6 +187,7 @@ export function WelcomeIntroScreen({
                 onPointerLeave={() => {
                   setPortalPressed(false);
                 }}
+                onClick={onPortalActivate}
                 aria-label="Pearl portal"
               >
                 <div
@@ -167,24 +199,25 @@ export function WelcomeIntroScreen({
                     <div className="intro-welcome-portal-core">
                       <span className="intro-welcome-portal-specular" />
                       <span className="intro-welcome-portal-heart" />
+                      <span className="intro-welcome-portal-flare" />
+                      <span className="intro-welcome-portal-sheen" />
+                      <span className="intro-welcome-portal-wave" />
+                      <span className="intro-welcome-portal-ripple" />
+                      <span className="intro-welcome-portal-progress-orb">
+                        <span className="intro-welcome-portal-progress-label">Entry</span>
+                        <span className="intro-welcome-portal-progress-value">
+                          {introComplete ? "Open" : `${introProgressCount}/${requiredIntroPops}`}
+                        </span>
+                      </span>
                     </div>
                   </div>
                 </div>
               </button>
-
-              <div className="intro-welcome-progress-chip">
-                <span className="intro-welcome-progress-label">Entry</span>
-                <span className="intro-welcome-progress-value">
-                  {introBubblesRemaining > 0
-                    ? `${introProgressCount}/${requiredIntroPops}`
-                    : "Opening"}
-                </span>
-              </div>
             </div>
           </div>
         </div>
 
-        <div className="intro-welcome-playfield" aria-hidden="false">
+        <div className="intro-welcome-playfield" aria-hidden="true">
           <div className="intro-welcome-ambient intro-welcome-ambient-a" />
           <div className="intro-welcome-ambient intro-welcome-ambient-b" />
           <div className="intro-welcome-ambient intro-welcome-ambient-c" />
@@ -233,22 +266,16 @@ export function WelcomeIntroScreen({
             }
 
             return (
-              <button
+              <span
                 key={bubble.id}
-                type="button"
-                onClick={(event) => onPopIntroBubble(bubble.id, event)}
                 className={`intro-bubble intro-bubble-${bubble.role} ${
                   introNudgedBubbleIds.includes(bubble.id) ? "intro-bubble-nudged" : ""
                 } ${isPopping ? "intro-bubble-popping" : ""}`}
-                aria-label="Tap bubble to enter Bubble World"
                 style={bubbleStyle}
+                aria-hidden="true"
               >
-                {bubble.role === "heroTarget" ? (
-                  <span className="intro-bubble-signal">TAP</span>
-                ) : (
-                  <span className="intro-bubble-indicator" />
-                )}
-              </button>
+                <span className="intro-bubble-indicator" />
+              </span>
             );
           })}
           {introPopBursts.map((burst) => (
