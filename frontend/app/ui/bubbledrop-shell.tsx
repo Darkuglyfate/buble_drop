@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import { encodeFunctionData, isAddress, parseAbi, type Address, type Hash } from "viem";
+import { isAddress, parseAbi, type Address, type Hash } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import {
   useAccount,
@@ -20,13 +20,9 @@ import {
   identifyAnalyticsUser,
 } from "../analytics";
 import {
-  BASE_MAINNET_CHAIN_HEX,
   classifyWalletFlowError,
-  isBaseChainHex,
   getBubbleDropWalletConnectors,
-  supportsWalletSendCalls,
   withFlowTimeout,
-  type WalletCapabilitiesRecord,
 } from "../base-wallet-runtime";
 import {
   clearBubbleDropFrontendSignInSession,
@@ -631,54 +627,12 @@ type IntroBubbleSpec = {
 };
 const REQUIRED_INTRO_POPS = 4;
 const INTRO_SKIP_SESSION_KEY = "bubbledrop:intro-skip-once";
-const DAILY_CHECK_IN_CALLS_TIMEOUT_MS = 45_000;
-const DAILY_CHECK_IN_CALLS_POLL_INTERVAL_MS = 1_200;
 const DAILY_CHECK_IN_STREAK_ABI = parseAbi([
   "function checkIn(address wallet, uint32 dayKey) returns (uint32)",
 ]);
 
 function getUtcDayKey(date: Date): number {
   return Math.floor(Date.parse(`${getUtcDateKey(date)}T00:00:00.000Z`) / 1000 / (24 * 60 * 60));
-}
-
-async function waitForCallsStatusTxHash(
-  provider: {
-    request(args: { method: string; params?: unknown[] }): Promise<unknown>;
-  },
-  id: string,
-): Promise<string | null> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < DAILY_CHECK_IN_CALLS_TIMEOUT_MS) {
-    const result = (await provider.request({
-      method: "wallet_getCallsStatus",
-      params: [id],
-    })) as {
-      status: "pending" | "success" | "failure" | undefined;
-      receipts?: Array<{ transactionHash?: string }>;
-    };
-    const transactionHash =
-      result.receipts?.find((receipt) => typeof receipt.transactionHash === "string")
-        ?.transactionHash ?? null;
-
-    if (result.status === "success" && transactionHash) {
-      return transactionHash;
-    }
-
-    if (result.status === "failure") {
-      throw new Error("bubbledrop-daily-checkin-sendcalls-failed");
-    }
-
-    if (result.status === "success" && !transactionHash) {
-      return null;
-    }
-
-    await new Promise((resolve) =>
-      window.setTimeout(resolve, DAILY_CHECK_IN_CALLS_POLL_INTERVAL_MS),
-    );
-  }
-
-  throw new Error("bubbledrop-timeout:daily_check_in");
 }
 
 function seededUnit(seed: number): number {
@@ -1833,111 +1787,15 @@ export function BubbleDropShell() {
     try {
       let checkInTxHash: string | null = null;
       if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1") {
-        const activeConnector = connection.connector;
-        const activeProvider = activeConnector
-          ? ((await activeConnector
-              .getProvider({ chainId: base.id })
-              .catch(() => null)) as {
-                request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-              } | null)
-          : null;
-        const activeProviderRequest = activeProvider?.request;
-        const runtimeChainHex =
-          typeof activeProviderRequest === "function"
-            ? await activeProviderRequest({ method: "eth_chainId" })
-                .then((value) => (typeof value === "string" ? value : null))
-                .catch(() => null)
-            : null;
-
-        if (runtimeChainHex !== null && !isBaseChainHex(runtimeChainHex)) {
-          throw new Error(
-            `bubbledrop-daily-checkin-wrong-chain:${runtimeChainHex}:${BASE_MAINNET_CHAIN_HEX}`,
-          );
-        }
-
-        const capabilities =
-          typeof activeProviderRequest === "function" &&
-          connectedWalletAddress
-            ? await activeProviderRequest({
-                  method: "wallet_getCapabilities",
-                  params: [connectedWalletAddress as Address, [BASE_MAINNET_CHAIN_HEX]],
-                })
-                .then((value) => (value ?? null) as WalletCapabilitiesRecord | null)
-                .catch((error) => {
-                  const classified = classifyWalletFlowError(error);
-                  if (classified.kind === "unsupported_runtime") {
-                    return null;
-                  }
-                  throw error;
-                })
-            : null;
-        const shouldUseCapabilityAwarePath =
-          typeof activeProviderRequest === "function" &&
-          supportsWalletSendCalls(capabilities, base.id);
-
+        const dayKey = getUtcDayKey(new Date());
         setActionMessage("Confirm daily check-in in your wallet.");
-        if (shouldUseCapabilityAwarePath) {
-          try {
-            const callBundle = await withFlowTimeout(
-              activeProviderRequest!({
-                method: "wallet_sendCalls",
-                params: [
-                  {
-                    atomicRequired: false,
-                    calls: [
-                      {
-                        data: encodeFunctionData({
-                          abi: DAILY_CHECK_IN_STREAK_ABI,
-                          args: [connectedWalletAddress as Address, getUtcDayKey(new Date())],
-                          functionName: "checkIn",
-                        }),
-                        to: dailyCheckInContractAddress as Address,
-                      },
-                    ],
-                    chainId: BASE_MAINNET_CHAIN_HEX,
-                    from: connectedWalletAddress as Address,
-                    version: "2.0.0",
-                  },
-                ],
-              }),
-              DAILY_CHECK_IN_CALLS_TIMEOUT_MS,
-              "daily_check_in",
-            ).then((value) => value as { id?: string } | string);
-
-            setActionMessage("Waiting for Base confirmation...");
-            const callBundleId =
-              typeof callBundle === "string" ? callBundle : callBundle.id ?? null;
-            if (!callBundleId) {
-              throw new Error("bubbledrop-daily-checkin-no-call-bundle-id");
-            }
-            checkInTxHash = await waitForCallsStatusTxHash(
-              { request: activeProviderRequest! },
-              callBundleId,
-            );
-            if (!checkInTxHash) {
-              setActionMessage(
-                "Daily check-in was submitted, but the wallet did not expose a transaction hash yet. Please try again in a moment.",
-              );
-              return;
-            }
-          } catch (error) {
-            const classified = classifyWalletFlowError(error);
-            if (classified.kind !== "unsupported_runtime") {
-              throw error;
-            }
-          }
-        }
-
-        if (!checkInTxHash) {
-          const txHash = await writeContractAsync({
-            abi: DAILY_CHECK_IN_STREAK_ABI,
-            address: dailyCheckInContractAddress as Address,
-            functionName: "checkIn",
-            args: [connectedWalletAddress as Address, getUtcDayKey(new Date())],
-            chainId: base.id,
-          });
-          checkInTxHash = txHash;
-        }
+        checkInTxHash = await writeContractAsync({
+          abi: DAILY_CHECK_IN_STREAK_ABI,
+          address: dailyCheckInContractAddress as Address,
+          functionName: "checkIn",
+          args: [connectedWalletAddress as Address, dayKey],
+          chainId: base.id,
+        });
 
         setActionMessage("Waiting for Base confirmation...");
         const receipt = await publicClient!.waitForTransactionReceipt({

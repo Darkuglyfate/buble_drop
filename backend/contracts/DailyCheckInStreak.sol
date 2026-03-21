@@ -50,6 +50,16 @@ contract DailyCheckInStreak {
         _;
     }
 
+    function _assertCheckInCaller(address wallet) private view {
+        if (msg.sender == writer) {
+            return;
+        }
+        if (msg.sender == wallet) {
+            return;
+        }
+        revert NotWriter();
+    }
+
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
         address previousOwner = owner;
@@ -67,7 +77,8 @@ contract DailyCheckInStreak {
     /// @notice Records a daily check-in for a wallet.
     /// @param wallet Wallet address that owns the streak.
     /// @param dayKey Day number since Unix epoch in UTC.
-    function checkIn(address wallet, uint32 dayKey) external onlyWriter returns (uint32) {
+    function checkIn(address wallet, uint32 dayKey) external returns (uint32) {
+        _assertCheckInCaller(wallet);
         if (wallet == address(0)) revert ZeroAddress();
 
         StreakState storage state = streaks[wallet];
