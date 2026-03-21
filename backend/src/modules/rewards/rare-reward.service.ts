@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { MoreThanOrEqual, Repository } from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { BubbleSession } from '../bubble-session/entities/bubble-session.entity';
+import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
 import { Season } from '../partner-token/entities/season.entity';
 import { CosmeticDefinition } from '../profile/entities/cosmetic-definition.entity';
@@ -11,6 +12,7 @@ import { NftDefinition } from '../profile/entities/nft-definition.entity';
 import { ProfileCosmeticUnlock } from '../profile/entities/profile-cosmetic-unlock.entity';
 import { ProfileNftOwnership } from '../profile/entities/profile-nft-ownership.entity';
 import { Profile } from '../profile/entities/profile.entity';
+import { UserWallet } from '../profile/entities/user-wallet.entity';
 import { RewardEvent, RewardEventType } from './entities/reward-event.entity';
 import { WeeklyTokenTicket } from './entities/weekly-token-ticket.entity';
 
@@ -67,10 +69,13 @@ export class RareRewardService {
     private readonly cosmeticDefinitionRepository: Repository<CosmeticDefinition>,
     @InjectRepository(ProfileCosmeticUnlock)
     private readonly profileCosmeticUnlockRepository: Repository<ProfileCosmeticUnlock>,
+    @InjectRepository(UserWallet)
+    private readonly userWalletRepository: Repository<UserWallet>,
     @InjectRepository(BubbleSession)
     private readonly bubbleSessionRepository: Repository<BubbleSession>,
     @InjectRepository(RewardEvent)
     private readonly rewardEventRepository: Repository<RewardEvent>,
+    private readonly rewardLedgerOnchainService: RewardLedgerOnchainService,
   ) {}
 
   async issueSessionRareRewards(
@@ -267,6 +272,11 @@ export class RareRewardService {
         id: definition.id,
         key: definition.key,
       });
+      await this.mirrorOwnershipGrant(profile.walletId, {
+        rewardKey: definition.key,
+        rewardType: 'nft',
+        sourceId: definition.id,
+      });
 
       await this.rewardEventRepository.save(
         this.rewardEventRepository.create({
@@ -324,6 +334,11 @@ export class RareRewardService {
         id: definition.id,
         key: definition.key,
       });
+      await this.mirrorOwnershipGrant(profile.walletId, {
+        rewardKey: definition.key,
+        rewardType: 'cosmetic',
+        sourceId: definition.id,
+      });
 
       await this.rewardEventRepository.save(
         this.rewardEventRepository.create({
@@ -378,5 +393,28 @@ export class RareRewardService {
     const hash = createHash('sha256').update(seed).digest('hex').slice(0, 8);
     const bucket = Number.parseInt(hash, 16) % 10_000;
     return bucket < Math.floor(chance * 100);
+  }
+
+  private async mirrorOwnershipGrant(
+    walletId: string,
+    input: {
+      rewardKey: string;
+      rewardType: 'nft' | 'cosmetic';
+      sourceId: string;
+    },
+  ): Promise<void> {
+    const wallet = await this.userWalletRepository.findOne({
+      where: { id: walletId },
+    });
+    if (!wallet) {
+      return;
+    }
+
+    await this.rewardLedgerOnchainService.grantOwnership({
+      walletAddress: wallet.address,
+      rewardKey: input.rewardKey,
+      rewardType: input.rewardType,
+      sourceId: input.sourceId,
+    });
   }
 }

@@ -6,8 +6,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { GaslessRelayStatus } from '../onchain-relay/gasless-relay.service';
+import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
 import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import {
@@ -37,6 +40,10 @@ const EMPTY_RARE_REWARD_OUTCOME: RareRewardIssueResult = {
   nftRewards: [],
   cosmeticRewards: [],
 };
+const SESSION_REWARD_FLAG_COMPLETION_ELIGIBLE = 1 << 0;
+const SESSION_REWARD_FLAG_RARE_ACCESS_ACTIVE = 1 << 1;
+const SESSION_REWARD_FLAG_SEASON_ELIGIBLE = 1 << 2;
+const SESSION_REWARD_FLAG_RARE_REWARD_ISSUED = 1 << 3;
 
 export interface BubbleSessionStartResult {
   sessionId: string;
@@ -62,6 +69,17 @@ export interface BubbleSessionCompleteResult {
   rareRewardAccessActive: boolean;
   seasonProgress: SeasonProgressSnapshot;
   rareRewardOutcome: RareRewardIssueResult;
+  finalScore: number;
+  bestCombo: number;
+  rewardFlags: number;
+  integrityHash: string;
+  onchainCommit: {
+    relay: GaslessRelayStatus;
+    submitted: boolean;
+    txHash: string | null;
+    sessionIdHash: string;
+    committedAt: string | null;
+  };
 }
 
 export interface BubbleSessionActivityRecordResult {
@@ -82,6 +100,7 @@ export class BubbleSessionService {
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
     private readonly redisService: RedisService,
+    private readonly sessionOutcomeOnchainService: SessionOutcomeOnchainService,
   ) {}
 
   async startSession(profileId: string): Promise<BubbleSessionStartResult> {
@@ -126,6 +145,8 @@ export class BubbleSessionService {
     profileId: string,
     sessionId: string,
     activeSecondsInput: number,
+    finalScoreInput: number,
+    bestComboInput: number,
   ): Promise<BubbleSessionCompleteResult> {
     this.assertUuid(profileId, 'Invalid profileId format');
     this.assertUuid(sessionId, 'Invalid sessionId format');
@@ -135,9 +156,18 @@ export class BubbleSessionService {
         'activeSeconds must be a non-negative number',
       );
     }
+    if (!Number.isFinite(finalScoreInput) || finalScoreInput < 0) {
+      throw new BadRequestException('finalScore must be a non-negative number');
+    }
+    if (!Number.isFinite(bestComboInput) || bestComboInput < 0) {
+      throw new BadRequestException('bestCombo must be a non-negative number');
+    }
 
     const profile = await this.profileRepository.findOne({
       where: { id: profileId },
+      relations: {
+        wallet: true,
+      },
     });
     if (!profile) {
       throw new NotFoundException('Profile not found');
@@ -160,6 +190,8 @@ export class BubbleSessionService {
       Math.floor((endedAt.getTime() - session.startedAt.getTime()) / 1000),
     );
     const reportedActiveSeconds = Math.floor(activeSecondsInput);
+    const finalScore = Math.floor(finalScoreInput);
+    const bestCombo = Math.floor(bestComboInput);
     if (reportedActiveSeconds > sessionDurationSeconds) {
       throw new BadRequestException(
         'activeSeconds cannot exceed session duration',
@@ -243,6 +275,54 @@ export class BubbleSessionService {
       await this.qualificationService.evaluateProgress(profileId);
     const seasonProgress =
       await this.qualificationService.getSeasonProgress(profileId);
+    const rewardFlags = this.buildRewardFlags({
+      isCompletionEligible,
+      rareAccessActive: qualification.rareRewardAccessActive,
+      seasonEligible: seasonProgress.eligibleAtSeasonEnd,
+      rareRewardIssued: this.hasRareRewardIssue(EMPTY_RARE_REWARD_OUTCOME),
+    });
+    const integrityHash = this.buildIntegrityHash({
+      sessionId: session.id,
+      walletAddress: profile.wallet?.address ?? '',
+      xpGained: grantedXp,
+      finalScore,
+      bestCombo,
+      activeSeconds,
+      sessionDurationSeconds,
+      rewardFlags,
+    });
+    const onchainCommit =
+      profile.wallet?.address && profile.wallet.address.trim().length > 0
+        ? await this.sessionOutcomeOnchainService.recordOutcome({
+            sessionId: session.id,
+            walletAddress: profile.wallet.address,
+            xpGained: grantedXp,
+            finalScore,
+            bestCombo,
+            activeSeconds,
+            sessionDurationSeconds,
+            rewardFlags,
+            integrityHash,
+          })
+        : {
+            txHash: null,
+            submitted: false,
+            relay: this.sessionOutcomeOnchainService.getRelayStatus(),
+            sessionIdHash: this.sessionOutcomeOnchainService.getSessionIdHash(
+              session.id,
+            ),
+            committedAt: null,
+          };
+
+    session.finalScore = finalScore;
+    session.bestCombo = bestCombo;
+    session.rewardFlags = rewardFlags;
+    session.integrityHash = integrityHash;
+    session.outcomeTxHash = onchainCommit.txHash;
+    session.outcomeRecordedAt = onchainCommit.committedAt
+      ? new Date(onchainCommit.committedAt)
+      : null;
+    await this.bubbleSessionRepository.save(session);
 
     return {
       success: true,
@@ -262,6 +342,17 @@ export class BubbleSessionService {
       rareRewardAccessActive: qualification.rareRewardAccessActive,
       seasonProgress,
       rareRewardOutcome: EMPTY_RARE_REWARD_OUTCOME,
+      finalScore,
+      bestCombo,
+      rewardFlags,
+      integrityHash,
+      onchainCommit: {
+        relay: onchainCommit.relay,
+        submitted: onchainCommit.submitted,
+        txHash: onchainCommit.txHash,
+        sessionIdHash: onchainCommit.sessionIdHash,
+        committedAt: onchainCommit.committedAt,
+      },
     };
   }
 
@@ -376,6 +467,63 @@ export class BubbleSessionService {
 
   private getActivityKey(sessionId: string): string {
     return `bubble-session:${sessionId}:activity`;
+  }
+
+  private buildRewardFlags(input: {
+    isCompletionEligible: boolean;
+    rareAccessActive: boolean;
+    seasonEligible: boolean;
+    rareRewardIssued: boolean;
+  }): number {
+    let flags = 0;
+    if (input.isCompletionEligible) {
+      flags |= SESSION_REWARD_FLAG_COMPLETION_ELIGIBLE;
+    }
+    if (input.rareAccessActive) {
+      flags |= SESSION_REWARD_FLAG_RARE_ACCESS_ACTIVE;
+    }
+    if (input.seasonEligible) {
+      flags |= SESSION_REWARD_FLAG_SEASON_ELIGIBLE;
+    }
+    if (input.rareRewardIssued) {
+      flags |= SESSION_REWARD_FLAG_RARE_REWARD_ISSUED;
+    }
+    return flags;
+  }
+
+  private hasRareRewardIssue(outcome: RareRewardIssueResult): boolean {
+    return (
+      Boolean(outcome.tokenReward) ||
+      outcome.nftRewards.length > 0 ||
+      outcome.cosmeticRewards.length > 0
+    );
+  }
+
+  private buildIntegrityHash(input: {
+    sessionId: string;
+    walletAddress: string;
+    xpGained: number;
+    finalScore: number;
+    bestCombo: number;
+    activeSeconds: number;
+    sessionDurationSeconds: number;
+    rewardFlags: number;
+  }): string {
+    const digest = createHash('sha256')
+      .update(
+        [
+          input.sessionId,
+          input.walletAddress.toLowerCase(),
+          input.xpGained,
+          input.finalScore,
+          input.bestCombo,
+          input.activeSeconds,
+          input.sessionDurationSeconds,
+          input.rewardFlags,
+        ].join(':'),
+      )
+      .digest('hex');
+    return `0x${digest}`;
   }
 
   private assertOnboardingCompleted(profile: Profile): void {

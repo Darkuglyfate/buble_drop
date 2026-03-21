@@ -35,6 +35,15 @@ type ClaimResponse = {
   status: "pending" | "confirmed" | "failed";
   txHash: string | null;
   remainingClaimableBalance: string;
+  relay?: {
+    action: "claim";
+    relayKind: "backend-sponsored";
+    available: boolean;
+    userPaysGas: false;
+    reason: string | null;
+  };
+  settlementRecordedOnchain?: boolean;
+  settlementRecordTxHash?: string | null;
 };
 
 function normalizeIntegerString(value: string): string {
@@ -504,7 +513,13 @@ export function ClaimScreen() {
               </p>
               {claimResult.txHash ? (
                 <p className="mt-1">
-                  Reward wallet tx: <span className="font-semibold">{claimResult.txHash}</span>
+                  Gasless relay tx: <span className="font-semibold">{claimResult.txHash}</span>
+                </p>
+              ) : null}
+              {claimResult.settlementRecordTxHash ? (
+                <p className="mt-1">
+                  Claim ledger tx:{" "}
+                  <span className="font-semibold">{claimResult.settlementRecordTxHash}</span>
                 </p>
               ) : null}
               <p className="mt-1">
@@ -512,7 +527,7 @@ export function ClaimScreen() {
                 <span className="font-semibold">{claimResult.remainingClaimableBalance}</span>
               </p>
               <p className="mt-1 text-xs text-[#6074a0]">
-                Backend finalized this MVP-safe payout attempt through the dedicated reward wallet model.
+                Backend-sponsored relay handled this payout path without exposing signer details to the client.
               </p>
             </div>
           </section>

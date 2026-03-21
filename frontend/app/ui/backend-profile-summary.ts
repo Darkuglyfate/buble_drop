@@ -77,6 +77,20 @@ export type BackendProfileSummary = {
     testingOverrideActive: boolean;
     previewOnly: boolean;
   };
+  onchainState: {
+    ownershipMirrorActive: boolean;
+    latestSessionOutcome: {
+      sessionIdHash: string;
+      xpGained: number;
+      finalScore: number;
+      bestCombo: number;
+      activeSeconds: number;
+      sessionDurationSeconds: number;
+      rewardFlags: number;
+      integrityHash: string;
+      recordedAt: string;
+    } | null;
+  };
 };
 
 export async function fetchBackendProfileSummary(

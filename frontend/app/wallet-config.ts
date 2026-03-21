@@ -4,6 +4,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { baseAccount, coinbaseWallet, injected } from "wagmi/connectors";
 import { cookieStorage, createConfig, createStorage, http } from "wagmi";
 import { base } from "wagmi/chains";
+import { bubbleDropAppIdentity } from "./app-metadata";
 import { getCoinbaseInjectedProvider } from "./base-wallet-runtime";
 
 export const walletQueryClient = new QueryClient();
@@ -24,10 +25,10 @@ export const walletConfig = createConfig({
       },
     }),
     baseAccount({
-      appName: "BubbleDrop",
+      appName: bubbleDropAppIdentity.name,
     }),
     coinbaseWallet({
-      appName: "BubbleDrop",
+      appName: bubbleDropAppIdentity.name,
     }),
   ],
   storage: createStorage({ storage: cookieStorage }),

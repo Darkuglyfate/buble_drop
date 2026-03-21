@@ -7,9 +7,11 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
 import { Profile } from '../profile/entities/profile.entity';
 import { UserWallet } from '../profile/entities/user-wallet.entity';
+import { GaslessRelayStatus } from '../onchain-relay/gasless-relay.service';
 import { ClaimableTokenBalance } from './entities/claimable-token-balance.entity';
 import { TokenClaim, TokenClaimStatus } from './entities/token-claim.entity';
 import { ClaimService } from './claim.service';
@@ -37,7 +39,24 @@ describe('ClaimService', () => {
   let claimableRepository: MockRepository<ClaimableTokenBalance>;
   let tokenClaimRepository: MockRepository<TokenClaim>;
   let payoutService: { processPendingPayout: jest.Mock };
+  let rewardLedgerOnchainService: { recordClaimSettlement: jest.Mock };
   let dataSource: { transaction: jest.Mock };
+
+  const availableClaimRelayStatus: GaslessRelayStatus = {
+    action: 'claim',
+    relayKind: 'backend-sponsored',
+    available: true,
+    userPaysGas: false,
+    reason: null,
+  };
+
+  const unavailableClaimRelayStatus: GaslessRelayStatus = {
+    action: 'claim',
+    relayKind: 'backend-sponsored',
+    available: false,
+    userPaysGas: false,
+    reason: 'claim relay disabled',
+  };
 
   beforeEach(async () => {
     profileRepository = {
@@ -65,9 +84,23 @@ describe('ClaimService', () => {
     claimableRepository = {
       find: jest.fn(),
     };
-    tokenClaimRepository = {};
+    tokenClaimRepository = {
+      save: jest.fn().mockImplementation(
+        (claim: unknown): Promise<unknown> => Promise.resolve(claim),
+      ),
+    };
     payoutService = {
       processPendingPayout: jest.fn(),
+    };
+    rewardLedgerOnchainService = {
+      recordClaimSettlement: jest.fn().mockResolvedValue({
+        txHash:
+          '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        submitted: true,
+        relay: availableClaimRelayStatus,
+        claimIdHash:
+          '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+      }),
     };
     dataSource = {
       transaction: jest.fn(),
@@ -95,6 +128,10 @@ describe('ClaimService', () => {
           useValue: tokenClaimRepository,
         },
         { provide: RewardWalletPayoutService, useValue: payoutService },
+        {
+          provide: RewardLedgerOnchainService,
+          useValue: rewardLedgerOnchainService,
+        },
       ],
     }).compile();
 
@@ -208,6 +245,7 @@ describe('ClaimService', () => {
     payoutService.processPendingPayout.mockResolvedValue({
       status: TokenClaimStatus.CONFIRMED,
       txHash: '0xabc123',
+      relay: availableClaimRelayStatus,
     });
 
     const result = await service.createTokenClaim({
@@ -224,6 +262,10 @@ describe('ClaimService', () => {
       status: TokenClaimStatus.CONFIRMED,
       txHash: '0xabc123',
       remainingClaimableBalance: '100',
+      relay: availableClaimRelayStatus,
+      settlementRecordedOnchain: true,
+      settlementRecordTxHash:
+        '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     });
     expect(result.processedAt).toBeInstanceOf(Date);
     expect(payoutService.processPendingPayout).toHaveBeenCalledWith({
@@ -236,6 +278,7 @@ describe('ClaimService', () => {
     });
     expect(managerState.balance.claimableAmount).toBe('100');
     expect(managerState.claim?.processedAt).toBeInstanceOf(Date);
+    expect(rewardLedgerOnchainService.recordClaimSettlement).toHaveBeenCalled();
   });
 
   it('marks token claim as failed and keeps balance unchanged when payout fails', async () => {
@@ -320,6 +363,7 @@ describe('ClaimService', () => {
     payoutService.processPendingPayout.mockResolvedValue({
       status: TokenClaimStatus.FAILED,
       txHash: null,
+      relay: unavailableClaimRelayStatus,
     });
 
     const result = await service.createTokenClaim({
@@ -336,10 +380,14 @@ describe('ClaimService', () => {
       status: TokenClaimStatus.FAILED,
       txHash: null,
       remainingClaimableBalance: '300',
+      relay: unavailableClaimRelayStatus,
+      settlementRecordedOnchain: false,
+      settlementRecordTxHash: null,
     });
     expect(result.processedAt).toBeInstanceOf(Date);
     expect(managerState.balance.claimableAmount).toBe('300');
     expect(managerState.claim?.processedAt).toBeInstanceOf(Date);
+    expect(rewardLedgerOnchainService.recordClaimSettlement).not.toHaveBeenCalled();
   });
 
   it('rejects claim requests when onboarding is incomplete', async () => {

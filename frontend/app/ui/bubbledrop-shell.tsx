@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import type { Address } from "viem";
+import { isAddress, parseAbi, type Address } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import {
   useAccount,
   useConnect,
   useDisconnect,
+  usePublicClient,
   useSignMessage,
   useSwitchChain,
+  useWriteContract,
 } from "wagmi";
 import { base } from "wagmi/chains";
 import {
@@ -88,6 +90,10 @@ type DailyCheckInResponse = {
   rareAccessActive?: boolean;
   currentStreak?: number;
   rareRewardAccessActive?: boolean;
+  onchain?: {
+    mode: "user-paid";
+    txHash: string | null;
+  };
 };
 
 type OnboardingCompletionResponse = {
@@ -620,6 +626,13 @@ type IntroBubbleSpec = {
 };
 const REQUIRED_INTRO_POPS = 4;
 const INTRO_SKIP_SESSION_KEY = "bubbledrop:intro-skip-once";
+const DAILY_CHECK_IN_STREAK_ABI = parseAbi([
+  "function checkIn(address wallet, uint32 dayKey) returns (uint32)",
+]);
+
+function getUtcDayKey(date: Date): number {
+  return Math.floor(Date.parse(`${getUtcDateKey(date)}T00:00:00.000Z`) / 1000 / (24 * 60 * 60));
+}
 
 function seededUnit(seed: number): number {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -767,6 +780,8 @@ export function BubbleDropShell() {
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
+  const publicClient = usePublicClient({ chainId: base.id });
+  const { writeContractAsync } = useWriteContract();
 
   const currentCard = ONBOARDING_CARDS[cardIndex];
   const connectedWalletAddress =
@@ -777,6 +792,13 @@ export function BubbleDropShell() {
   const effectiveChainId = smokeWalletOverride?.chainId ?? chainId;
   const isConnectedToBase =
     effectiveIsConnected && effectiveChainId === base.id;
+  const dailyCheckInContractAddress = useMemo(() => {
+    const configuredAddress =
+      process.env.NEXT_PUBLIC_ONCHAIN_STREAK_CONTRACT_ADDRESS?.trim() ?? "";
+    return isAddress(configuredAddress)
+      ? (configuredAddress as Address)
+      : null;
+  }, []);
   const {
     preferredConnector,
     coinbaseInjectedConnector,
@@ -1745,14 +1767,51 @@ export function BubbleDropShell() {
       setActionMessage("Sign in with Base before daily check-in.");
       return;
     }
+    if (!connectedWalletAddress) {
+      setActionMessage("Connect your Base wallet before daily check-in.");
+      return;
+    }
+    if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" && !dailyCheckInContractAddress) {
+      setActionMessage("Daily check-in contract is not configured for this app build.");
+      return;
+    }
+    if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" && !publicClient) {
+      setActionMessage("Base client is not ready yet. Try daily check-in again in a moment.");
+      return;
+    }
 
     setIsSubmittingAction(true);
     setActionMessage(null);
     try {
+      let checkInTxHash: string | null = null;
+      if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1") {
+        setActionMessage("Confirm daily check-in in your wallet.");
+        const txHash = await writeContractAsync({
+          abi: DAILY_CHECK_IN_STREAK_ABI,
+          address: dailyCheckInContractAddress as Address,
+          functionName: "checkIn",
+          args: [connectedWalletAddress as Address, getUtcDayKey(new Date())],
+          chainId: base.id,
+        });
+        checkInTxHash = txHash;
+
+        setActionMessage("Waiting for Base confirmation...");
+        const receipt = await publicClient!.waitForTransactionReceipt({
+          hash: txHash,
+        });
+        if (receipt.status !== "success") {
+          setActionMessage("Today's check-in transaction did not confirm on Base.");
+          return;
+        }
+      }
+
       const response = await fetch(`${backendUrl}/check-in/daily`, {
         method: "POST",
         headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
-        body: JSON.stringify({ profileId }),
+        body: JSON.stringify({
+          profileId,
+          txHash: checkInTxHash ?? undefined,
+        }),
       });
 
       if (!response.ok) {
@@ -1795,15 +1854,24 @@ export function BubbleDropShell() {
           payload.rareAccessActive ?? payload.rareRewardAccessActive ?? false,
       });
       setActionMessage(
-        `Daily check-in complete. +${payload.xpAwarded ?? 0} XP. Streak: ${
-          payload.newStreak ?? payload.currentStreak ?? 0
-        }.`,
+        payload.onchain?.txHash
+          ? `Daily check-in complete. +${payload.xpAwarded ?? 0} XP. Streak: ${
+              payload.newStreak ?? payload.currentStreak ?? 0
+            }. Wallet transaction confirmed on Base.`
+          : `Daily check-in complete. +${payload.xpAwarded ?? 0} XP. Streak: ${
+              payload.newStreak ?? payload.currentStreak ?? 0
+            }.`,
       );
       if (opts?.openBubbleSessionAfter && quickSessionHref) {
         window.location.assign(quickSessionHref);
       }
-    } catch {
-      setActionMessage("Today's check-in did not land. Try again in a moment.");
+    } catch (error) {
+      const walletError = classifyWalletFlowError(error);
+      if (walletError.kind === "rejected") {
+        setActionMessage("Daily check-in was cancelled in your wallet.");
+      } else {
+        setActionMessage("Today's check-in did not land. Try again in a moment.");
+      }
     } finally {
       setIsSubmittingAction(false);
     }
@@ -2019,7 +2087,7 @@ export function BubbleDropShell() {
     heroStatusLabel = "Arrival";
     heroTitle = "Mark today's visit on Base.";
     heroBody =
-      "Daily check-in is an on-chain tap — small gas on Base, +XP and streak. Do it once per day.";
+      "Daily check-in is submitted from your wallet on Base - one user-paid transaction for +XP and streak once per day.";
     heroAccentClass =
       "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
     heroPortalCopy = "Base check-in";
@@ -2922,5 +2990,6 @@ export function BubbleDropShell() {
     </div>
   );
 }
+
 
 

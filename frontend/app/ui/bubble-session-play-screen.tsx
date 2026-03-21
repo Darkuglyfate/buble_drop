@@ -331,6 +331,23 @@ type SessionCompleteResponse = {
   rareRewardAccessActive: boolean;
   seasonProgress: SeasonProgress;
   rareRewardOutcome: RareRewardOutcome;
+  finalScore: number;
+  bestCombo: number;
+  rewardFlags: number;
+  integrityHash: string;
+  onchainCommit: {
+    relay: {
+      action: "session_outcome";
+      relayKind: "backend-sponsored";
+      available: boolean;
+      userPaysGas: false;
+      reason: string | null;
+    };
+    submitted: boolean;
+    txHash: string | null;
+    sessionIdHash: string;
+    committedAt: string | null;
+  };
 };
 
 type EquipStyleResponse = {
@@ -2733,6 +2750,8 @@ export function BubbleSessionPlayScreen() {
             profileId: effectiveProfileId,
             sessionId: backendSessionId,
             activeSeconds: backendCountableActiveSeconds,
+            finalScore: activeTapCount,
+            bestCombo: bestTapCombo,
           }),
         });
 
@@ -2758,7 +2777,7 @@ export function BubbleSessionPlayScreen() {
         setActionMessage(
           `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Season chance: ${
             payload.seasonProgress.eligibleAtSeasonEnd ? "eligible" : "building"
-          }.`,
+          }.${payload.onchainCommit?.submitted ? " Final result committed on Base." : ""}`,
         );
       } catch {
         setActionMessage("We couldn't complete that session right now.");
@@ -3686,6 +3705,11 @@ export function BubbleSessionPlayScreen() {
                   ? "This run strengthened a profile that is already eligible for the season-end reward chance."
                   : "This run banked XP and active-play progress toward the season-end reward chance."}
               </p>
+              {completedResult.onchainCommit?.submitted ? (
+                <p className="mt-2 text-xs font-semibold text-[#5f749f]">
+                  Final session result committed on Base via backend-sponsored relay.
+                </p>
+              ) : null}
               {nextStepCopy ? (
                 <p className="mt-2 text-xs font-semibold text-[#5f749f]">{nextStepCopy}</p>
               ) : null}
@@ -3715,8 +3739,40 @@ export function BubbleSessionPlayScreen() {
                   {completedResult.seasonProgress.eligibleAtSeasonEnd ? "Eligible" : "Building"}
                 </p>
               </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Final score</p>
+                <p className="mt-1 font-semibold text-[#334f82]">{completedResult.finalScore}</p>
+              </div>
+              <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
+                <p className="text-xs text-[#6077a6]">Best combo</p>
+                <p className="mt-1 font-semibold text-[#334f82]">x{completedResult.bestCombo}</p>
+              </div>
             </div>
           </section>
+
+          {completedResult.onchainCommit ? (
+            <section className="bubble-card p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
+                Onchain anchor
+              </p>
+              <div className="mt-3 rounded-xl bg-white/80 p-3 text-sm text-[#465d88]">
+                <p>
+                  Commit status:{" "}
+                  <span className="font-semibold uppercase">
+                    {completedResult.onchainCommit.submitted ? "confirmed" : "pending"}
+                  </span>
+                </p>
+                {completedResult.onchainCommit.txHash ? (
+                  <p className="mt-1">
+                    Commit tx: <span className="font-semibold">{completedResult.onchainCommit.txHash}</span>
+                  </p>
+                ) : null}
+                <p className="mt-1">
+                  Integrity hash: <span className="font-semibold">{completedResult.integrityHash}</span>
+                </p>
+              </div>
+            </section>
+          ) : null}
 
           <section className="bubble-card p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">

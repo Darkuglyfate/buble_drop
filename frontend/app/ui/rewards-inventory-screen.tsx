@@ -31,6 +31,7 @@ type InventoryNft = {
   label: string;
   tier: string;
   owned: boolean;
+  ownedOnchain: boolean;
   previewOnly: boolean;
   acquiredAt: string;
 };
@@ -40,6 +41,7 @@ type InventoryCosmetic = {
   key: string;
   label: string;
   owned: boolean;
+  ownedOnchain: boolean;
   previewOnly: boolean;
   unlockedAt: string;
 };
@@ -82,6 +84,7 @@ type InventoryCollectible = {
   rarity: RarityLevel;
   season: Exclude<SeasonFilter, "all">;
   owned: boolean;
+  ownedOnchain: boolean;
   previewOnly: boolean;
   obtainedAt: string;
 };
@@ -294,6 +297,7 @@ export function RewardsInventoryScreen() {
         rarity: inferRarity("nft", nft.key, nft.label, nft.tier),
         season: inferSeason(nft.key, nft.label),
         owned: nft.owned,
+        ownedOnchain: nft.ownedOnchain,
         previewOnly: nft.previewOnly,
         obtainedAt: nft.acquiredAt,
       })) ?? [];
@@ -307,6 +311,7 @@ export function RewardsInventoryScreen() {
         rarity: inferRarity("cosmetic", cosmetic.key, cosmetic.label),
         season: inferSeason(cosmetic.key, cosmetic.label),
         owned: cosmetic.owned,
+        ownedOnchain: cosmetic.ownedOnchain,
         previewOnly: cosmetic.previewOnly,
         obtainedAt: cosmetic.unlockedAt,
       })) ?? [];
@@ -825,7 +830,13 @@ export function RewardsInventoryScreen() {
                               : "border border-white/20 bg-white/10 text-[#d5def0]"
                           }`}
                         >
-                          {isEquipped ? "Equipped" : item.owned ? "Collected" : "Preview only"}
+                          {isEquipped
+                            ? "Equipped"
+                            : item.ownedOnchain
+                              ? "Onchain owned"
+                              : item.owned
+                                ? "Collected"
+                                : "Preview only"}
                         </span>
                       </div>
                       <div className="mt-3 grid grid-cols-1 gap-2">

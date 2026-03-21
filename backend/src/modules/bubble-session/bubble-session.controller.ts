@@ -45,6 +45,8 @@ export class BubbleSessionController {
       dto.profileId,
       dto.sessionId,
       dto.activeSeconds,
+      dto.finalScore,
+      dto.bestCombo,
     );
   }
 

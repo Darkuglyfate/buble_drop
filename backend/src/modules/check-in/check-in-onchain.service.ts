@@ -11,6 +11,10 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
+import {
+  GaslessRelayService,
+  GaslessRelayStatus,
+} from '../onchain-relay/gasless-relay.service';
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
@@ -26,21 +30,31 @@ export interface RecordOnchainCheckInInput {
 export interface RecordOnchainCheckInResult {
   txHash: string | null;
   submitted: boolean;
+  relay: GaslessRelayStatus;
 }
 
 @Injectable()
 export class CheckInOnchainService {
   private readonly logger = new Logger(CheckInOnchainService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly gaslessRelayService: GaslessRelayService,
+  ) {}
+
+  getRelayStatus(): GaslessRelayStatus {
+    return this.gaslessRelayService.getStatus('daily_check_in');
+  }
 
   async recordDailyCheckIn(
     input: RecordOnchainCheckInInput,
   ): Promise<RecordOnchainCheckInResult> {
-    if (!this.isEnabled()) {
+    const relayStatus = this.getRelayStatus();
+    if (!relayStatus.available) {
       return {
         txHash: null,
         submitted: false,
+        relay: relayStatus,
       };
     }
 
@@ -84,6 +98,7 @@ export class CheckInOnchainService {
       return {
         txHash,
         submitted: true,
+        relay: relayStatus,
       };
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'unknown error';
@@ -94,11 +109,6 @@ export class CheckInOnchainService {
         'Daily check-in onchain recording failed',
       );
     }
-  }
-
-  private isEnabled(): boolean {
-    const raw = this.configService.get<string>('ONCHAIN_STREAK_ENABLED');
-    return raw?.trim() === '1';
   }
 
   private getRequiredEnv(key: string): string {

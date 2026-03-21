@@ -11,6 +11,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
+import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
+import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import {
   QualificationService,
@@ -124,6 +126,20 @@ export interface ProfileSummary {
     testingOverrideActive: boolean;
     previewOnly: boolean;
   };
+  onchainState: {
+    ownershipMirrorActive: boolean;
+    latestSessionOutcome: {
+      sessionIdHash: string;
+      xpGained: number;
+      finalScore: number;
+      bestCombo: number;
+      activeSeconds: number;
+      sessionDurationSeconds: number;
+      rewardFlags: number;
+      integrityHash: string;
+      recordedAt: string;
+    } | null;
+  };
 }
 
 export interface EquippedStyleResult {
@@ -163,6 +179,7 @@ export interface RewardsInventoryView {
     label: string;
     tier: string;
     owned: boolean;
+    ownedOnchain: boolean;
     previewOnly: boolean;
     acquiredAt: Date;
   }>;
@@ -171,6 +188,7 @@ export interface RewardsInventoryView {
     key: string;
     label: string;
     owned: boolean;
+    ownedOnchain: boolean;
     previewOnly: boolean;
     unlockedAt: Date;
   }>;
@@ -202,6 +220,8 @@ export class ProfileService {
     private readonly cosmeticDefinitionRepository: Repository<CosmeticDefinition>,
     @InjectRepository(ClaimableTokenBalance)
     private readonly claimableTokenBalanceRepository: Repository<ClaimableTokenBalance>,
+    private readonly rewardLedgerOnchainService: RewardLedgerOnchainService,
+    private readonly sessionOutcomeOnchainService: SessionOutcomeOnchainService,
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
   ) {}
@@ -508,6 +528,12 @@ export class ProfileService {
       .toString();
     const needsOnboarding = this.profileNeedsOnboarding(profile);
     const testingOverrideActive = false;
+    const latestSessionOutcome =
+      await this.sessionOutcomeOnchainService.getLatestOutcome(wallet.address);
+    const ownershipMirrorActive =
+      this.configService.get<string>('REWARD_LEDGER_CONTRACT_ADDRESS')?.trim()
+        ? true
+        : false;
 
     return {
       onboardingState: {
@@ -569,6 +595,10 @@ export class ProfileService {
         equippedStyle: await this.loadEquippedStyleSnapshot(profile.id),
         testingOverrideActive,
         previewOnly: true,
+      },
+      onchainState: {
+        ownershipMirrorActive,
+        latestSessionOutcome,
       },
     };
   }
@@ -645,6 +675,9 @@ export class ProfileService {
       profile,
       'Onboarding must be completed before rewards inventory is available',
     );
+    const wallet = await this.walletRepository.findOne({
+      where: { id: profile.walletId },
+    });
     const nftOwnerships = await this.profileNftOwnershipRepository.find({
       where: { profileId },
       order: { acquiredAt: 'DESC' },
@@ -669,6 +702,18 @@ export class ProfileService {
       cosmeticUnlocks.map((item) => [item.cosmeticDefinitionId, item]),
     );
 
+    const rewardKeys = [
+      ...nftDefinitions.map((definition) => definition.key),
+      ...cosmeticDefinitions.map((definition) => definition.key),
+    ];
+    const onchainOwnershipByRewardKey =
+      wallet?.address && rewardKeys.length > 0
+        ? await this.rewardLedgerOnchainService.getOwnershipStates(
+            wallet.address,
+            rewardKeys,
+          )
+        : {};
+
     const nfts = nftDefinitions.map((definition) => {
       const ownership = nftOwnershipMap.get(definition.id);
       return {
@@ -677,6 +722,7 @@ export class ProfileService {
         label: definition.label,
         tier: definition.tier,
         owned: Boolean(ownership),
+        ownedOnchain: Boolean(onchainOwnershipByRewardKey[definition.key]),
         previewOnly: true,
         acquiredAt: ownership?.acquiredAt ?? new Date(0),
       };
@@ -689,6 +735,7 @@ export class ProfileService {
         key: definition.key,
         label: definition.label,
         owned: Boolean(unlock),
+        ownedOnchain: Boolean(onchainOwnershipByRewardKey[definition.key]),
         previewOnly: true,
         unlockedAt: unlock?.unlockedAt ?? new Date(0),
       };

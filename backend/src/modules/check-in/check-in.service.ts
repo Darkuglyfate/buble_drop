@@ -10,7 +10,6 @@ import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
 import { XpService, XpSource } from '../rewards/xp.service';
-import { CheckInOnchainService } from './check-in-onchain.service';
 import { CheckInRecord } from './entities/check-in-record.entity';
 
 export interface DailyCheckInResult {
@@ -24,6 +23,10 @@ export interface DailyCheckInResult {
   currentStreak: number;
   qualificationStatus: QualificationStatus;
   rareRewardAccessActive: boolean;
+  onchain: {
+    mode: 'user-paid';
+    txHash: string | null;
+  };
 }
 
 @Injectable()
@@ -35,7 +38,6 @@ export class CheckInService {
     private readonly profileRepository: Repository<Profile>,
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
-    private readonly checkInOnchainService: CheckInOnchainService,
   ) {}
 
   async performDailyCheckIn(
@@ -53,6 +55,11 @@ export class CheckInService {
     });
     if (!profile) {
       throw new NotFoundException('Profile not found');
+    }
+    if (profile.wallet?.address && !txHash) {
+      throw new BadRequestException(
+        'Daily check-in requires a confirmed user wallet transaction',
+      );
     }
 
     const today = this.getUtcDateKey(new Date());
@@ -74,20 +81,13 @@ export class CheckInService {
       lastRecord?.checkInDate ?? null,
       today,
     );
-
-    const onchainResult =
-      profile.wallet?.address && profile.wallet.address.trim().length > 0
-        ? await this.checkInOnchainService.recordDailyCheckIn({
-            walletAddress: profile.wallet.address,
-            checkInDate: today,
-          })
-        : { txHash: null, submitted: false };
+    const onchainTxHash = txHash ?? null;
     await this.profileRepository.save(profile);
 
     const record = this.checkInRecordRepository.create({
       profileId,
       checkInDate: today,
-      txHash: onchainResult.txHash ?? txHash ?? null,
+      txHash: onchainTxHash,
     });
     await this.checkInRecordRepository.save(record);
 
@@ -97,7 +97,7 @@ export class CheckInService {
         amount: 20,
         metadata: {
           checkInDate: today,
-          txHash: txHash ?? null,
+          txHash: onchainTxHash,
         },
       },
     ]);
@@ -124,6 +124,10 @@ export class CheckInService {
       currentStreak: profile.currentStreak,
       qualificationStatus: qualification.qualificationStatus,
       rareRewardAccessActive: qualification.rareRewardAccessActive,
+      onchain: {
+        mode: 'user-paid',
+        txHash: onchainTxHash,
+      },
     };
   }
 

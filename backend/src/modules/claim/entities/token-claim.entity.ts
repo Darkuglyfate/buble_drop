@@ -55,6 +55,12 @@ export class TokenClaim {
   @Column({ type: 'timestamptz', nullable: true })
   processedAt: Date | null;
 
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  settlementRecordTxHash: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  settlementRecordedAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

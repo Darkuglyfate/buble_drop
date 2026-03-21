@@ -22,6 +22,8 @@
     "seed:reference-data": "ts-node -r tsconfig-paths/register src/scripts/seed-reference-data.ts",
     "db:seed:reference-data": "npm run seed:reference-data",
     "deploy:daily-check-in-streak": "ts-node -r tsconfig-paths/register src/scripts/deploy-daily-check-in-streak.ts",
+    "deploy:reward-ledger": "ts-node -r tsconfig-paths/register src/scripts/deploy-reward-ledger.ts",
+    "deploy:session-outcome-registry": "ts-node -r tsconfig-paths/register src/scripts/deploy-session-outcome-registry.ts",
     "dev:services:up": "docker compose -f ../docker-compose.local.yml up -d postgres redis",
     "dev:services:down": "docker compose -f ../docker-compose.local.yml down",
     "dev:services:logs": "docker compose -f ../docker-compose.local.yml logs -f postgres redis",

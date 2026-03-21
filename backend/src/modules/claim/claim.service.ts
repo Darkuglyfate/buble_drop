@@ -13,6 +13,8 @@ import { PartnerToken } from '../partner-token/entities/partner-token.entity';
 import { CreateTokenClaimDto } from './dto/create-token-claim.dto';
 import { ClaimableTokenBalance } from './entities/claimable-token-balance.entity';
 import { TokenClaim, TokenClaimStatus } from './entities/token-claim.entity';
+import { GaslessRelayStatus } from '../onchain-relay/gasless-relay.service';
+import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
 import { RewardWalletPayoutService } from './reward-wallet-payout.service';
 
 export interface ClaimableTokenBalanceView {
@@ -30,6 +32,9 @@ export interface CreateTokenClaimResult {
   txHash: string | null;
   processedAt: Date | null;
   remainingClaimableBalance: string;
+  relay: GaslessRelayStatus;
+  settlementRecordedOnchain: boolean;
+  settlementRecordTxHash: string | null;
 }
 
 @Injectable()
@@ -47,6 +52,7 @@ export class ClaimService {
     @InjectRepository(TokenClaim)
     private readonly tokenClaimRepository: Repository<TokenClaim>,
     private readonly payoutService: RewardWalletPayoutService,
+    private readonly rewardLedgerOnchainService: RewardLedgerOnchainService,
   ) {}
 
   async getClaimableBalances(
@@ -124,15 +130,23 @@ export class ClaimService {
         status: TokenClaimStatus.PENDING,
         txHash: null,
         processedAt: null,
+        settlementRecordTxHash: null,
+        settlementRecordedAt: null,
       });
       return claimRepository.save(tokenClaim);
     });
 
+    let payoutExecutionContext:
+      | {
+          recipientWalletAddress: string;
+          tokenContractAddress: string;
+        }
+      | null = null;
     let payoutResult: Awaited<
       ReturnType<RewardWalletPayoutService['processPendingPayout']>
     >;
     try {
-      const payoutExecutionContext = await this.getPayoutExecutionContext(
+      payoutExecutionContext = await this.getPayoutExecutionContext(
         profile,
         tokenSymbol,
       );
@@ -148,6 +162,13 @@ export class ClaimService {
       payoutResult = {
         status: TokenClaimStatus.FAILED,
         txHash: null,
+        relay: {
+          action: 'claim',
+          relayKind: 'backend-sponsored',
+          available: false,
+          userPaysGas: false,
+          reason: 'claim relay execution failed before submission',
+        },
       };
     }
 
@@ -208,6 +229,32 @@ export class ClaimService {
       },
     );
 
+    let settlementRecordedOnchain = false;
+    let settlementRecordTxHash: string | null = null;
+    if (
+      finalizedClaim.savedClaim.status === TokenClaimStatus.CONFIRMED &&
+      finalizedClaim.savedClaim.txHash &&
+      payoutExecutionContext
+    ) {
+      const settlementResult =
+        await this.rewardLedgerOnchainService.recordClaimSettlement({
+          claimId: finalizedClaim.savedClaim.id,
+          walletAddress: payoutExecutionContext.recipientWalletAddress,
+          tokenContractAddress: payoutExecutionContext.tokenContractAddress,
+          tokenSymbol: finalizedClaim.savedClaim.tokenSymbol,
+          amount: finalizedClaim.savedClaim.amount,
+          payoutTxHash: finalizedClaim.savedClaim.txHash,
+        });
+      settlementRecordedOnchain = settlementResult.submitted;
+      settlementRecordTxHash = settlementResult.txHash;
+
+      if (settlementResult.submitted) {
+        finalizedClaim.savedClaim.settlementRecordTxHash = settlementResult.txHash;
+        finalizedClaim.savedClaim.settlementRecordedAt = new Date();
+        await this.tokenClaimRepository.save(finalizedClaim.savedClaim);
+      }
+    }
+
     return {
       claimId: finalizedClaim.savedClaim.id,
       profileId: finalizedClaim.savedClaim.profileId,
@@ -217,6 +264,9 @@ export class ClaimService {
       txHash: finalizedClaim.savedClaim.txHash,
       processedAt: finalizedClaim.savedClaim.processedAt,
       remainingClaimableBalance: finalizedClaim.remainingClaimableBalance,
+      relay: payoutResult.relay,
+      settlementRecordedOnchain,
+      settlementRecordTxHash,
     };
   }
 

@@ -169,6 +169,110 @@ REWARD_WALLET_ADDRESS=0x...
 REWARD_WALLET_PRIVATE_KEY=0x...
 ```
 
+## Gasless relay boundary
+
+BubbleDrop keeps all real-time gameplay simulation offchain. Gasless writes are
+handled only through backend-sponsored relay paths.
+
+Current gasless actions:
+
+- token claim payout submission
+- reward ownership mirror writes
+- final session outcome commits
+
+Current user-paid onchain actions:
+
+- daily check-in on Base from the connected wallet
+
+Still offchain:
+
+- every gameplay tap
+- live bubble simulation
+- combo ticking
+- helper triggers
+- transient session UI state
+
+Required relay env values:
+
+```bash
+GASLESS_RELAY_ENABLED=1
+GASLESS_CLAIM_ENABLED=1
+BASE_RPC_URL=https://your-stable-base-mainnet-rpc
+```
+
+Daily check-in is now user-paid and no longer uses the backend-sponsored relay path.
+The backend only records the provided transaction hash after the wallet transaction succeeds.
+
+Daily check-in still requires the check-in contract to be deployed:
+
+```bash
+ONCHAIN_STREAK_ENABLED=1
+ONCHAIN_STREAK_CONTRACT_ADDRESS=0x...
+```
+
+Claim relay additionally requires:
+
+```bash
+REWARD_WALLET_ADDRESS=0x...
+REWARD_WALLET_PRIVATE_KEY=0x...
+REWARD_LEDGER_CONTRACT_ADDRESS=0x...
+REWARD_LEDGER_WRITER_PRIVATE_KEY=0x...
+```
+
+Ownership mirror additionally requires:
+
+```bash
+GASLESS_OWNERSHIP_ENABLED=1
+REWARD_LEDGER_CONTRACT_ADDRESS=0x...
+REWARD_LEDGER_WRITER_PRIVATE_KEY=0x...
+```
+
+Final session outcome commits additionally require:
+
+```bash
+GASLESS_SESSION_OUTCOME_ENABLED=1
+SESSION_OUTCOME_CONTRACT_ADDRESS=0x...
+SESSION_OUTCOME_SIGNER_PRIVATE_KEY=0x...
+```
+
+All signer and sponsorship secrets stay server-side only. The frontend only
+calls authenticated backend endpoints and never receives private relay keys.
+
+## Onchain durable state
+
+BubbleDrop keeps high-frequency gameplay offchain and only mirrors durable end-state
+onchain.
+
+Now onchain:
+
+- daily check-in streak writes
+- claim settlement recording
+- reward ownership mirror for granted collectibles
+- final session end-state anchoring
+
+Still offchain:
+
+- every gameplay tap
+- live bubble spawn and motion
+- live combo ticking
+- helper triggers and visual timing
+- transient runtime UI state
+
+Final session fields committed onchain:
+
+- sessionId hash
+- wallet address
+- xp gained
+- final score
+- best combo
+- activeSeconds
+- sessionDurationSeconds
+- rewardFlags
+- integrityHash
+
+Per-tap gameplay stays offchain because it is too frequent, latency-sensitive,
+and not the durable product state we need to audit later.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:

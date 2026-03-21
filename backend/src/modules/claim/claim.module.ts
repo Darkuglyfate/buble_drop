@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { GaslessRelayModule } from '../onchain-relay/gasless-relay.module';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
 import { Profile } from '../profile/entities/profile.entity';
 import { UserWallet } from '../profile/entities/user-wallet.entity';
@@ -20,6 +21,7 @@ import { RewardWalletPayoutService } from './reward-wallet-payout.service';
       UserWallet,
       PartnerToken,
     ]),
+    GaslessRelayModule,
     QualificationModule,
     WalletBindingModule,
   ],

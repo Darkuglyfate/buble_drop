@@ -1,0 +1,372 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2292 >>
+stream
+BT
+/F1 11 Tf
+50 790 Td
+14 TL
+(GPT Handoff: What Was Implemented in BubbleDrop / BASEUPP) Tj
+T*
+(Project path: C:\\Users\\????\\Desktop\\baseupp) Tj
+T*
+(Date: 2026-03-21) Tj
+T*
+() Tj
+T*
+(1. Scope of recent work) Tj
+T*
+(The project was moved toward a hybrid Base-compatible architecture.) Tj
+T*
+(Real-time gameplay remains offchain. Only durable, auditable end-state was prepared or ) Tj
+T*
+(implemented for onchain paths.) Tj
+T*
+() Tj
+T*
+(2. Base runtime normalization) Tj
+T*
+(The frontend keeps Base Account, wagmi, and viem.) Tj
+T*
+(OnchainKit was intentionally not added.) Tj
+T*
+(MiniKit was used only for Base App / manifest compatibility, not injected into gameplay ) Tj
+T*
+(runtime.) Tj
+T*
+(Main additions in the frontend included:) Tj
+T*
+(- frontend/minikit.config.ts) Tj
+T*
+(- frontend/app/.well-known/farcaster.json/route.ts) Tj
+T*
+(- frontend/app/app-metadata.ts) Tj
+T*
+(- frontend/app/layout.tsx updates) Tj
+T*
+(- frontend/app/wallet-config.ts cleanup) Tj
+T*
+(This normalized the Base App manifest path and publishing compatibility layer.) Tj
+T*
+() Tj
+T*
+(3. Gasless relay boundary) Tj
+T*
+(A backend-sponsored relay boundary was implemented for durable user actions.) Tj
+T*
+(Gasless relay work was added in:) Tj
+T*
+(- backend/src/modules/onchain-relay/gasless-relay.service.ts) Tj
+T*
+(- backend/src/modules/onchain-relay/gasless-relay.module.ts) Tj
+T*
+(Daily check-in and claim now return explicit relay status metadata.) Tj
+T*
+(Secrets and signer configuration remain server-side only.) Tj
+T*
+(Gameplay taps remain offchain.) Tj
+T*
+() Tj
+T*
+(4. Minimum contract layer added) Tj
+T*
+(Existing contract kept:) Tj
+T*
+(- backend/contracts/DailyCheckInStreak.sol) Tj
+T*
+(New contracts added:) Tj
+T*
+(- backend/contracts/BubbleDropRewardLedger.sol) Tj
+T*
+(- backend/contracts/BubbleDropSessionOutcomeRegistry.sol) Tj
+T*
+(Purpose:) Tj
+T*
+(- DailyCheckInStreak: daily check-in streak tracking) Tj
+T*
+(- BubbleDropRewardLedger: claim settlement recording and reward ownership flags) Tj
+T*
+(- BubbleDropSessionOutcomeRegistry: final session end-state anchoring only) Tj
+T*
+() Tj
+T*
+(5. Final session outcomes onchain) Tj
+T*
+(Only final session results are written onchain.) Tj
+T*
+(Per-bubble taps are NOT written onchain.) Tj
+T*
+(Per-tap gameplay still uses the offchain activity path.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 2251 >>
+stream
+BT
+/F1 11 Tf
+50 790 Td
+14 TL
+(The final onchain session record includes:) Tj
+T*
+(- sessionId) Tj
+T*
+(- walletAddress) Tj
+T*
+(- xpGained) Tj
+T*
+(- finalScore) Tj
+T*
+(- bestCombo) Tj
+T*
+(- activeSeconds) Tj
+T*
+(- sessionDurationSeconds) Tj
+T*
+(- rewardFlags) Tj
+T*
+(- integrityHash) Tj
+T*
+(Frontend completion flow now sends finalScore and bestCombo only at session completion.) Tj
+T*
+(Backend records the outcome onchain through the session outcome service.) Tj
+T*
+() Tj
+T*
+(6. Rewards, claims, and ownership) Tj
+T*
+(Claim flow now has a cleaner onchain settlement path plus settlement recording.) Tj
+T*
+(Reward ownership has an onchain ledger layer and can be surfaced back into profile/inventory) Tj
+T*
+( reads.) Tj
+T*
+(This was wired through backend services and frontend inventory/profile screens, while ) Tj
+T*
+(avoiding a broad product rewrite.) Tj
+T*
+() Tj
+T*
+(7. What remains offchain by design) Tj
+T*
+(These intentionally remain offchain:) Tj
+T*
+(- every gameplay tap) Tj
+T*
+(- live bubble physics and spawn behavior) Tj
+T*
+(- live combo ticking) Tj
+T*
+(- helper animation triggers) Tj
+T*
+(- transient session UI state) Tj
+T*
+(- real-time gameplay simulation) Tj
+T*
+(Reason: these are high-frequency, latency-sensitive, and not good candidates for direct ) Tj
+T*
+(onchain writes.) Tj
+T*
+() Tj
+T*
+(8. Key files changed) Tj
+T*
+(Backend:) Tj
+T*
+(- backend/contracts/BubbleDropRewardLedger.sol) Tj
+T*
+(- backend/contracts/BubbleDropSessionOutcomeRegistry.sol) Tj
+T*
+(- backend/src/modules/onchain-relay/gasless-relay.service.ts) Tj
+T*
+(- backend/src/modules/onchain-relay/reward-ledger-onchain.service.ts) Tj
+T*
+(- backend/src/modules/onchain-relay/session-outcome-onchain.service.ts) Tj
+T*
+(- backend/src/modules/bubble-session/bubble-session.service.ts) Tj
+T*
+(- backend/src/modules/bubble-session/dto/complete-bubble-session.dto.ts) Tj
+T*
+(- backend/src/modules/bubble-session/entities/bubble-session.entity.ts) Tj
+T*
+(- backend/src/modules/claim/claim.service.ts) Tj
+T*
+(- backend/src/modules/claim/entities/token-claim.entity.ts) Tj
+T*
+(- backend/src/modules/profile/profile.service.ts) Tj
+T*
+(- backend/src/modules/rewards/rare-reward.service.ts) Tj
+T*
+(- backend/src/database/migrations/1742300000000-AddOnchainDurableStateColumns.ts) Tj
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 2095 >>
+stream
+BT
+/F1 11 Tf
+50 790 Td
+14 TL
+(- backend/src/scripts/deploy-reward-ledger.ts) Tj
+T*
+(- backend/src/scripts/deploy-session-outcome-registry.ts) Tj
+T*
+(- backend/.env.example) Tj
+T*
+(- backend/README.md) Tj
+T*
+() Tj
+T*
+(Frontend:) Tj
+T*
+(- frontend/app/ui/bubble-session-play-screen.tsx) Tj
+T*
+(- frontend/app/ui/claim-screen.tsx) Tj
+T*
+(- frontend/app/ui/rewards-inventory-screen.tsx) Tj
+T*
+(- frontend/app/ui/backend-profile-summary.ts) Tj
+T*
+(- frontend/minikit.config.ts) Tj
+T*
+(- frontend/app/.well-known/farcaster.json/route.ts) Tj
+T*
+(- frontend/app/app-metadata.ts) Tj
+T*
+(- frontend/app/layout.tsx) Tj
+T*
+(- frontend/app/wallet-config.ts) Tj
+T*
+(- frontend/.env.example) Tj
+T*
+(- frontend/README.md) Tj
+T*
+() Tj
+T*
+(9. Validation already run) Tj
+T*
+(Backend:) Tj
+T*
+(- targeted tests for bubble session, claim, check-in, and payout services: passed) Tj
+T*
+(- backend build: passed) Tj
+T*
+(Frontend:) Tj
+T*
+(- frontend build: passed) Tj
+T*
+(- frontend smoke tests: 16 passed) Tj
+T*
+(Contracts:) Tj
+T*
+(- Solidity compile check for DailyCheckInStreak.sol, BubbleDropRewardLedger.sol, and ) Tj
+T*
+(BubbleDropSessionOutcomeRegistry.sol: passed) Tj
+T*
+() Tj
+T*
+(10. Explicit architectural boundary) Tj
+T*
+(Confirmed in code:) Tj
+T*
+(- gameplay taps remain offchain through the activity endpoint) Tj
+T*
+(- onchain write happens only on final session completion for session outcomes) Tj
+T*
+(This preserves gameplay responsiveness while moving durable state onchain.) Tj
+T*
+() Tj
+T*
+(11. Remaining risks / limits) Tj
+T*
+(Live onchain execution was not fully verified against production RPC, deployed contract ) Tj
+T*
+(addresses, and real signer credentials in this environment.) Tj
+T*
+(accountAssociation and Base App publishing credentials still need production verification on) Tj
+T*
+( the final live domain.) Tj
+T*
+(Ownership issuance is wired, but full live behavior still depends on actual reward grant ) Tj
+T*
+(flows and production env configuration.) Tj
+T*
+() Tj
+T*
+(12. Short summary for GPT) Tj
+T*
+(Current BubbleDrop is now structured as a hybrid app:) Tj
+T*
+(- Base Account stays) Tj
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 11 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 455 >>
+stream
+BT
+/F1 11 Tf
+50 790 Td
+14 TL
+(- MiniKit is used only for manifest/publishing compatibility) Tj
+T*
+(- OnchainKit is intentionally avoided) Tj
+T*
+(- gasless relay logic is backend-sponsored) Tj
+T*
+(- daily check-in has an onchain path) Tj
+T*
+(- claim settlement has an onchain recording path) Tj
+T*
+(- reward ownership has an onchain ledger layer) Tj
+T*
+(- only final session outcomes go onchain) Tj
+T*
+(- every gameplay tap remains offchain) Tj
+T*
+() Tj
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000139 00000 n 
+0000000266 00000 n 
+0000002610 00000 n 
+0000002737 00000 n 
+0000005040 00000 n 
+0000005167 00000 n 
+0000007314 00000 n 
+0000007442 00000 n 
+0000007949 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+8020
+%%EOF

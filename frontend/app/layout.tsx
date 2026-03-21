@@ -5,7 +5,9 @@ import { Providers } from "./providers";
 import {
   bubbleDropAppIdentity,
   getBubbleDropAppUrl,
+  getBubbleDropBaseAppId,
 } from "./app-metadata";
+import { getMiniAppEmbedMetadata } from "../minikit.config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,6 +15,14 @@ const geistSans = Geist({
 });
 
 const appUrl = getBubbleDropAppUrl();
+const baseAppId = getBubbleDropBaseAppId();
+const metadataOther: NonNullable<Metadata["other"]> = {
+  "fc:frame": JSON.stringify(getMiniAppEmbedMetadata()),
+};
+
+if (baseAppId) {
+  metadataOther["base:app_id"] = baseAppId;
+}
 
 export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
@@ -49,9 +59,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
-  other: {
-    "base:app_id": "69b7314fd6271e8cedf2addb",
-  },
+  other: metadataOther,
 };
 
 export const viewport: Viewport = {

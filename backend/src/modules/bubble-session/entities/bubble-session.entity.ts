@@ -39,6 +39,24 @@ export class BubbleSession {
   @Column({ type: 'boolean', default: false })
   isCompleted: boolean;
 
+  @Column({ type: 'int', default: 0 })
+  finalScore: number;
+
+  @Column({ type: 'int', default: 0 })
+  bestCombo: number;
+
+  @Column({ type: 'int', default: 0 })
+  rewardFlags: number;
+
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  integrityHash: string | null;
+
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  outcomeTxHash: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  outcomeRecordedAt: Date | null;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

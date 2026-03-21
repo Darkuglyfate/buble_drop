@@ -11,6 +11,10 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
+import {
+  GaslessRelayService,
+  GaslessRelayStatus,
+} from '../onchain-relay/gasless-relay.service';
 import { TokenClaimStatus } from './entities/token-claim.entity';
 
 export interface PendingRewardWalletPayout {
@@ -25,23 +29,40 @@ export interface PendingRewardWalletPayout {
 export interface PendingRewardWalletPayoutResult {
   status: TokenClaimStatus.CONFIRMED | TokenClaimStatus.FAILED;
   txHash: string | null;
+  relay: GaslessRelayStatus;
 }
 
 @Injectable()
 export class RewardWalletPayoutService {
   private readonly logger = new Logger(RewardWalletPayoutService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly gaslessRelayService: GaslessRelayService,
+  ) {}
 
   async processPendingPayout(
     payload: PendingRewardWalletPayout,
   ): Promise<PendingRewardWalletPayoutResult> {
+    const relayStatus = this.gaslessRelayService.getStatus('claim');
+    if (!relayStatus.available) {
+      this.logger.error(
+        `Payout relay unavailable claim=${payload.claimId}: ${relayStatus.reason}`,
+      );
+      return {
+        status: TokenClaimStatus.FAILED,
+        txHash: null,
+        relay: relayStatus,
+      };
+    }
+
     try {
       const account = this.getRewardWalletAccount();
       if (!account) {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -53,6 +74,7 @@ export class RewardWalletPayoutService {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -66,6 +88,7 @@ export class RewardWalletPayoutService {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -79,6 +102,7 @@ export class RewardWalletPayoutService {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -90,6 +114,7 @@ export class RewardWalletPayoutService {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -122,6 +147,7 @@ export class RewardWalletPayoutService {
         return {
           status: TokenClaimStatus.FAILED,
           txHash: null,
+          relay: relayStatus,
         };
       }
 
@@ -132,6 +158,7 @@ export class RewardWalletPayoutService {
       return {
         status: TokenClaimStatus.CONFIRMED,
         txHash,
+        relay: relayStatus,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error';
@@ -141,6 +168,7 @@ export class RewardWalletPayoutService {
       return {
         status: TokenClaimStatus.FAILED,
         txHash: null,
+        relay: relayStatus,
       };
     }
   }

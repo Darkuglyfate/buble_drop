@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
+import { GaslessRelayService } from '../onchain-relay/gasless-relay.service';
 import { createPublicClient, createWalletClient, http, isAddress } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { TokenClaimStatus } from './entities/token-claim.entity';
@@ -26,10 +27,14 @@ const mockPrivateKeyToAccount = privateKeyToAccount as jest.Mock;
 describe('RewardWalletPayoutService', () => {
   let service: RewardWalletPayoutService;
   let configService: { get: jest.Mock };
+  let gaslessRelayService: { getStatus: jest.Mock };
 
   beforeEach(async () => {
     configService = {
       get: jest.fn(),
+    };
+    gaslessRelayService = {
+      getStatus: jest.fn(),
     };
 
     mockCreatePublicClient.mockReset();
@@ -42,6 +47,7 @@ describe('RewardWalletPayoutService', () => {
       providers: [
         RewardWalletPayoutService,
         { provide: ConfigService, useValue: configService },
+        { provide: GaslessRelayService, useValue: gaslessRelayService },
       ],
     }).compile();
 
@@ -54,6 +60,13 @@ describe('RewardWalletPayoutService', () => {
         return '';
       }
       return undefined;
+    });
+    gaslessRelayService.getStatus.mockReturnValue({
+      action: 'claim',
+      relayKind: 'backend-sponsored',
+      available: false,
+      userPaysGas: false,
+      reason: 'missing REWARD_WALLET_PRIVATE_KEY',
     });
 
     const result = await service.processPendingPayout({
@@ -68,6 +81,13 @@ describe('RewardWalletPayoutService', () => {
     expect(result).toEqual({
       status: TokenClaimStatus.FAILED,
       txHash: null,
+      relay: {
+        action: 'claim',
+        relayKind: 'backend-sponsored',
+        available: false,
+        userPaysGas: false,
+        reason: 'missing REWARD_WALLET_PRIVATE_KEY',
+      },
     });
     expect(createPublicClient).not.toHaveBeenCalled();
     expect(createWalletClient).not.toHaveBeenCalled();
@@ -82,6 +102,13 @@ describe('RewardWalletPayoutService', () => {
         BASE_RPC_URL: 'https://base.example/rpc',
       };
       return values[key];
+    });
+    gaslessRelayService.getStatus.mockReturnValue({
+      action: 'claim',
+      relayKind: 'backend-sponsored',
+      available: true,
+      userPaysGas: false,
+      reason: null,
     });
     mockPrivateKeyToAccount.mockReturnValue({
       address: '0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa',
@@ -117,6 +144,13 @@ describe('RewardWalletPayoutService', () => {
       status: TokenClaimStatus.CONFIRMED,
       txHash:
         '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      relay: {
+        action: 'claim',
+        relayKind: 'backend-sponsored',
+        available: true,
+        userPaysGas: false,
+        reason: null,
+      },
     });
     expect(createPublicClient).toHaveBeenCalled();
     expect(createWalletClient).toHaveBeenCalled();

@@ -5,6 +5,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
 import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
@@ -28,6 +29,10 @@ describe('BubbleSessionService', () => {
   };
   let redisService: {
     getClient: jest.Mock;
+  };
+  let sessionOutcomeOnchainService: {
+    recordOutcome: jest.Mock;
+    getRelayStatus: jest.Mock;
   };
   let redisClient: {
     zadd: jest.Mock;
@@ -74,6 +79,30 @@ describe('BubbleSessionService', () => {
     redisService = {
       getClient: jest.fn().mockReturnValue(redisClient),
     };
+    sessionOutcomeOnchainService = {
+      recordOutcome: jest.fn().mockResolvedValue({
+        txHash:
+          '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        submitted: true,
+        relay: {
+          action: 'session_outcome',
+          relayKind: 'backend-sponsored',
+          available: true,
+          userPaysGas: false,
+          reason: null,
+        },
+        sessionIdHash:
+          '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+        committedAt: '2026-03-14T10:10:00.000Z',
+      }),
+      getRelayStatus: jest.fn().mockReturnValue({
+        action: 'session_outcome',
+        relayKind: 'backend-sponsored',
+        available: false,
+        userPaysGas: false,
+        reason: 'session outcome relay disabled',
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -86,6 +115,10 @@ describe('BubbleSessionService', () => {
         { provide: XpService, useValue: xpService },
         { provide: QualificationService, useValue: qualificationService },
         { provide: RedisService, useValue: redisService },
+        {
+          provide: SessionOutcomeOnchainService,
+          useValue: sessionOutcomeOnchainService,
+        },
       ],
     }).compile();
 
@@ -124,6 +157,9 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 50,
       currentStreak: 0,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '22222222-2222-4222-8222-222222222222',
@@ -154,6 +190,8 @@ describe('BubbleSessionService', () => {
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',
       360,
+      42,
+      6,
     );
 
     expect(result.success).toBe(true);
@@ -185,6 +223,17 @@ describe('BubbleSessionService', () => {
       nftRewards: [],
       cosmeticRewards: [],
     });
+    expect(result.finalScore).toBe(42);
+    expect(result.bestCombo).toBe(6);
+    expect(result.onchainCommit.submitted).toBe(true);
+    expect(sessionOutcomeOnchainService.recordOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: '22222222-2222-4222-8222-222222222222',
+        finalScore: 42,
+        bestCombo: 6,
+        xpGained: 40,
+      }),
+    );
     expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
     );
@@ -198,6 +247,9 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 80,
       currentStreak: 0,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '33333333-3333-4333-8333-333333333333',
@@ -219,6 +271,8 @@ describe('BubbleSessionService', () => {
     const result = await service.completeSession(
       '11111111-1111-4111-8111-111111111111',
       '33333333-3333-4333-8333-333333333333',
+      0,
+      0,
       0,
     );
 
@@ -263,6 +317,9 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 120,
       currentStreak: 6,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '44444444-4444-4444-8444-444444444444',
@@ -288,6 +345,8 @@ describe('BubbleSessionService', () => {
       '11111111-1111-4111-8111-111111111111',
       '44444444-4444-4444-8444-444444444444',
       300,
+      55,
+      8,
     );
 
     expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
@@ -329,6 +388,8 @@ describe('BubbleSessionService', () => {
         '11111111-1111-4111-8111-111111111111',
         '22222222-2222-4222-8222-222222222222',
         120,
+        10,
+        2,
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -346,6 +407,8 @@ describe('BubbleSessionService', () => {
         '11111111-1111-4111-8111-111111111111',
         '22222222-2222-4222-8222-222222222222',
         120,
+        10,
+        2,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
 
@@ -445,6 +508,9 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 10,
       currentStreak: 3,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '66666666-6666-4666-8666-666666666666',
@@ -472,6 +538,8 @@ describe('BubbleSessionService', () => {
       '11111111-1111-4111-8111-111111111111',
       '66666666-6666-4666-8666-666666666666',
       300,
+      33,
+      4,
     );
 
     expect(result.success).toBe(true);
@@ -492,6 +560,9 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
       totalXp: 15,
       currentStreak: 4,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     });
     sessionRepository.findOne!.mockResolvedValue({
       id: '77777777-7777-4777-8777-777777777777',
@@ -518,6 +589,8 @@ describe('BubbleSessionService', () => {
       '11111111-1111-4111-8111-111111111111',
       '77777777-7777-4777-8777-777777777777',
       120,
+      24,
+      3,
     );
 
     expect(result.success).toBe(true);
