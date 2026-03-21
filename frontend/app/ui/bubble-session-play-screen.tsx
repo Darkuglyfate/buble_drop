@@ -3705,9 +3705,12 @@ export function BubbleSessionPlayScreen() {
                   ? "This run strengthened a profile that is already eligible for the season-end reward chance."
                   : "This run banked XP and active-play progress toward the season-end reward chance."}
               </p>
+              <p className="mt-2 text-xs font-semibold text-[#5f749f]">
+                Gameplay stays offchain.
+              </p>
               {completedResult.onchainCommit?.submitted ? (
                 <p className="mt-2 text-xs font-semibold text-[#5f749f]">
-                  Final session result committed on Base via backend-sponsored relay.
+                  Final result is submitted on Base by BubbleDrop.
                 </p>
               ) : null}
               {nextStepCopy ? (

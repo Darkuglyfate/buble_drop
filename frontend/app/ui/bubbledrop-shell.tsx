@@ -97,6 +97,17 @@ type DailyCheckInResponse = {
   };
 };
 
+type DailyCheckInUiState =
+  | "idle"
+  | "preparing_transaction"
+  | "wallet_confirmation_requested"
+  | "pending_onchain"
+  | "success_confirmed"
+  | "user_rejected"
+  | "insufficient_funds"
+  | "wrong_network"
+  | "generic_failure";
+
 type OnboardingCompletionResponse = {
   profileId: string;
   nickname: string;
@@ -745,6 +756,8 @@ export function BubbleDropShell() {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [dailyCheckInCompletedToday, setDailyCheckInCompletedToday] = useState(false);
+  const [dailyCheckInUiState, setDailyCheckInUiState] =
+    useState<DailyCheckInUiState>("idle");
   const [glassMode, setGlassMode] = useState<GlassMode>("medium");
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -1758,37 +1771,47 @@ export function BubbleDropShell() {
 
   const onDailyCheckIn = async (opts?: { openBubbleSessionAfter?: boolean }) => {
     if (!profileId) {
+      setDailyCheckInUiState("generic_failure");
       setActionMessage("Connect, sign in, and sync your profile before checking in.");
       return;
     }
     if (effectiveIsConnected && !isConnectedToBase) {
+      setDailyCheckInUiState("wrong_network");
       setActionMessage("Switch to Base before daily check-in.");
       return;
     }
     if (!authenticatedSessionToken) {
+      setDailyCheckInUiState("generic_failure");
       setActionMessage("Sign in with Base before daily check-in.");
       return;
     }
     if (!connectedWalletAddress) {
+      setDailyCheckInUiState("generic_failure");
       setActionMessage("Connect your Base wallet before daily check-in.");
       return;
     }
     if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" && !dailyCheckInContractAddress) {
+      setDailyCheckInUiState("generic_failure");
       setActionMessage("Daily check-in contract is not configured for this app build.");
       return;
     }
     if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" && !publicClient) {
+      setDailyCheckInUiState("generic_failure");
       setActionMessage("Base client is not ready yet. Try daily check-in again in a moment.");
       return;
     }
 
     setIsSubmittingAction(true);
+    setDailyCheckInUiState("preparing_transaction");
     setActionMessage(null);
     try {
       let checkInTxHash: string | null = null;
       if (process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1") {
         const dayKey = getUtcDayKey(new Date());
-        setActionMessage("Confirm daily check-in in your wallet.");
+        setDailyCheckInUiState("wallet_confirmation_requested");
+        setActionMessage(
+          "Confirm daily check-in in your wallet. This is the only step where you pay gas.",
+        );
         checkInTxHash = await writeContractAsync({
           abi: DAILY_CHECK_IN_STREAK_ABI,
           address: dailyCheckInContractAddress as Address,
@@ -1797,11 +1820,13 @@ export function BubbleDropShell() {
           chainId: base.id,
         });
 
+        setDailyCheckInUiState("pending_onchain");
         setActionMessage("Waiting for Base confirmation...");
         const receipt = await publicClient!.waitForTransactionReceipt({
           hash: checkInTxHash as Hash,
         });
         if (receipt.status !== "success") {
+          setDailyCheckInUiState("generic_failure");
           setActionMessage("Today's check-in transaction did not confirm on Base.");
           return;
         }
@@ -1825,12 +1850,14 @@ export function BubbleDropShell() {
             );
           }
           setDailyCheckInCompletedToday(true);
+          setDailyCheckInUiState("success_confirmed");
           setActionMessage("Daily check-in is already done for today. Session is open.");
           if (quickSessionHref) {
             window.location.assign(quickSessionHref);
           }
           return;
         }
+        setDailyCheckInUiState("generic_failure");
         setActionMessage("Daily check-in is unavailable right now. You can still play a session.");
         return;
       }
@@ -1846,6 +1873,7 @@ export function BubbleDropShell() {
       setDailyCheckInCompletedToday(
         (payload.checkInDate ?? getUtcDateKey(new Date())) === getUtcDateKey(new Date()),
       );
+      setDailyCheckInUiState("success_confirmed");
       captureAnalyticsEvent("bubbledrop_daily_check_in_completed", {
         profile_id: profileId,
         wallet_address: activeWalletAddress ?? connectedWalletAddress ?? "",
@@ -1870,16 +1898,22 @@ export function BubbleDropShell() {
     } catch (error) {
       const walletError = classifyWalletFlowError(error);
       if (walletError.kind === "rejected") {
+        setDailyCheckInUiState("user_rejected");
         setActionMessage("Daily check-in was cancelled in your wallet.");
       } else if (walletError.kind === "wrong_chain") {
+        setDailyCheckInUiState("wrong_network");
         setActionMessage("Switch your wallet to Base before daily check-in.");
       } else if (walletError.kind === "insufficient_funds") {
+        setDailyCheckInUiState("insufficient_funds");
         setActionMessage("Your Base wallet does not have enough ETH for this daily check-in.");
       } else if (walletError.kind === "unsupported_runtime") {
+        setDailyCheckInUiState("generic_failure");
         setActionMessage("This wallet runtime could not prepare the Base check-in transaction.");
       } else if (walletError.kind === "tx_generation_failed") {
+        setDailyCheckInUiState("generic_failure");
         setActionMessage("The wallet could not generate the daily check-in transaction. Try again.");
       } else {
+        setDailyCheckInUiState("generic_failure");
         setActionMessage("Today's check-in did not land. Try again in a moment.");
       }
     } finally {
@@ -2156,14 +2190,25 @@ export function BubbleDropShell() {
             }
           : null;
 
+  const isDailyCheckInBusy =
+    dailyCheckInUiState === "preparing_transaction" ||
+    dailyCheckInUiState === "wallet_confirmation_requested" ||
+    dailyCheckInUiState === "pending_onchain";
   const dailyCheckInAction = dailyCheckInCompletedToday
     ? {
         label: "Daily check-in complete",
         disabled: true,
       }
     : {
-        label: isSubmittingAction ? "Checking in…" : "Daily check-in (+20 XP)",
-        disabled: isSubmittingAction,
+        label:
+          dailyCheckInUiState === "preparing_transaction"
+            ? "Preparing…"
+            : dailyCheckInUiState === "wallet_confirmation_requested"
+              ? "Confirm in wallet…"
+              : dailyCheckInUiState === "pending_onchain"
+                ? "Pending on Base…"
+                : "Daily check-in (+20 XP)",
+        disabled: isSubmittingAction || isDailyCheckInBusy,
       };
 
   const hasEnteredBubbleDropApp = Boolean(authenticatedSessionToken && profileId);
@@ -2869,7 +2914,7 @@ export function BubbleDropShell() {
                   Mark today in Base
                 </h2>
                 <p className="mt-3 max-w-[24rem] text-sm leading-6 text-[#5f749f]">
-                  Use this separate button to mark the day before your run.
+                  Onchain on Base • You pay gas for this step.
                 </p>
                 {dailyCheckInCardAction ? (
                   <button

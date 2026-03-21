@@ -446,6 +446,9 @@ export function ClaimScreen() {
             <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
             Claimable legacy balances
           </h2>
+          <p className="mt-2 text-xs font-semibold text-[#6074a0]">
+            Sponsored payout • No gas from you
+          </p>
 
           {isResolvingOnboardingState ? (
             <p className="mt-3 text-sm text-[#6074a0]">Loading backend onboarding state...</p>
@@ -527,7 +530,7 @@ export function ClaimScreen() {
                 <span className="font-semibold">{claimResult.remainingClaimableBalance}</span>
               </p>
               <p className="mt-1 text-xs text-[#6074a0]">
-                Backend-sponsored relay handled this payout path without exposing signer details to the client.
+                BubbleDrop sends this reward for you • No gas from you
               </p>
             </div>
           </section>
