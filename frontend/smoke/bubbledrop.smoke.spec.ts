@@ -420,6 +420,11 @@ async function mockBubbleDropApi(page: Page) {
             requiredXp: 300,
             requiredActiveSessions: 4,
           },
+          integrityHash: "0xabc123def4567890fedcba0987654321abc123def4567890fedcba0987654321",
+          onchainCommit: {
+            submitted: true,
+            txHash: "0xfeed00000000000000000000000000000000000000000000000000000000beef",
+          },
           rareRewardOutcome: {
             tokenSymbolAwarded: null,
             tokenAmountAwarded: "0",
@@ -545,6 +550,9 @@ test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await expect(page.getByText("0x1000...0001")).toBeVisible();
   await expect(page.getByText("Daily mission")).toBeVisible();
   await expect(dailyCheckInCard.getByText("Daily Check-in", { exact: true })).toBeVisible();
+  await expect(
+    dailyCheckInCard.getByText("Onchain on Base • You pay gas for this step", { exact: true }),
+  ).toBeVisible();
   await expect(dailyMissionCard.getByRole("link", { name: "Tap to play" })).toBeVisible();
   await expect(dailyCheckInCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeVisible();
   await expect(dailyCheckInCard.getByRole("button", { name: /Daily check-in \(\+20 XP\)/ })).toBeEnabled();
@@ -605,7 +613,7 @@ test("completes session and reveals confirmed season progress", async ({
 
   await page.getByRole("button", { name: "Start session" }).click();
   await page.getByRole("button", { name: "Pop bubble" }).first().click({ force: true });
-  const seasonProgressUpdatedHeading = page.getByText("Season progress updated");
+  const runCompleteHeading = page.getByText("Run complete");
   const finishRunButton = page.getByRole("button", { name: "Finish run" });
   const finishRunVisible = await finishRunButton
     .waitFor({ state: "visible", timeout: 3500 })
@@ -614,7 +622,7 @@ test("completes session and reveals confirmed season progress", async ({
   if (finishRunVisible) {
     await finishRunButton.click();
   } else {
-    const resultAlreadyVisible = await seasonProgressUpdatedHeading
+    const resultAlreadyVisible = await runCompleteHeading
       .waitFor({ state: "visible", timeout: 2200 })
       .then(() => true)
       .catch(() => false);
@@ -623,10 +631,21 @@ test("completes session and reveals confirmed season progress", async ({
     }
   }
 
-  await expect(seasonProgressUpdatedHeading).toBeVisible();
+  await expect(runCompleteHeading).toBeVisible();
+  await expect(page.getByText("Your season profile got stronger.")).toBeVisible();
+  await expect(page.getByText("Streak stays active. Season chance remains live.")).toBeVisible();
+  await expect(page.getByText("XP from this run has been confirmed.")).toBeVisible();
   await expect(page.getByText("XP awarded")).toBeVisible();
   await expect(page.getByText("Season chance", { exact: true })).toBeVisible();
   await expect(page.getByText("Season progress", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Your season reward profile is active and above the current threshold."),
+  ).toBeVisible();
+  await expect(page.getByText("Onchain anchor", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Final result was anchored on Base by BubbleDrop."),
+  ).toBeVisible();
+  await expect(page.getByText("Technical record confirmed on Base.")).toBeVisible();
 });
 
 test("shows legacy claim flow even when season chance is still building", async ({
@@ -640,6 +659,7 @@ test("shows legacy claim flow even when season chance is still building", async 
   await expect(
     page.getByText(/Legacy token claims stay available/),
   ).toBeVisible();
+  await expect(page.getByText("Sponsored payout • No gas from you", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Request full claim amount" }),
   ).toBeEnabled();

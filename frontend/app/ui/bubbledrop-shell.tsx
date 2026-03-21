@@ -1810,7 +1810,7 @@ export function BubbleDropShell() {
         const dayKey = getUtcDayKey(new Date());
         setDailyCheckInUiState("wallet_confirmation_requested");
         setActionMessage(
-          "Confirm daily check-in in your wallet. This is the only step where you pay gas.",
+          "Confirm daily check-in in your wallet.\nThis is the only step where you pay gas.",
         );
         checkInTxHash = await writeContractAsync({
           abi: DAILY_CHECK_IN_STREAK_ABI,
@@ -2130,8 +2130,7 @@ export function BubbleDropShell() {
     /* ARRIVAL: ежедневный check-in на Base (газ), пока визит не отмечен */
     heroStatusLabel = "Arrival";
     heroTitle = "Mark today's visit on Base.";
-    heroBody =
-      "Daily check-in is submitted from your wallet on Base - one user-paid transaction for +XP and streak once per day.";
+    heroBody = "Onchain on Base • You pay gas for this step";
     heroAccentClass =
       "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
     heroPortalCopy = "Base check-in";
@@ -2475,7 +2474,9 @@ export function BubbleDropShell() {
               {isSubmittingAction ? "Submitting..." : "Complete onboarding"}
             </button>
             {actionMessage ? (
-              <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs font-semibold text-[#4f648f]">{actionMessage}</p>
+              <p className="mt-3 whitespace-pre-line rounded-xl bg-white/80 p-3 text-xs font-semibold text-[#4f648f]">
+                {actionMessage}
+              </p>
             ) : null}
           </section>
         ) : (
@@ -2914,7 +2915,7 @@ export function BubbleDropShell() {
                   Mark today in Base
                 </h2>
                 <p className="mt-3 max-w-[24rem] text-sm leading-6 text-[#5f749f]">
-                  Onchain on Base • You pay gas for this step.
+                  Onchain on Base • You pay gas for this step
                 </p>
                 {dailyCheckInCardAction ? (
                   <button
@@ -3034,7 +3035,7 @@ export function BubbleDropShell() {
 
             {actionMessage ? (
               <section className="sticky bottom-3 z-20">
-                <p className="bubble-card rounded-[1.2rem] px-4 py-3 text-sm font-semibold text-[#3f5887]">
+                <p className="bubble-card whitespace-pre-line rounded-[1.2rem] px-4 py-3 text-sm font-semibold text-[#3f5887]">
                   {actionMessage}
                 </p>
               </section>

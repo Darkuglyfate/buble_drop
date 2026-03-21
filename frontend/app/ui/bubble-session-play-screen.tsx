@@ -1589,10 +1589,18 @@ export function BubbleSessionPlayScreen() {
   const completedRunDurationLabel = completedResult
     ? formatDurationLabel(completedResult.sessionDurationSeconds)
     : null;
-  const nextStepCopy = completedResult
+  const seasonStatusLabel = completedResult
     ? completedResult.seasonProgress.eligibleAtSeasonEnd
-      ? "Season-end chance is live for this profile. Keep the streak active and stack more XP."
-      : "Next step: keep daily streak alive and finish more active runs to reach season-end eligibility."
+      ? "Eligible"
+      : completedResult.seasonProgress.qualificationStatus === "qualified"
+        ? "Qualified"
+        : completedResult.seasonProgress.qualificationStatus === "restored"
+          ? "Eligible"
+          : completedResult.seasonProgress.qualificationStatus === "in_progress"
+            ? "Building"
+            : completedResult.seasonProgress.qualificationStatus === "paused"
+              ? "Paused"
+              : "Locked"
     : null;
   const backHomeHrefBase = withBubbleDropContext("/", {
     profileId: effectiveProfileId,
@@ -3603,7 +3611,9 @@ export function BubbleSessionPlayScreen() {
                           Goals {runObjectiveCompletedCount}/{runObjectives.length} · Best x{bestTapCombo}
                         </p>
                         <p className="mt-1 text-[11px] font-medium text-[#6b7fa9]">
-                          Run active
+                          {canCompleteSession
+                            ? "Final result is submitted on Base by BubbleDrop."
+                            : "Gameplay stays offchain."}
                         </p>
                       </div>
                       <button
@@ -3692,30 +3702,21 @@ export function BubbleSessionPlayScreen() {
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#7a5a2d]">
                     Session result
                   </p>
-                  <h1 className="mt-1 text-2xl font-bold text-[#273f74]">
-                    Season progress updated
-                  </h1>
+                  <h1 className="mt-1 text-2xl font-bold text-[#273f74]">Run complete</h1>
                 </div>
                 <div className="rounded-full bg-white/68 px-3 py-2 text-xs font-semibold text-[#6a548a]">
                   {completedRunDurationLabel} run
                 </div>
               </div>
-              <p className="mt-3 text-sm text-[#526a96]">
-                {completedResult.seasonProgress.eligibleAtSeasonEnd
-                  ? "This run strengthened a profile that is already eligible for the season-end reward chance."
-                  : "This run banked XP and active-play progress toward the season-end reward chance."}
+              <p className="mt-3 text-sm font-semibold text-[#415b90]">
+                Your season profile got stronger.
+              </p>
+              <p className="mt-2 text-sm text-[#526a96]">
+                Streak stays active. Season chance remains live.
               </p>
               <p className="mt-2 text-xs font-semibold text-[#5f749f]">
-                Gameplay stays offchain.
+                XP from this run has been confirmed.
               </p>
-              {completedResult.onchainCommit?.submitted ? (
-                <p className="mt-2 text-xs font-semibold text-[#5f749f]">
-                  Final result is submitted on Base by BubbleDrop.
-                </p>
-              ) : null}
-              {nextStepCopy ? (
-                <p className="mt-2 text-xs font-semibold text-[#5f749f]">{nextStepCopy}</p>
-              ) : null}
             </div>
           </section>
 
@@ -3753,33 +3754,12 @@ export function BubbleSessionPlayScreen() {
             </div>
           </section>
 
-          {completedResult.onchainCommit ? (
-            <section className="bubble-card p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
-                Onchain anchor
-              </p>
-              <div className="mt-3 rounded-xl bg-white/80 p-3 text-sm text-[#465d88]">
-                <p>
-                  Commit status:{" "}
-                  <span className="font-semibold uppercase">
-                    {completedResult.onchainCommit.submitted ? "confirmed" : "pending"}
-                  </span>
-                </p>
-                {completedResult.onchainCommit.txHash ? (
-                  <p className="mt-1">
-                    Commit tx: <span className="font-semibold">{completedResult.onchainCommit.txHash}</span>
-                  </p>
-                ) : null}
-                <p className="mt-1">
-                  Integrity hash: <span className="font-semibold">{completedResult.integrityHash}</span>
-                </p>
-              </div>
-            </section>
-          ) : null}
-
           <section className="bubble-card p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
               Season progress
+            </p>
+            <p className="mt-2 text-sm font-medium text-[#546c99]">
+              Your season reward profile is active and above the current threshold.
             </p>
             <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
@@ -3803,16 +3783,54 @@ export function BubbleSessionPlayScreen() {
               </div>
               <div className="gloss-pill rounded-xl bg-[#f8fbff] p-3">
                 <p className="text-xs text-[#6077a6]">Status</p>
-                <p className="mt-1 font-semibold capitalize text-[#334f82]">
-                  {completedResult.seasonProgress.qualificationStatus.replaceAll("_", " ")}
+                <p
+                  className={`mt-1 font-semibold ${
+                    completedResult.seasonProgress.eligibleAtSeasonEnd ||
+                    completedResult.seasonProgress.qualificationStatus === "qualified" ||
+                    completedResult.seasonProgress.qualificationStatus === "restored"
+                      ? "text-[#2f5a48]"
+                      : "text-[#334f82]"
+                  }`}
+                >
+                  {seasonStatusLabel}
                 </p>
               </div>
             </div>
-            <p className="mt-3 text-xs text-[#6077a6]">
-              Memecoin, NFT, and cosmetic rewards no longer roll instantly per run. This session only
-              updates the season-end chance model.
-            </p>
           </section>
+
+          {completedResult.onchainCommit ? (
+            <section className="bubble-card p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[#5a6fa0]">
+                Onchain anchor
+              </p>
+              <p className="mt-2 text-sm font-medium text-[#566d99]">
+                {completedResult.onchainCommit.submitted
+                  ? "Final result was anchored on Base by BubbleDrop."
+                  : "Final result is being anchored on Base by BubbleDrop."}
+              </p>
+              <p className="mt-1 text-xs font-medium text-[#7386aa]">
+                {completedResult.onchainCommit.submitted
+                  ? "Technical record confirmed on Base."
+                  : "Technical record is pending confirmation."}
+              </p>
+              <div className="mt-3 rounded-xl border border-white/44 bg-white/56 p-3 text-xs text-[#7184a9]">
+                <p>
+                  Commit status:{" "}
+                  <span className="font-semibold uppercase text-[#5b6f97]">
+                    {completedResult.onchainCommit.submitted ? "confirmed" : "pending"}
+                  </span>
+                </p>
+                {completedResult.onchainCommit.txHash ? (
+                  <p className="mt-1 break-all">
+                    Commit tx: <span className="font-medium text-[#61759e]">{completedResult.onchainCommit.txHash}</span>
+                  </p>
+                ) : null}
+                <p className="mt-1 break-all">
+                  Integrity hash: <span className="font-medium text-[#61759e]">{completedResult.integrityHash}</span>
+                </p>
+              </div>
+            </section>
+          ) : null}
 
           <section className="bubble-card p-4">
             <div className="flex gap-2">

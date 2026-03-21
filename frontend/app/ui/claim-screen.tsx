@@ -530,7 +530,7 @@ export function ClaimScreen() {
                 <span className="font-semibold">{claimResult.remainingClaimableBalance}</span>
               </p>
               <p className="mt-1 text-xs text-[#6074a0]">
-                BubbleDrop sends this reward for you • No gas from you
+                Sponsored payout • No gas from you
               </p>
             </div>
           </section>
