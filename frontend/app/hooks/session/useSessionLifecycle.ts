@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { captureAnalyticsEvent } from "../../analytics";
 import { createAuthenticatedJsonHeaders } from "../../base-sign-in";
 
@@ -116,14 +116,47 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
   const [sessionStartedAtMs, setSessionStartedAtMs] = useState<number | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [isActive, setIsActive] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [sessionCompleted, setSessionCompleted] = useState(false);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
 
-  // Timer effect: updates nowMs every 1000ms when session is active
+  // Track total paused duration so it can be subtracted from elapsed time
+  const pausedDurationMsRef = useRef(0);
+  const pauseStartMsRef = useRef<number | null>(null);
+
+  // Visibility change detection: pause session when screen is locked/hidden
   useEffect(() => {
-    if (!isActive || sessionStartedAtMs === null) {
+    if (!isActive || sessionCompleted) {
+      return;
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        // Screen locked or app backgrounded — pause
+        pauseStartMsRef.current = Date.now();
+        setIsPaused(true);
+      } else {
+        // Screen unlocked — resume and accumulate paused time
+        if (pauseStartMsRef.current !== null) {
+          pausedDurationMsRef.current += Date.now() - pauseStartMsRef.current;
+          pauseStartMsRef.current = null;
+        }
+        setIsPaused(false);
+        setNowMs(Date.now());
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [isActive, sessionCompleted]);
+
+  // Timer effect: updates nowMs every 1000ms when session is active AND not paused
+  useEffect(() => {
+    if (!isActive || sessionStartedAtMs === null || isPaused) {
       return;
     }
 
@@ -134,7 +167,7 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [isActive, sessionStartedAtMs]);
+  }, [isActive, sessionStartedAtMs, isPaused]);
 
   const elapsedSeconds = useMemo(() => {
     if (completionResult) {
@@ -143,7 +176,13 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
     if (!sessionStartedAtMs) {
       return 0;
     }
-    return Math.max(0, Math.floor((nowMs - sessionStartedAtMs) / 1000));
+    // Subtract time spent paused from total elapsed
+    const currentPauseDuration = pauseStartMsRef.current !== null
+      ? Date.now() - pauseStartMsRef.current
+      : 0;
+    const totalPausedMs = pausedDurationMsRef.current + currentPauseDuration;
+    const activeMs = nowMs - sessionStartedAtMs - totalPausedMs;
+    return Math.max(0, Math.floor(activeMs / 1000));
   }, [completionResult, nowMs, sessionStartedAtMs]);
 
   const sessionTimerGoalReached = elapsedSeconds >= SESSION_DURATION_SECONDS;
@@ -272,14 +311,18 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
     setSessionStartedAtMs(null);
     setNowMs(Date.now());
     setIsActive(false);
+    setIsPaused(false);
     setSessionCompleted(false);
     setBackendSessionId(null);
     setIsSubmitting(false);
     setCompletionResult(null);
+    pausedDurationMsRef.current = 0;
+    pauseStartMsRef.current = null;
   };
 
   return {
     isActive,
+    isPaused,
     sessionStartedAtMs,
     nowMs,
     sessionCompleted,

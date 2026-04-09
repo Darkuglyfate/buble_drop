@@ -822,6 +822,7 @@ export function BubbleSessionPlayScreen() {
     elapsedSeconds,
     sessionTimerGoalReached,
     localCompletionEstimateMet,
+    isPaused,
     resetSession,
   } = useSessionLifecycle({
     profileId: effectiveProfileId,
@@ -951,7 +952,7 @@ export function BubbleSessionPlayScreen() {
   }, [backendUrl, profileId]);
 
   useEffect(() => {
-    if (!isActive || sessionCompleted) {
+    if (!isActive || sessionCompleted || isPaused) {
       return;
     }
 
@@ -1213,7 +1214,7 @@ export function BubbleSessionPlayScreen() {
     return () => {
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, [isActive, sessionCompleted]);
+  }, [isActive, sessionCompleted, isPaused]);
 
   const displayElapsedSeconds = Math.min(elapsedSeconds, SESSION_DURATION_SECONDS);
   const rawActiveSeconds = activeTapCount * ACTIVE_SECONDS_PER_TAP;
@@ -2344,6 +2345,15 @@ export function BubbleSessionPlayScreen() {
         <span className="absolute left-[12%] bottom-[18%] h-28 w-28 rounded-full bg-[#ffe4f0]/70 blur-[1px]" />
         <span className="absolute right-[12%] bottom-[12%] h-20 w-20 rounded-full bg-[#ddffea]/68 blur-[1px]" />
       </div>
+      {isPaused && isActive && !sessionCompleted ? (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-white/95 px-8 py-6 shadow-xl">
+            <div className="text-3xl">⏸</div>
+            <p className="text-lg font-bold text-[#27457b]">Session Paused</p>
+            <p className="text-sm text-[#5d76a5]">Return to the app to continue popping</p>
+          </div>
+        </div>
+      ) : null}
       {showFinishCelebration ? (
         <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden">
           <div className="session-finish-celebration-veil absolute inset-0" />
@@ -2778,7 +2788,7 @@ export function BubbleSessionPlayScreen() {
                                 event.stopPropagation();
                                 onRecordActivePlay(bubble.id, event);
                               }}
-                              disabled={!isActive || sessionCompleted || bubble.poppedUntilMs > now}
+                              disabled={!isActive || sessionCompleted || isPaused || bubble.poppedUntilMs > now}
                               className={`session-active-bubble pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-[opacity,box-shadow,border-color] ease-out disabled:opacity-70 ${
                                 bubble.poppedUntilMs > now ? "session-active-bubble-popping" : ""
                               } ${
