@@ -57,9 +57,14 @@ export class ProfileController {
   }
 
   @Get('summary')
-  getProfileSummary(
+  async getProfileSummary(
     @Query() dto: GetProfileSummaryDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ProfileSummary> {
+    await this.walletBindingService.assertProfileAccess(
+      dto.profileId,
+      authSessionHeader,
+    );
     return this.profileService.getProfileSummary(dto.profileId);
   }
 
@@ -125,9 +130,14 @@ export class ProfileController {
   }
 
   @Get('rewards-inventory')
-  getRewardsInventory(
+  async getRewardsInventory(
     @Query() dto: GetProfileSummaryDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<RewardsInventoryView> {
+    await this.walletBindingService.assertProfileAccess(
+      dto.profileId,
+      authSessionHeader,
+    );
     return this.profileService.getRewardsInventory(dto.profileId);
   }
 }

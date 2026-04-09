@@ -38,6 +38,7 @@ export function getSmokeSignInSessionFromCurrentUrl():
   | BubbleDropFrontendSignInSession
   | null {
   if (
+    process.env.NODE_ENV === "production" ||
     process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" ||
     typeof window === "undefined"
   ) {

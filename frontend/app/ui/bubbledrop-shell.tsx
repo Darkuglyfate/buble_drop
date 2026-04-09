@@ -61,6 +61,7 @@ import {
   ProfileRarityChipMotion,
 } from "./profile-rarity-motion";
 import { WelcomeIntroScreen } from "./welcome-intro-screen";
+import { useGlassMode } from "../hooks/shell/useGlassMode";
 
 type ProfileBootstrapResponse = {
   profileId: string;
@@ -136,7 +137,6 @@ type WalletFlowStage =
   | "timed_out";
 
 type WalletFlowPhase = "connect" | "sign_in" | null;
-type GlassMode = "soft" | "medium" | "strong";
 
 type WalletFlowState = {
   stage: WalletFlowStage;
@@ -443,7 +443,6 @@ const CONNECT_TIMEOUT_MS = 25_000;
 const SIGN_IN_TIMEOUT_MS = 45_000;
 const NETWORK_REQUEST_TIMEOUT_MS = 15_000;
 const PROFILE_SYNC_RETRY_COUNT = 1;
-const GLASS_MODE_STORAGE_KEY = "bubbledrop.glass-mode";
 const IDLE_WALLET_FLOW_STATE: WalletFlowState = {
   stage: "idle",
   phase: null,
@@ -594,6 +593,7 @@ function getSmokeWalletOverride():
     }
   | null {
   if (
+    process.env.NODE_ENV === "production" ||
     process.env.NEXT_PUBLIC_SMOKE_TEST_MODE !== "1" ||
     typeof window === "undefined"
   ) {
@@ -758,7 +758,7 @@ export function BubbleDropShell() {
   const [dailyCheckInCompletedToday, setDailyCheckInCompletedToday] = useState(false);
   const [dailyCheckInUiState, setDailyCheckInUiState] =
     useState<DailyCheckInUiState>("idle");
-  const [glassMode, setGlassMode] = useState<GlassMode>("medium");
+  const { glassMode, setGlassMode } = useGlassMode();
   const [cardIndex, setCardIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showWrongExplanation, setShowWrongExplanation] = useState(false);
@@ -1075,7 +1075,7 @@ export function BubbleDropShell() {
   }, [effectiveIsConnected, isSignedInWithBase, walletFlowState.phase, walletFlowState.stage]);
 
   const refreshProfileSummary = async (targetProfileId: string) => {
-    const summary = await fetchBackendProfileSummary(backendUrl, targetProfileId);
+    const summary = await fetchBackendProfileSummary(backendUrl, targetProfileId, authenticatedSessionToken);
     if (!summary) {
       setActionMessage("BubbleDrop is still waking up. Try again in a moment.");
       return null;
@@ -1103,28 +1103,6 @@ export function BubbleDropShell() {
       has_profile_context: !!runtimeContext.profileId,
     });
   }, [runtimeContext.profileId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const storedMode = window.localStorage.getItem(GLASS_MODE_STORAGE_KEY);
-    if (storedMode === "soft" || storedMode === "medium" || storedMode === "strong") {
-      setGlassMode(storedMode);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const body = window.document.body;
-    body.classList.remove("glass-soft", "glass-medium", "glass-strong");
-    body.classList.add(`glass-${glassMode}`);
-    window.localStorage.setItem(GLASS_MODE_STORAGE_KEY, glassMode);
-  }, [glassMode]);
 
   useEffect(() => {
     setProfileId(runtimeContext.profileId);

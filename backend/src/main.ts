@@ -1,9 +1,17 @@
 import type { Server } from 'http';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      transform: true,
+    }),
+  );
   const port = Number(process.env.PORT ?? 3000);
   const configuredFrontendOrigin = process.env.FRONTEND_ORIGIN?.trim();
   if (process.env.NODE_ENV === 'production' && !configuredFrontendOrigin) {
@@ -19,6 +27,9 @@ async function bootstrap() {
 
   app.enableCors({
     origin: frontendOrigins,
+    credentials: false,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'x-bubbledrop-auth-session'],
   });
 
   const server = (await app.listen(port, '0.0.0.0')) as Server;

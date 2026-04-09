@@ -96,16 +96,22 @@ export type BackendProfileSummary = {
 export async function fetchBackendProfileSummary(
   backendUrl: string,
   profileId: string,
+  authSessionToken?: string | null,
 ): Promise<BackendProfileSummary | null> {
   if (!backendUrl || !profileId) {
     return null;
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authSessionToken) {
+    headers["x-bubbledrop-auth-session"] = authSessionToken;
   }
 
   const response = await fetch(
     `${backendUrl}/profile/summary?profileId=${encodeURIComponent(profileId)}`,
     {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers,
       cache: "no-store",
     },
   );

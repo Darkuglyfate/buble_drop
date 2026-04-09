@@ -17,9 +17,14 @@ export class ClaimController {
   ) {}
 
   @Get('balances')
-  getClaimableBalances(
+  async getClaimableBalances(
     @Query() dto: GetClaimBalancesDto,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ClaimableTokenBalanceView[]> {
+    await this.walletBindingService.assertProfileAccess(
+      dto.profileId,
+      authSessionHeader,
+    );
     return this.claimService.getClaimableBalances(dto.profileId);
   }
 

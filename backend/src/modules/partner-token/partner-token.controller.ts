@@ -45,9 +45,14 @@ export class PartnerTokenController {
   }
 
   @Get('referral/progress')
-  getReferralProgress(
+  async getReferralProgress(
     @Query('profileId') profileId: string,
+    @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ReferralProgressView> {
+    await this.walletBindingService.assertProfileAccess(
+      profileId,
+      authSessionHeader,
+    );
     return this.partnerTokenService.getReferralProgress(profileId);
   }
 

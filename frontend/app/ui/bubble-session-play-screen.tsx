@@ -365,8 +365,9 @@ type EquipStyleResponse = {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
+  authSessionToken?: string | null,
 ): Promise<{ walletAddress: string; needsOnboarding: boolean } | null> {
-  const payload = await fetchBackendProfileSummary(backendUrl, profileId);
+  const payload = await fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
   if (!payload) {
     return null;
   }
@@ -1096,6 +1097,7 @@ export function BubbleSessionPlayScreen() {
         const onboardingState = await fetchOnboardingStateForProfile(
           backendUrl,
           profileId,
+          authSessionToken,
         );
         if (!onboardingState) {
           setNeedsOnboarding(false);

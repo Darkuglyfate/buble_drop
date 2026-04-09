@@ -92,6 +92,7 @@ type InventoryCollectible = {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
+  authSessionToken?: string | null,
 ): Promise<{
   needsOnboarding: boolean;
   currentAvatarId: string | null;
@@ -99,7 +100,7 @@ async function fetchOnboardingStateForProfile(
   equippedStyle: EquippedStyleSnapshot | null;
   equippedStyleRewardId: string | null;
 } | null> {
-  const payload = await fetchBackendProfileSummary(backendUrl, profileId);
+  const payload = await fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
   if (!payload) {
     return null;
   }
@@ -426,6 +427,7 @@ export function RewardsInventoryScreen() {
       const onboardingState = await fetchOnboardingStateForProfile(
         backendUrl,
         resolvedProfileId,
+        authSessionToken,
       );
       if (!onboardingState) {
         setNeedsOnboarding(false);
@@ -512,6 +514,7 @@ export function RewardsInventoryScreen() {
       const refreshedOnboardingState = await fetchOnboardingStateForProfile(
         backendUrl,
         profileId,
+        authSessionToken,
       );
       const resolvedAvatarId =
         refreshedOnboardingState?.currentAvatarId ?? payload.avatarId;

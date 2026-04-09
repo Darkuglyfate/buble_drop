@@ -7,6 +7,9 @@ import {
   useBubbleDropRuntime,
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
+import {
+  loadBubbleDropFrontendSignInSession,
+} from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import { UnifiedIcon } from "./unified-icons";
 
@@ -38,8 +41,9 @@ function formatReferralStatus(status: ReferralItem["status"]): string {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
+  authSessionToken?: string | null,
 ): Promise<{ needsOnboarding: boolean } | null> {
-  const payload = await fetchBackendProfileSummary(backendUrl, profileId);
+  const payload = await fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
   if (!payload) {
     return null;
   }
@@ -59,16 +63,21 @@ export function ReferralProgressScreen() {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   const backendUrl = BUBBLEDROP_API_BASE;
+  const authSessionToken = loadBubbleDropFrontendSignInSession()?.authSessionToken ?? null;
 
   const loadProgress = async (resolvedProfileId: string) => {
     setIsLoading(true);
     setErrorMessage(null);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authSessionToken) {
+        headers["x-bubbledrop-auth-session"] = authSessionToken;
+      }
       const response = await fetch(
         `${backendUrl}/partner-token/referral/progress?profileId=${encodeURIComponent(resolvedProfileId)}`,
         {
           method: "GET",
-          headers: { "Content-Type": "application/json" },
+          headers,
           cache: "no-store",
         },
       );
@@ -101,6 +110,7 @@ export function ReferralProgressScreen() {
       const onboardingState = await fetchOnboardingStateForProfile(
         backendUrl,
         resolvedProfileId,
+        authSessionToken,
       );
       if (!onboardingState) {
         setNeedsOnboarding(false);

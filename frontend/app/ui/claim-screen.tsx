@@ -78,8 +78,9 @@ function addIntegerStrings(a: string, b: string): string {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
+  authSessionToken?: string | null,
 ): Promise<BackendProfileSummary | null> {
-  return fetchBackendProfileSummary(backendUrl, profileId);
+  return fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
 }
 
 const QUALIFICATION_BADGE_COPY: Record<
@@ -203,6 +204,7 @@ export function ClaimScreen() {
         const summary = await fetchOnboardingStateForProfile(
           backendUrl,
           resolvedProfileId,
+          authSessionToken,
         );
         if (!summary) {
           setProfileSummary(null);
