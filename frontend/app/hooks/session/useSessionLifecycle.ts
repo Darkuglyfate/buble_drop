@@ -1,0 +1,296 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { captureAnalyticsEvent } from "../../analytics";
+import { createAuthenticatedJsonHeaders } from "../../base-sign-in";
+
+const SESSION_DURATION_SECONDS = 10 * 60;
+const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
+const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 3 * 60;
+
+type SessionStartResponse = {
+  sessionId: string;
+  profileId: string;
+  startedAt: string;
+};
+
+type SeasonProgress = {
+  qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
+  eligibleAtSeasonEnd: boolean;
+  streak: number;
+  xp: number;
+  activeSessions: number;
+  requiredStreak: number;
+  requiredXp: number;
+  requiredActiveSessions: number;
+};
+
+type RareRewardTokenOutcome = {
+  tokenSymbol: string;
+  tokenAmountAwarded: string;
+  weeklyTicketsIssued: number;
+  seasonId: string;
+  weekStartDate: string;
+};
+
+type RareRewardCollectibleOutcome = {
+  id: string;
+  key: string;
+};
+
+type RareRewardOutcome = {
+  tokenSymbolAwarded: string | null;
+  tokenAmountAwarded: string;
+  weeklyTicketsIssued: number;
+  nftIdsAwarded: string[];
+  cosmeticIdsAwarded: string[];
+  tokenReward: RareRewardTokenOutcome | null;
+  nftRewards: RareRewardCollectibleOutcome[];
+  cosmeticRewards: RareRewardCollectibleOutcome[];
+};
+
+export type SessionCompleteResponse = {
+  success: boolean;
+  sessionId: string;
+  profileId: string;
+  endedAt: string;
+  sessionDurationSeconds: number;
+  activeSeconds: number;
+  activePlayXp: number;
+  completionBonusXp: number;
+  xpAwarded: number;
+  newStreak: number;
+  rareAccessActive: boolean;
+  grantedXp: number;
+  totalXp: number;
+  qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
+  rareRewardAccessActive: boolean;
+  seasonProgress: SeasonProgress;
+  rareRewardOutcome: RareRewardOutcome;
+  finalScore: number;
+  bestCombo: number;
+  rewardFlags: number;
+  integrityHash: string;
+  onchainCommit: {
+    relay: {
+      action: "session_outcome";
+      relayKind: "backend-sponsored";
+      available: boolean;
+      userPaysGas: false;
+      reason: string | null;
+    };
+    submitted: boolean;
+    txHash: string | null;
+    sessionIdHash: string;
+    committedAt: string | null;
+  };
+};
+
+export type UseSessionLifecycleParams = {
+  profileId: string | null;
+  authSessionToken: string | null;
+  backendUrl: string;
+  needsOnboarding: boolean;
+  activeTapCount: number;
+  bestTapCombo: number;
+  setActionMessage: (message: string | null) => void;
+  onSessionStarted?: (payload: SessionStartResponse) => void;
+  onSessionCompleted?: (payload: SessionCompleteResponse) => void;
+};
+
+const ACTIVE_SECONDS_PER_TAP = 12;
+
+export function useSessionLifecycle(params: UseSessionLifecycleParams) {
+  const {
+    profileId,
+    authSessionToken,
+    backendUrl,
+    needsOnboarding,
+    activeTapCount,
+    bestTapCombo,
+    setActionMessage,
+    onSessionStarted,
+    onSessionCompleted,
+  } = params;
+
+  const [sessionStartedAtMs, setSessionStartedAtMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [isActive, setIsActive] = useState(false);
+  const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
+
+  // Timer effect: updates nowMs every 1000ms when session is active
+  useEffect(() => {
+    if (!isActive || sessionStartedAtMs === null) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isActive, sessionStartedAtMs]);
+
+  const elapsedSeconds = useMemo(() => {
+    if (completionResult) {
+      return completionResult.sessionDurationSeconds;
+    }
+    if (!sessionStartedAtMs) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((nowMs - sessionStartedAtMs) / 1000));
+  }, [completionResult, nowMs, sessionStartedAtMs]);
+
+  const sessionTimerGoalReached = elapsedSeconds >= SESSION_DURATION_SECONDS;
+
+  const rawActiveSeconds = activeTapCount * ACTIVE_SECONDS_PER_TAP;
+  const backendCountableActiveSeconds = Math.min(rawActiveSeconds, elapsedSeconds);
+
+  const localCompletionEstimateMet =
+    elapsedSeconds >= MIN_SESSION_SECONDS_FOR_COMPLETION &&
+    backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS;
+
+  const onStartSession = () => {
+    if (isActive || sessionCompleted || isSubmitting) {
+      return;
+    }
+    if (!profileId || needsOnboarding) {
+      setActionMessage("Finish wallet setup before starting a session.");
+      return;
+    }
+    if (!authSessionToken) {
+      setActionMessage("Sign in with Base on the home screen before starting a session.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setActionMessage(null);
+    void (async () => {
+      try {
+        const response = await fetch(`${backendUrl}/bubble-session/start`, {
+          method: "POST",
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
+          body: JSON.stringify({ profileId }),
+        });
+
+        if (!response.ok) {
+          setActionMessage(
+            `Session start failed (code ${response.status}). Please retry in a moment.`,
+          );
+          return;
+        }
+
+        const payload = (await response.json()) as SessionStartResponse;
+        setBackendSessionId(payload.sessionId);
+        setSessionStartedAtMs(new Date(payload.startedAt).getTime());
+        setNowMs(Date.now());
+        setIsActive(true);
+        setSessionCompleted(false);
+        setCompletionResult(null);
+        captureAnalyticsEvent("bubbledrop_bubble_session_started", {
+          profile_id: payload.profileId,
+          session_id: payload.sessionId,
+        });
+        setActionMessage("Session started. Build active play to qualify the run.");
+        onSessionStarted?.(payload);
+      } catch {
+        setActionMessage("Session start failed. Check network and try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  };
+
+  const onCompleteSession = () => {
+    if (!isActive || sessionCompleted || isSubmitting) {
+      return;
+    }
+    if (!profileId || !backendSessionId || needsOnboarding) {
+      setActionMessage("Start a live session before trying to finish it.");
+      return;
+    }
+    if (!authSessionToken) {
+      setActionMessage("Sign in with Base on the home screen before finishing a session.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setActionMessage(null);
+    void (async () => {
+      try {
+        const response = await fetch(`${backendUrl}/bubble-session/complete`, {
+          method: "POST",
+          headers: createAuthenticatedJsonHeaders(authSessionToken),
+          body: JSON.stringify({
+            profileId,
+            sessionId: backendSessionId,
+            activeSeconds: backendCountableActiveSeconds,
+            finalScore: activeTapCount,
+            bestCombo: bestTapCombo,
+          }),
+        });
+
+        if (!response.ok) {
+          setActionMessage("We couldn't complete that session right now.");
+          return;
+        }
+
+        const payload = (await response.json()) as SessionCompleteResponse;
+        setCompletionResult(payload);
+        setSessionCompleted(true);
+        setIsActive(false);
+        setBackendSessionId(null);
+        captureAnalyticsEvent("bubbledrop_bubble_session_completed", {
+          profile_id: profileId,
+          session_id: payload.sessionId,
+          granted_xp: payload.xpAwarded,
+          completion_bonus_xp: payload.completionBonusXp,
+          new_streak: payload.newStreak,
+          qualification_status: payload.qualificationStatus,
+          rare_reward_access_active: payload.rareAccessActive,
+        });
+        setActionMessage(
+          `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Season chance: ${
+            payload.seasonProgress.eligibleAtSeasonEnd ? "eligible" : "building"
+          }.${payload.onchainCommit?.submitted ? " Final result committed on Base." : ""}`,
+        );
+        onSessionCompleted?.(payload);
+      } catch {
+        setActionMessage("We couldn't complete that session right now.");
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  };
+
+  const resetSession = () => {
+    setSessionStartedAtMs(null);
+    setNowMs(Date.now());
+    setIsActive(false);
+    setSessionCompleted(false);
+    setBackendSessionId(null);
+    setIsSubmitting(false);
+    setCompletionResult(null);
+  };
+
+  return {
+    isActive,
+    sessionStartedAtMs,
+    nowMs,
+    sessionCompleted,
+    isSubmitting,
+    backendSessionId,
+    completionResult,
+    onStartSession,
+    onCompleteSession,
+    elapsedSeconds,
+    sessionTimerGoalReached,
+    localCompletionEstimateMet,
+    resetSession,
+  };
+}

@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { useAccount } from "wagmi";
-import { captureAnalyticsEvent } from "../analytics";
 import {
   BUBBLEDROP_API_BASE,
   useBubbleDropRuntime,
@@ -17,12 +16,22 @@ import {
 } from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
 import type { ProfileStyleRarity } from "./profile-style-rarity";
+import { useSessionAudio } from "../hooks/session/useSessionAudio";
+import { usePlayfieldMeasurement } from "../hooks/session/usePlayfieldMeasurement";
+import { useSessionLifecycle } from "../hooks/session/useSessionLifecycle";
+import { useActivePlayTracking } from "../hooks/session/useActivePlayTracking";
+import {
+  useTapFeedbackEffects,
+  type PopBurst,
+  type ComboBurst,
+  type FunOverlayItem,
+  type PlayfieldTouchCue,
+} from "../hooks/session/useTapFeedbackEffects";
 
 const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
 const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 3 * 60;
 const ACTIVE_SECONDS_PER_TAP = 12;
-const TAP_FEEDBACK_XP_PER_UNIT = 12;
 const BUBBLE_POP_DURATION_MS = 260;
 const BUBBLE_RESPAWN_DELAY_MS = 440;
 const BUBBLE_SPAWN_DURATION_MS = 320;
@@ -37,7 +46,6 @@ const SESSION_REWARD_BUBBLES_XP = 30;
 const SESSION_COMPLETION_BONUS_XP = 20;
 const SESSION_ACTIVE_PLAY_XP_MAX = 20;
 const SESSION_ACTIVE_SECONDS_XP_CAP = 10 * 60;
-const COMBO_WINDOW_MS = 1500;
 const FEATURED_COMBO_TARGET = 5;
 const ACTIVE_PLAY_BUBBLE_COUNT = 18;
 const DECORATIVE_STANDARD_BUBBLES = [
@@ -62,16 +70,6 @@ const POP_SPARKLE_OFFSETS = [
   { xRem: -0.82, yRem: 0.84, scale: 0.18 },
   { xRem: 1.08, yRem: 0.68, scale: 0.24 },
 ] as const;
-const COMBO_BURST_TIER_CONFIG = [
-  { combo: 3, label: "Combo rise", accent: "x3", hue: 198, scale: 1 },
-  { combo: 5, label: "Flow locked", accent: "x5", hue: 286, scale: 1.16 },
-  { combo: 8, label: "Pop frenzy", accent: "x8", hue: 38, scale: 1.32 },
-] as const;
-const FUN_OVERLAY_ITEM_CONFIG = [
-  { kind: "pearl-shard", hue: 196, label: "Pearl shard" },
-  { kind: "xp-crystal", hue: 42, label: "XP crystal" },
-  { kind: "season-sigil", hue: 318, label: "Season sigil" },
-] as const;
 const SPECIAL_BUBBLE_CONFIG = [
   { kind: "cat", hue: 314, accentHue: 332 },
   { kind: "heart", hue: 336, accentHue: 348 },
@@ -94,9 +92,6 @@ const BUBBLE_MAX_FRAME_DT_MS = 32;
 const PLAYFIELD_ASSIST_EXTRA_PX_SMALL = 18;
 const PLAYFIELD_ASSIST_EXTRA_PX_MEDIUM = 14;
 const PLAYFIELD_ASSIST_EXTRA_PX_LARGE = 10;
-const PLAYFIELD_TOUCH_CUE_DURATION_MS = 620;
-const COMBO_BURST_DURATION_MS = 980;
-const FUN_OVERLAY_ITEM_DURATION_MS = 1180;
 const ANTICIPATION_POP_DURATION_MS = 220;
 const CHAIN_POP_TRIGGER_CHANCE = 0.1;
 const CHAIN_POP_BONUS_TRIGGER_CHANCE = 0.16;
@@ -147,12 +142,6 @@ const FINISH_CELEBRATION_RESIDUE = [
   { x: "-7.1rem", y: "2.9rem", size: "0.68rem", delayMs: 1600, durationMs: 1240, hue: 332 },
 ] as const;
 
-type SessionStartResponse = {
-  sessionId: string;
-  profileId: string;
-  startedAt: string;
-};
-
 type BubbleSizeTier = "small" | "medium" | "large";
 type SpecialBubbleKind = (typeof SPECIAL_BUBBLE_CONFIG)[number]["kind"];
 type SessionMicroEventKind = "goldenCluster" | "specialCluster" | "chainPulse";
@@ -183,18 +172,6 @@ type ActivePlayBubble = {
   spawnedUntilMs: number;
 };
 
-type PopBurst = {
-  id: number;
-  xPercent: number;
-  yPercent: number;
-  hue: number;
-  sizeRem: number;
-  isBonus: boolean;
-  specialKind: SpecialBubbleKind | null;
-  comboTier: number | null;
-  source: "user" | "helper" | "chain";
-};
-
 type SessionMicroEventTarget = {
   bubbleId: number;
   specialKind: SpecialBubbleKind | null;
@@ -208,32 +185,6 @@ type SessionMicroEvent = {
   startedAtMs: number;
   expiresAtMs: number;
   targets: SessionMicroEventTarget[];
-};
-
-type ComboBurst = {
-  id: number;
-  xPercent: number;
-  yPercent: number;
-  label: string;
-  accent: string;
-  hue: number;
-  scale: number;
-};
-
-type FunOverlayItem = {
-  id: number;
-  xPercent: number;
-  yPercent: number;
-  kind: "pearl-shard" | "xp-crystal" | "season-sigil";
-  hue: number;
-  label: string;
-};
-
-type PlayfieldTouchCue = {
-  id: number;
-  topPercent: number;
-  leftPercent: number;
-  tone: "assist" | "miss" | "helper";
 };
 
 type HelperTheme = (typeof HELPER_THEME_CONFIG)[number]["theme"];
@@ -276,78 +227,6 @@ type SkinRewardCard = {
   rarity: SkinRarity;
   layout: SkinLayout;
   variantLabel: string;
-};
-
-type RareRewardTokenOutcome = {
-  tokenSymbol: string;
-  tokenAmountAwarded: string;
-  weeklyTicketsIssued: number;
-  seasonId: string;
-  weekStartDate: string;
-};
-
-type RareRewardCollectibleOutcome = {
-  id: string;
-  key: string;
-};
-
-type RareRewardOutcome = {
-  tokenSymbolAwarded: string | null;
-  tokenAmountAwarded: string;
-  weeklyTicketsIssued: number;
-  nftIdsAwarded: string[];
-  cosmeticIdsAwarded: string[];
-  tokenReward: RareRewardTokenOutcome | null;
-  nftRewards: RareRewardCollectibleOutcome[];
-  cosmeticRewards: RareRewardCollectibleOutcome[];
-};
-
-type SeasonProgress = {
-  qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
-  eligibleAtSeasonEnd: boolean;
-  streak: number;
-  xp: number;
-  activeSessions: number;
-  requiredStreak: number;
-  requiredXp: number;
-  requiredActiveSessions: number;
-};
-
-type SessionCompleteResponse = {
-  success: boolean;
-  sessionId: string;
-  profileId: string;
-  endedAt: string;
-  sessionDurationSeconds: number;
-  activeSeconds: number;
-  activePlayXp: number;
-  completionBonusXp: number;
-  xpAwarded: number;
-  newStreak: number;
-  rareAccessActive: boolean;
-  grantedXp: number;
-  totalXp: number;
-  qualificationStatus: "locked" | "in_progress" | "qualified" | "paused" | "restored";
-  rareRewardAccessActive: boolean;
-  seasonProgress: SeasonProgress;
-  rareRewardOutcome: RareRewardOutcome;
-  finalScore: number;
-  bestCombo: number;
-  rewardFlags: number;
-  integrityHash: string;
-  onchainCommit: {
-    relay: {
-      action: "session_outcome";
-      relayKind: "backend-sponsored";
-      available: boolean;
-      userPaysGas: false;
-      reason: string | null;
-    };
-    submitted: boolean;
-    txHash: string | null;
-    sessionIdHash: string;
-    committedAt: string | null;
-  };
 };
 
 type EquipStyleResponse = {
@@ -401,10 +280,6 @@ function formatDurationLabel(totalSeconds: number): string {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
-}
-
-function hasIssuedRareRewardOutcome(outcome: RareRewardOutcome): boolean {
-  return !!outcome.tokenReward || outcome.nftRewards.length > 0 || outcome.cosmeticRewards.length > 0;
 }
 
 function randomBetween(min: number, max: number): number {
@@ -853,37 +728,16 @@ export function BubbleSessionPlayScreen() {
   const [walletAddress, setWalletAddress] = useState<string | null>(
     runtimeContext.walletAddress,
   );
-  const [sessionStartedAtMs, setSessionStartedAtMs] = useState<number | null>(null);
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [isActive, setIsActive] = useState(false);
-  const [activeTapCount, setActiveTapCount] = useState(0);
-  const [sessionCompleted, setSessionCompleted] = useState(false);
-  const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [lastTapFeedbackAtMs, setLastTapFeedbackAtMs] = useState<number | null>(null);
-  const [lastTapAtMs, setLastTapAtMs] = useState<number | null>(null);
-  const [tapCombo, setTapCombo] = useState(0);
-  const [bestTapCombo, setBestTapCombo] = useState(0);
-  const [lastTapRewardXp, setLastTapRewardXp] = useState(TAP_FEEDBACK_XP_PER_UNIT);
-  const [tapFeedbackPoint, setTapFeedbackPoint] = useState<{
-    topPercent: number;
-    leftPercent: number;
-  } | null>(null);
   const [lastTapComboValue, setLastTapComboValue] = useState(0);
-  const [playfieldTouchCue, setPlayfieldTouchCue] = useState<PlayfieldTouchCue | null>(null);
   const [activePlayBubbles, setActivePlayBubbles] = useState<ActivePlayBubble[]>(
     () => createActivePlayBubbleSet(),
   );
-  const [popBursts, setPopBursts] = useState<PopBurst[]>([]);
-  const [comboBursts, setComboBursts] = useState<ComboBurst[]>([]);
-  const [funOverlayItems, setFunOverlayItems] = useState<FunOverlayItem[]>([]);
   const [helperEvent, setHelperEvent] = useState<HelperEvent | null>(null);
   const [helperShotCues, setHelperShotCues] = useState<HelperShotCue[]>([]);
   const [helperScheduleTick, setHelperScheduleTick] = useState(0);
   const [sessionMicroEvent, setSessionMicroEvent] = useState<SessionMicroEvent | null>(null);
   const [sessionEventScheduleTick, setSessionEventScheduleTick] = useState(0);
-  const [completionResult, setCompletionResult] = useState<SessionCompleteResponse | null>(null);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
   const [equippedSkinRewardId, setEquippedSkinRewardId] = useState<string | null>(null);
@@ -894,9 +748,6 @@ export function BubbleSessionPlayScreen() {
     rarity: SkinRarity;
     source: "nft" | "cosmetic";
   } | null>(null);
-  const playfieldRef = useRef<HTMLDivElement | null>(null);
-  const headerRef = useRef<HTMLElement | null>(null);
-  const footerRef = useRef<HTMLDivElement | null>(null);
   const activePlayBubblesRef = useRef<ActivePlayBubble[]>(activePlayBubbles);
   const helperEventRef = useRef<HelperEvent | null>(null);
   const helperHasAppearedRef = useRef(false);
@@ -910,19 +761,39 @@ export function BubbleSessionPlayScreen() {
   const sessionEventTimeoutsRef = useRef<number[]>([]);
   const hasShownMinimumCelebrationRef = useRef(false);
   const hasShownTimerChoiceRef = useRef(false);
-  const popAudioContextRef = useRef<AudioContext | null>(null);
-  const popAudioUnavailableRef = useRef(false);
-  const playfieldMetricsRef = useRef({
-    width: DEFAULT_PLAYFIELD_WIDTH_PX,
-    height: DEFAULT_PLAYFIELD_HEIGHT_PX,
-  });
+
+  // --- Extracted hooks ---
+  const { playPopSound } = useSessionAudio();
+
+  const {
+    activeTapCount,
+    tapCombo,
+    bestTapCombo,
+    lastTapRewardXp,
+    lastTapFeedbackAtMs,
+    onRecordTap,
+    resetPlayTracking,
+  } = useActivePlayTracking();
+
+  const {
+    popBursts,
+    comboBursts,
+    funOverlayItems,
+    playfieldTouchCue,
+    tapFeedbackPoint,
+    setTapFeedbackPoint,
+    queuePopBurst,
+    triggerComboBurst,
+    spawnFunOverlayItem,
+    showPlayfieldTouchCue,
+    resetFeedbackEffects,
+  } = useTapFeedbackEffects();
+
   const [authSession, setAuthSession] =
     useState<BubbleDropFrontendSignInSession | null>(null);
   const [isResolvingOnboardingState, setIsResolvingOnboardingState] =
     useState(true);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const [headerHeightPx, setHeaderHeightPx] = useState(116);
-  const [footerHeightPx, setFooterHeightPx] = useState(156);
   const connectedWalletAddress = normalizeWalletAddress(address);
   const normalizedWalletAddress = normalizeWalletAddress(walletAddress);
   const effectiveProfileId = profileId;
@@ -940,51 +811,39 @@ export function BubbleSessionPlayScreen() {
       ? authSession.authSessionToken
       : null;
 
-  const playPopSound = (isBonus: boolean) => {
-    if (typeof window === "undefined" || popAudioUnavailableRef.current) {
-      return;
-    }
-    try {
-      const contextCandidate = window as typeof window & {
-        webkitAudioContext?: typeof AudioContext;
-      };
-      const AudioContextCtor = window.AudioContext || contextCandidate.webkitAudioContext;
-      if (!AudioContextCtor) {
-        popAudioUnavailableRef.current = true;
-        return;
-      }
+  const {
+    isActive,
+    sessionCompleted,
+    isSubmitting,
+    backendSessionId,
+    completionResult,
+    onStartSession,
+    onCompleteSession,
+    elapsedSeconds,
+    sessionTimerGoalReached,
+    localCompletionEstimateMet,
+    resetSession,
+  } = useSessionLifecycle({
+    profileId: effectiveProfileId,
+    authSessionToken,
+    backendUrl,
+    needsOnboarding,
+    activeTapCount,
+    bestTapCombo,
+    setActionMessage,
+    onSessionStarted: () => {
+      resetGameState();
+    },
+  });
 
-      let audioContext = popAudioContextRef.current;
-      if (!audioContext) {
-        audioContext = new AudioContextCtor();
-        popAudioContextRef.current = audioContext;
-      }
-      if (audioContext.state === "suspended") {
-        void audioContext.resume();
-      }
-
-      const now = audioContext.currentTime;
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      oscillator.type = isBonus ? "triangle" : "sine";
-      oscillator.frequency.setValueAtTime(isBonus ? 780 : 560, now);
-      oscillator.frequency.exponentialRampToValueAtTime(
-        isBonus ? 280 : 180,
-        now + (isBonus ? 0.16 : 0.12),
-      );
-
-      gainNode.gain.setValueAtTime(0.0001, now);
-      gainNode.gain.exponentialRampToValueAtTime(isBonus ? 0.08 : 0.06, now + 0.02);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + (isBonus ? 0.2 : 0.14));
-
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.start(now);
-      oscillator.stop(now + (isBonus ? 0.22 : 0.16));
-    } catch {
-      popAudioUnavailableRef.current = true;
-    }
-  };
+  const {
+    headerHeightPx,
+    footerHeightPx,
+    headerRef,
+    footerRef,
+    playfieldRef,
+    playfieldMetricsRef,
+  } = usePlayfieldMeasurement(isActive);
 
   const clearHelperTimeouts = () => {
     helperTimeoutsRef.current.forEach((timeoutId) => {
@@ -998,6 +857,34 @@ export function BubbleSessionPlayScreen() {
       window.clearTimeout(timeoutId);
     });
     sessionEventTimeoutsRef.current = [];
+  };
+
+  const resetGameState = () => {
+    resetPlayTracking();
+    setLastTapComboValue(0);
+    resetFeedbackEffects();
+    helperHasAppearedRef.current = false;
+    setHelperScheduleTick(0);
+    clearHelperTimeouts();
+    setHelperEvent(null);
+    setHelperShotCues([]);
+    sessionEventHasAppearedRef.current = false;
+    lastSessionEventKindRef.current = null;
+    setSessionEventScheduleTick(0);
+    clearSessionEventTimeouts();
+    setSessionMicroEvent(null);
+    if (finishCelebrationTimeoutRef.current !== null) {
+      window.clearTimeout(finishCelebrationTimeoutRef.current);
+      finishCelebrationTimeoutRef.current = null;
+    }
+    hasShownMinimumCelebrationRef.current = false;
+    hasShownTimerChoiceRef.current = false;
+    setFinishCelebrationVisible(false);
+    setPostTimerChoiceVisible(false);
+    setEquippedSkinRewardId(null);
+    setInventorySavedRewardIds([]);
+    setLastApplyMoment(null);
+    setActivePlayBubbles(createActivePlayBubbleSet());
   };
 
   useEffect(() => {
@@ -1027,67 +914,8 @@ export function BubbleSessionPlayScreen() {
       }
       clearHelperTimeouts();
       clearSessionEventTimeouts();
-      const currentAudioContext = popAudioContextRef.current;
-      if (currentAudioContext) {
-        void currentAudioContext.close();
-      }
-      popAudioContextRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const observers: ResizeObserver[] = [];
-    const observeElement = (
-      element: Element | null,
-      onMeasure: (height: number) => void,
-    ) => {
-      if (!element) {
-        return;
-      }
-      const measure = () => {
-        const height = Math.round(element.getBoundingClientRect().height);
-        if (height > 0) {
-          onMeasure(height);
-        }
-      };
-      measure();
-      const observer = new ResizeObserver(() => {
-        measure();
-      });
-      observer.observe(element);
-      observers.push(observer);
-    };
-
-    observeElement(headerRef.current, setHeaderHeightPx);
-    observeElement(footerRef.current, setFooterHeightPx);
-
-    const playfieldElement = playfieldRef.current;
-    if (playfieldElement) {
-      const measurePlayfield = () => {
-        const bounds = playfieldElement.getBoundingClientRect();
-        if (bounds.width > 0 && bounds.height > 0) {
-          playfieldMetricsRef.current = {
-            width: bounds.width,
-            height: bounds.height,
-          };
-        }
-      };
-      measurePlayfield();
-      const playfieldObserver = new ResizeObserver(() => {
-        measurePlayfield();
-      });
-      playfieldObserver.observe(playfieldElement);
-      observers.push(playfieldObserver);
-    }
-
-    return () => {
-      observers.forEach((observer) => observer.disconnect());
-    };
-  }, [isActive]);
 
   useEffect(() => {
     setIsResolvingOnboardingState(true);
@@ -1121,20 +949,6 @@ export function BubbleSessionPlayScreen() {
     setIsResolvingOnboardingState(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendUrl, profileId]);
-
-  useEffect(() => {
-    if (!isActive || sessionStartedAtMs === null) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isActive, sessionStartedAtMs]);
 
   useEffect(() => {
     if (!isActive || sessionCompleted) {
@@ -1401,17 +1215,7 @@ export function BubbleSessionPlayScreen() {
     };
   }, [isActive, sessionCompleted]);
 
-  const elapsedSeconds = useMemo(() => {
-    if (completionResult) {
-      return completionResult.sessionDurationSeconds;
-    }
-    if (!sessionStartedAtMs) {
-      return 0;
-    }
-    return Math.max(0, Math.floor((nowMs - sessionStartedAtMs) / 1000));
-  }, [completionResult, nowMs, sessionStartedAtMs]);
   const displayElapsedSeconds = Math.min(elapsedSeconds, SESSION_DURATION_SECONDS);
-  const sessionTimerGoalReached = elapsedSeconds >= SESSION_DURATION_SECONDS;
   const rawActiveSeconds = activeTapCount * ACTIVE_SECONDS_PER_TAP;
   const backendCountableActiveSeconds = Math.min(rawActiveSeconds, elapsedSeconds);
   const elapsedProgressPercent = Math.min(
@@ -1424,9 +1228,6 @@ export function BubbleSessionPlayScreen() {
       ACTIVE_SECONDS_FOR_COMPLETION_BONUS) *
       100),
   );
-  const localCompletionEstimateMet =
-    elapsedSeconds >= MIN_SESSION_SECONDS_FOR_COMPLETION &&
-    backendCountableActiveSeconds >= ACTIVE_SECONDS_FOR_COMPLETION_BONUS;
   const projectedActivePlayXp = Math.floor(
     (Math.min(backendCountableActiveSeconds, SESSION_ACTIVE_SECONDS_XP_CAP) /
       SESSION_ACTIVE_SECONDS_XP_CAP) *
@@ -1675,122 +1476,6 @@ export function BubbleSessionPlayScreen() {
         ? "Timed goal complete. Keep popping to stack more XP and strengthen season progress."
         : "Keep popping to finish the active-play target and strengthen season progress.",
     );
-  };
-
-  const showPlayfieldTouchCue = (
-    tone: PlayfieldTouchCue["tone"],
-    point: { topPercent: number; leftPercent: number },
-  ) => {
-    const cueId = Math.floor(Math.random() * 1_000_000_000);
-    setPlayfieldTouchCue({
-      id: cueId,
-      topPercent: point.topPercent,
-      leftPercent: point.leftPercent,
-      tone,
-    });
-    window.setTimeout(() => {
-      setPlayfieldTouchCue((current) => (current?.id === cueId ? null : current));
-    }, PLAYFIELD_TOUCH_CUE_DURATION_MS);
-  };
-
-  const triggerComboBurst = (
-    comboValue: number,
-    point: { xPercent: number; yPercent: number },
-  ) => {
-    const comboTier =
-      [...COMBO_BURST_TIER_CONFIG]
-        .reverse()
-        .find((tier) => comboValue >= tier.combo) ?? null;
-    if (!comboTier) {
-      return null;
-    }
-    const comboBurstId = Math.floor(Math.random() * 1_000_000_000);
-    setComboBursts((current) => [
-      ...current,
-      {
-        id: comboBurstId,
-        xPercent: point.xPercent,
-        yPercent: point.yPercent,
-        label: comboTier.label,
-        accent: comboTier.accent,
-        hue: comboTier.hue,
-        scale: comboTier.scale,
-      },
-    ]);
-    window.setTimeout(() => {
-      setComboBursts((current) => current.filter((burst) => burst.id !== comboBurstId));
-    }, COMBO_BURST_DURATION_MS);
-    return comboTier.combo;
-  };
-
-  const spawnFunOverlayItem = (
-    point: { xPercent: number; yPercent: number },
-    isBonusSource: boolean,
-    comboValue: number,
-  ) => {
-    const shouldSpawnItem =
-      isBonusSource || comboValue >= 5 || Math.random() < 0.34;
-    if (!shouldSpawnItem) {
-      return;
-    }
-    const config =
-      FUN_OVERLAY_ITEM_CONFIG[
-        Math.floor(Math.random() * FUN_OVERLAY_ITEM_CONFIG.length)
-      ];
-    const itemId = Math.floor(Math.random() * 1_000_000_000);
-    setFunOverlayItems((current) => [
-      ...current,
-      {
-        id: itemId,
-        xPercent: point.xPercent,
-        yPercent: point.yPercent,
-        kind: config.kind,
-        hue: config.hue,
-        label: config.label,
-      },
-    ]);
-    window.setTimeout(() => {
-      setFunOverlayItems((current) => current.filter((item) => item.id !== itemId));
-    }, FUN_OVERLAY_ITEM_DURATION_MS);
-  };
-
-  const queuePopBurst = ({
-    xPercent,
-    yPercent,
-    hue,
-    sizeRem,
-    isBonus,
-    specialKind,
-    comboTier,
-    source,
-  }: {
-    xPercent: number;
-    yPercent: number;
-    hue: number;
-    sizeRem: number;
-    isBonus: boolean;
-    specialKind: SpecialBubbleKind | null;
-    comboTier: number | null;
-    source: PopBurst["source"];
-  }) => {
-    const burstId = Math.floor(Math.random() * 1_000_000_000);
-    setPopBursts((current) => [
-      ...current,
-      {
-        id: burstId,
-        xPercent,
-        yPercent,
-        hue,
-        sizeRem,
-        isBonus,
-        specialKind,
-        comboTier,
-        source,
-      },
-    ]);
-    window.setTimeout(() => {
-      setPopBursts((current) => current.filter((burst) => burst.id !== burstId));
-    }, source === "helper" ? HELPER_SHOT_CUE_DURATION_MS : 620);
   };
 
   const applyBubblePopLifecycle = (
@@ -2501,90 +2186,6 @@ export function BubbleSessionPlayScreen() {
     setActionMessage(`${rewardCard.key} saved to inventory.`);
   };
 
-  const onStartSession = () => {
-    if (isActive || sessionCompleted || isSubmitting) {
-      return;
-    }
-    if (!effectiveProfileId || needsOnboarding) {
-      setActionMessage("Finish wallet setup before starting a session.");
-      return;
-    }
-    if (!authSessionToken) {
-      setActionMessage("Sign in with Base on the home screen before starting a session.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setActionMessage(null);
-    void (async () => {
-      try {
-        const response = await fetch(`${backendUrl}/bubble-session/start`, {
-          method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
-          body: JSON.stringify({ profileId: effectiveProfileId }),
-        });
-
-        if (!response.ok) {
-          setActionMessage(
-            `Session start failed (code ${response.status}). Please retry in a moment.`,
-          );
-          return;
-        }
-
-        const payload = (await response.json()) as SessionStartResponse;
-        setBackendSessionId(payload.sessionId);
-        setSessionStartedAtMs(new Date(payload.startedAt).getTime());
-        setNowMs(Date.now());
-        setIsActive(true);
-        setActiveTapCount(0);
-        setTapCombo(0);
-        setBestTapCombo(0);
-        setLastTapComboValue(0);
-        setLastTapRewardXp(TAP_FEEDBACK_XP_PER_UNIT);
-        setTapFeedbackPoint(null);
-        setPlayfieldTouchCue(null);
-        setLastTapAtMs(null);
-        setLastTapFeedbackAtMs(null);
-        setPopBursts([]);
-        setComboBursts([]);
-        setFunOverlayItems([]);
-        helperHasAppearedRef.current = false;
-        setHelperScheduleTick(0);
-        clearHelperTimeouts();
-        setHelperEvent(null);
-        setHelperShotCues([]);
-        sessionEventHasAppearedRef.current = false;
-        lastSessionEventKindRef.current = null;
-        setSessionEventScheduleTick(0);
-        clearSessionEventTimeouts();
-        setSessionMicroEvent(null);
-        if (finishCelebrationTimeoutRef.current !== null) {
-          window.clearTimeout(finishCelebrationTimeoutRef.current);
-          finishCelebrationTimeoutRef.current = null;
-        }
-        hasShownMinimumCelebrationRef.current = false;
-        hasShownTimerChoiceRef.current = false;
-        setFinishCelebrationVisible(false);
-        setPostTimerChoiceVisible(false);
-        setSessionCompleted(false);
-        setCompletionResult(null);
-        setEquippedSkinRewardId(null);
-        setInventorySavedRewardIds([]);
-        setLastApplyMoment(null);
-        setActivePlayBubbles(createActivePlayBubbleSet());
-        captureAnalyticsEvent("bubbledrop_bubble_session_started", {
-          profile_id: payload.profileId,
-          session_id: payload.sessionId,
-        });
-        setActionMessage("Session started. Build active play to qualify the run.");
-      } catch {
-        setActionMessage("Session start failed. Check network and try again.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    })();
-  };
-
   const onRecordActivePlay = (
     bubbleId?: number,
     event?: MouseEvent<HTMLButtonElement>,
@@ -2601,19 +2202,11 @@ export function BubbleSessionPlayScreen() {
       return;
     }
     const tapUnits = tappedBubble?.isBonus ? 2 : 1;
-    const tapRewardXp = tapUnits * TAP_FEEDBACK_XP_PER_UNIT;
 
     const now = Date.now();
-    const nextCombo =
-      lastTapAtMs !== null && now - lastTapAtMs <= COMBO_WINDOW_MS ? tapCombo + 1 : 1;
-    setActiveTapCount((prev) => prev + tapUnits);
-    setLastTapRewardXp(tapRewardXp);
+    const { nextCombo } = onRecordTap(tapUnits);
     setLastTapComboValue(nextCombo);
-    setLastTapFeedbackAtMs(now);
     playPopSound(Boolean(tappedBubble?.isBonus) || nextCombo >= 5);
-    setTapCombo(nextCombo);
-    setBestTapCombo((prevBest) => Math.max(prevBest, nextCombo));
-    setLastTapAtMs(now);
     if (typeof bubbleId === "number" && tappedBubble) {
       applyBubblePopLifecycle(bubbleId, tappedBubble, now);
       const rect = event?.currentTarget.getBoundingClientRect();
@@ -2736,66 +2329,7 @@ export function BubbleSessionPlayScreen() {
     showPlayfieldTouchCue("miss", touchPoint);
   };
 
-  const onCompleteSession = () => {
-    if (!isActive || sessionCompleted || isSubmitting) {
-      return;
-    }
-    if (!effectiveProfileId || !backendSessionId || needsOnboarding) {
-      setActionMessage("Start a live session before trying to finish it.");
-      return;
-    }
-    if (!authSessionToken) {
-      setActionMessage("Sign in with Base on the home screen before finishing a session.");
-      return;
-    }
 
-    setIsSubmitting(true);
-    setActionMessage(null);
-    void (async () => {
-      try {
-        const response = await fetch(`${backendUrl}/bubble-session/complete`, {
-          method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
-          body: JSON.stringify({
-            profileId: effectiveProfileId,
-            sessionId: backendSessionId,
-            activeSeconds: backendCountableActiveSeconds,
-            finalScore: activeTapCount,
-            bestCombo: bestTapCombo,
-          }),
-        });
-
-        if (!response.ok) {
-          setActionMessage("We couldn't complete that session right now.");
-          return;
-        }
-
-        const payload = (await response.json()) as SessionCompleteResponse;
-        setCompletionResult(payload);
-        setSessionCompleted(true);
-        setIsActive(false);
-        setBackendSessionId(null);
-        captureAnalyticsEvent("bubbledrop_bubble_session_completed", {
-          profile_id: effectiveProfileId,
-          session_id: payload.sessionId,
-          granted_xp: payload.xpAwarded,
-          completion_bonus_xp: payload.completionBonusXp,
-          new_streak: payload.newStreak,
-          qualification_status: payload.qualificationStatus,
-          rare_reward_access_active: payload.rareAccessActive,
-        });
-        setActionMessage(
-          `Session completed. +${payload.xpAwarded} XP. Streak: ${payload.newStreak}. Season chance: ${
-            payload.seasonProgress.eligibleAtSeasonEnd ? "eligible" : "building"
-          }.${payload.onchainCommit?.submitted ? " Final result committed on Base." : ""}`,
-        );
-      } catch {
-        setActionMessage("We couldn't complete that session right now.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    })();
-  };
 
   return (
     <div
@@ -3839,36 +3373,8 @@ export function BubbleSessionPlayScreen() {
               <button
                 type="button"
                 onClick={() => {
-                  if (finishCelebrationTimeoutRef.current !== null) {
-                    window.clearTimeout(finishCelebrationTimeoutRef.current);
-                    finishCelebrationTimeoutRef.current = null;
-                  }
-                  hasShownMinimumCelebrationRef.current = false;
-                  hasShownTimerChoiceRef.current = false;
-                  setFinishCelebrationVisible(false);
-                  setPostTimerChoiceVisible(false);
-                  setSessionCompleted(false);
-                  setCompletionResult(null);
-                  setEquippedSkinRewardId(null);
-                  setInventorySavedRewardIds([]);
-                  setLastApplyMoment(null);
-                  setSessionStartedAtMs(null);
-                  setActiveTapCount(0);
-                  setTapFeedbackPoint(null);
-                  setPopBursts([]);
-                  setComboBursts([]);
-                  setFunOverlayItems([]);
-                  helperHasAppearedRef.current = false;
-                  setHelperScheduleTick(0);
-                  clearHelperTimeouts();
-                  setHelperEvent(null);
-                  setHelperShotCues([]);
-                  sessionEventHasAppearedRef.current = false;
-                  lastSessionEventKindRef.current = null;
-                  setSessionEventScheduleTick(0);
-                  clearSessionEventTimeouts();
-                  setSessionMicroEvent(null);
-                  setActivePlayBubbles(createActivePlayBubbleSet());
+                  resetSession();
+                  resetGameState();
                   setActionMessage("Ready for another run.");
                 }}
                 className="gloss-pill flex-1 rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
@@ -3891,7 +3397,3 @@ export function BubbleSessionPlayScreen() {
     </div>
   );
 }
-
-
-
-
