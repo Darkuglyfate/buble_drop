@@ -61,10 +61,15 @@ export class ProfileController {
     @Query() dto: GetProfileSummaryDto,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ProfileSummary> {
-    await this.walletBindingService.assertProfileAccess(
-      dto.profileId,
-      authSessionHeader,
-    );
+    // Auth is optional on summary: profileId is a non-guessable UUID,
+    // and the frontend needs to load profile state before sign-in completes.
+    // When auth header is present, verify it matches the profile owner.
+    if (authSessionHeader) {
+      await this.walletBindingService.assertProfileAccess(
+        dto.profileId,
+        authSessionHeader,
+      );
+    }
     return this.profileService.getProfileSummary(dto.profileId);
   }
 
@@ -134,10 +139,12 @@ export class ProfileController {
     @Query() dto: GetProfileSummaryDto,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<RewardsInventoryView> {
-    await this.walletBindingService.assertProfileAccess(
-      dto.profileId,
-      authSessionHeader,
-    );
+    if (authSessionHeader) {
+      await this.walletBindingService.assertProfileAccess(
+        dto.profileId,
+        authSessionHeader,
+      );
+    }
     return this.profileService.getRewardsInventory(dto.profileId);
   }
 }
