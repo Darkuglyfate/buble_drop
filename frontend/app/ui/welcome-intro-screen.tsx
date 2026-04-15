@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 type IntroBubbleRole = "ambient" | "interactive" | "heroTarget";
 
@@ -59,8 +59,6 @@ export function WelcomeIntroScreen({
   const [portalPressed, setPortalPressed] = useState(false);
   const [portalWakeActive, setPortalWakeActive] = useState(false);
   const [portalRippleActive, setPortalRippleActive] = useState(false);
-  const portalWakeStartTimeoutRef = useRef<number | null>(null);
-  const portalWakeEndTimeoutRef = useRef<number | null>(null);
   const activeTargetBubbles = introBubbles.filter((bubble) => bubble.role !== "ambient");
   const remainingTargetBubble = activeTargetBubbles.find(
     (bubble) => !introPoppedBubbleIds.includes(bubble.id),
@@ -71,31 +69,12 @@ export function WelcomeIntroScreen({
     if (introPopBursts.length === 0) {
       return;
     }
-
-    if (portalWakeStartTimeoutRef.current !== null) {
-      window.clearTimeout(portalWakeStartTimeoutRef.current);
-    }
-    if (portalWakeEndTimeoutRef.current !== null) {
-      window.clearTimeout(portalWakeEndTimeoutRef.current);
-    }
-
-    portalWakeStartTimeoutRef.current = window.setTimeout(() => {
-      setPortalWakeActive(true);
-    }, 0);
-    portalWakeEndTimeoutRef.current = window.setTimeout(() => {
+    setPortalWakeActive(true);
+    const timeoutId = window.setTimeout(() => {
       setPortalWakeActive(false);
-      portalWakeEndTimeoutRef.current = null;
     }, 460);
-
     return () => {
-      if (portalWakeStartTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeStartTimeoutRef.current);
-        portalWakeStartTimeoutRef.current = null;
-      }
-      if (portalWakeEndTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeEndTimeoutRef.current);
-        portalWakeEndTimeoutRef.current = null;
-      }
+      window.clearTimeout(timeoutId);
     };
   }, [introPopBursts.length]);
 
@@ -103,44 +82,14 @@ export function WelcomeIntroScreen({
     if (!introComplete) {
       return;
     }
-
-    if (portalWakeStartTimeoutRef.current !== null) {
-      window.clearTimeout(portalWakeStartTimeoutRef.current);
-    }
-    if (portalWakeEndTimeoutRef.current !== null) {
-      window.clearTimeout(portalWakeEndTimeoutRef.current);
-    }
-
-    portalWakeStartTimeoutRef.current = window.setTimeout(() => {
-      setPortalWakeActive(true);
-    }, 0);
-    portalWakeEndTimeoutRef.current = window.setTimeout(() => {
+    setPortalWakeActive(true);
+    const timeoutId = window.setTimeout(() => {
       setPortalWakeActive(false);
-      portalWakeEndTimeoutRef.current = null;
     }, 900);
-
     return () => {
-      if (portalWakeStartTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeStartTimeoutRef.current);
-        portalWakeStartTimeoutRef.current = null;
-      }
-      if (portalWakeEndTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeEndTimeoutRef.current);
-        portalWakeEndTimeoutRef.current = null;
-      }
+      window.clearTimeout(timeoutId);
     };
   }, [introComplete]);
-
-  useEffect(() => {
-    return () => {
-      if (portalWakeStartTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeStartTimeoutRef.current);
-      }
-      if (portalWakeEndTimeoutRef.current !== null) {
-        window.clearTimeout(portalWakeEndTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const triggerPortalWake = () => {
     setPortalWakeActive(true);

@@ -1,21 +1,8 @@
 "use client";
 
 import { useBubbleDropQuery } from "../hooks/useBubbleDropQuery";
-import {
-  Badge,
-  BackButton,
-  Card,
-  EmptyState,
-  ErrorMessage,
-  IconButton,
-  ListItem,
-  LoadingState,
-  ScreenLayout,
-  Section,
-  Stack,
-  Text,
-} from "../components";
 import { UnifiedIcon } from "./unified-icons";
+import { BackButton, ErrorMessage, LoadingState, ScreenLayout } from "./shared";
 
 type SeasonHubView = {
   season: {
@@ -41,66 +28,93 @@ export function SeasonHubScreen() {
 
   return (
     <ScreenLayout>
-      <Section
-        kicker="Live season"
-        title="Season hub"
-        headingLevel="h1"
-        description="Follow the current season window, track featured partners, and understand what can be awarded at season end."
-        trailing={<BackButton />}
-      />
+      <section className="bubble-card p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">Live season</p>
+            <h1 className="mt-1 text-xl font-bold text-[#27457b]">Season hub</h1>
+          </div>
+          <BackButton />
+        </div>
+        <p className="mt-3 text-sm text-[#5d76a5]">
+          Follow the current season window, track featured partners, and understand what can be
+          awarded at season end.
+        </p>
+      </section>
 
-      <Section
-        title="Season snapshot"
-        trailing={
-          <IconButton
-            label="Refresh season"
-            variant="secondary"
-            size="sm"
-            disabled={isLoading}
+      <section className="bubble-card p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+            <UnifiedIcon kind="season" className="ui-icon text-[#48608f]" />
+            Season snapshot
+          </h2>
+          <button
+            type="button"
             onClick={refetch}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
           >
-            <UnifiedIcon kind="refresh" />
-          </IconButton>
-        }
-      >
+            <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
+            {isLoading ? "Refreshing..." : "Update"}
+          </button>
+        </div>
+
         {hub?.season ? (
-          <Card variant="muted" padding="sm">
-            <Stack gap={1}>
-              <Stack gap={1}>
-                <Text variant="body" tone="accent" weight="semibold">
-                  {hub.season.title}
-                </Text>
-                <Badge tone={hub.season.isActive ? "success" : "neutral"}>
-                  {hub.season.isActive ? "Active" : "Upcoming"}
-                </Badge>
-              </Stack>
-              <Text variant="caption" tone="muted">
-                {hub.season.startDate} - {hub.season.endDate}
-              </Text>
-              <Text variant="caption" tone="muted">
-                Featured partners: {hub.tokenCount}. Rewards are distributed by season outcome, not per single run.
-              </Text>
-            </Stack>
-          </Card>
+          <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-[#2f4a7f]">{hub.season.title}</p>
+              <span
+                className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                  hub.season.isActive
+                    ? "bg-[#e7fbf0] text-[#2f6f53]"
+                    : "bg-[#f2f5ff] text-[#61739b]"
+                }`}
+              >
+                {hub.season.isActive ? "Active" : "Upcoming"}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-[#6074a0]">
+              {hub.season.startDate} - {hub.season.endDate}
+            </p>
+            <p className="mt-1 text-xs text-[#6074a0]">
+              Featured partners: {hub.tokenCount}. Rewards are distributed by season outcome, not
+              per single run.
+            </p>
+          </div>
         ) : (
-          <EmptyState message="A new BubbleDrop season has not been announced yet." />
+          <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+            A new BubbleDrop season has not been announced yet.
+          </div>
         )}
-      </Section>
+      </section>
 
-      <Section title="Season tokens">
-        <LoadingState message={isLoading ? "Loading the current token lineup..." : null} />
+      <section className="bubble-card p-4">
+        <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
+          <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
+          Season tokens
+        </h2>
+        <LoadingState isLoading={isLoading} message="Loading the current token lineup..." />
         {hub?.tokens.length ? (
-          <Stack gap={2}>
-            {hub.tokens.map((token) => (
-              <ListItem key={token.id} title={token.name} subtitle={token.symbol} />
-            ))}
-          </Stack>
-        ) : !isLoading ? (
-          <EmptyState message="Featured season partners will appear here when the lineup is live." />
-        ) : null}
-      </Section>
+          hub.tokens.map((token) => (
+            <article key={token.id} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#2f4a7f]">{token.name}</p>
+                  <p className="mt-1 text-xs text-[#6074a0]">{token.symbol}</p>
+                </div>
+              </div>
+            </article>
+          ))
+        ) : (
+          !isLoading ? (
+            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
+              Featured season partners will appear here when the lineup is live.
+            </div>
+          ) : null
+        )}
+      </section>
 
-      <ErrorMessage message={error ? "Season data is unavailable right now." : null} />
+      <ErrorMessage message={error} />
     </ScreenLayout>
   );
 }
