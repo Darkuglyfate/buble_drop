@@ -1,13 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { captureAnalyticsEvent } from "../analytics";
 import {
   BUBBLEDROP_API_BASE,
   useBubbleDropRuntime,
-  withBubbleDropContext,
 } from "../bubbledrop-runtime";
 import {
   createAuthenticatedJsonHeaders,
@@ -15,6 +13,24 @@ import {
   loadBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
+import {
+  BackButton,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  ErrorMessage,
+  Grid,
+  IconButton,
+  LoadingState,
+  NavLinkButton,
+  Row,
+  ScreenLayout,
+  Section,
+  Stack,
+  StatTile,
+  Text,
+} from "../components";
 import {
   type BackendProfileSummary,
   fetchBackendProfileSummary,
@@ -45,6 +61,9 @@ type ClaimResponse = {
   settlementRecordedOnchain?: boolean;
   settlementRecordTxHash?: string | null;
 };
+
+type QualificationStatus = BackendProfileSummary["qualificationState"]["status"];
+type BadgeTone = "neutral" | "info" | "muted" | "rare" | "qualified";
 
 function normalizeIntegerString(value: string): string {
   const normalized = value.trim();
@@ -83,37 +102,29 @@ async function fetchOnboardingStateForProfile(
   return fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
 }
 
-const QUALIFICATION_BADGE_COPY: Record<
-  BackendProfileSummary["qualificationState"]["status"],
-  {
-    label: string;
-    className: string;
-  }
+const QUALIFICATION_BADGE: Record<
+  QualificationStatus,
+  { label: string; tone: BadgeTone }
 > = {
-  locked: {
-    label: "Locked",
-    className: "bg-[#eef2fb] text-[#5d6f93]",
-  },
-  in_progress: {
-    label: "In progress",
-    className:
-      "bg-gradient-to-r from-[#dff2ff] to-[#e7e3ff] text-[#39588d]",
-  },
-  paused: {
-    label: "Paused",
-    className: "bg-[#f2ecff] text-[#6a5d93]",
-  },
-  restored: {
-    label: "Restored",
-    className:
-      "bg-gradient-to-r from-[#fff0b0] to-[#ffd8ef] text-[#6e4f1f] shadow-[0_0_16px_rgba(255,212,135,0.45)]",
-  },
-  qualified: {
-    label: "Qualified",
-    className:
-      "bg-gradient-to-r from-[#ffe38f] to-[#ffb5e7] text-[#6b3f00] shadow-[0_0_20px_rgba(255,208,128,0.65)]",
-  },
+  locked: { label: "Locked", tone: "neutral" },
+  in_progress: { label: "In progress", tone: "info" },
+  paused: { label: "Paused", tone: "muted" },
+  restored: { label: "Restored", tone: "rare" },
+  qualified: { label: "Qualified", tone: "qualified" },
 };
+
+function mapErrorMessage(raw: string | null): string | null {
+  if (raw === null) {
+    return null;
+  }
+  if (raw === "Unable to load claimable balances from backend.") {
+    return "Claimable balances are unavailable right now.";
+  }
+  if (raw === "Backend connection failed while loading claimable balances.") {
+    return "We couldn't refresh your balances.";
+  }
+  return raw;
+}
 
 export function ClaimScreen() {
   const runtimeContext = useBubbleDropRuntime();
@@ -153,12 +164,9 @@ export function ClaimScreen() {
     !needsOnboarding &&
     !isResolvingOnboardingState &&
     !!authSessionToken;
-  const qualificationBadge = qualificationStatus
-    ? QUALIFICATION_BADGE_COPY[qualificationStatus]
-    : {
-        label: "Pending",
-        className: "bg-[#eef2fb] text-[#5d6f93]",
-      };
+  const qualificationBadge: { label: string; tone: BadgeTone } = qualificationStatus
+    ? QUALIFICATION_BADGE[qualificationStatus]
+    : { label: "Pending", tone: "neutral" };
 
   const loadBalances = async (resolvedProfileId: string) => {
     setIsLoadingBalances(true);
@@ -290,260 +298,219 @@ export function ClaimScreen() {
     }
   };
 
+  const seasonTitle = profileSummary?.seasonProgress.eligibleAtSeasonEnd
+    ? "Season-end chance active"
+    : "Season chance building";
+  const seasonDescription = isResolvingOnboardingState
+    ? "Loading season status."
+    : needsOnboarding
+      ? "Claim requests stay locked until backend confirms onboarding completion."
+      : "Legacy token claims stay available when a balance already exists. New season rewards are decided at season end.";
+
   return (
-    <div className="relative min-h-screen px-4 py-6 sm:px-6">
-      <div className="floating-bubbles">
-        <span className="bubble b1" />
-        <span className="bubble b2" />
-        <span className="bubble b3" />
-        <span className="bubble b4" />
-      </div>
+    <ScreenLayout>
+      <Section
+        kicker="MVP claims"
+        title="Legacy token claims"
+        headingLevel="h1"
+        description="Season rewards no longer mint per run. This screen only handles any already-issued legacy token balances still waiting to be claimed."
+        trailing={<BackButton />}
+      />
 
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
-        <section className="bubble-card p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">MVP claims</p>
-              <h1 className="mt-1 text-xl font-bold text-[#27457b]">Legacy token claims</h1>
-            </div>
-            <Link
-              href={withBubbleDropContext("/", {
-                profileId,
-                walletAddress: connectedWalletAddress ?? walletAddress,
-              }, { skipIntro: true })}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#425b8a]"
-            >
-              <UnifiedIcon kind="back" className="ui-icon ui-icon-active text-[#425b8a]" />
-              Back
-            </Link>
-          </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">
-            Season rewards no longer mint per run. This screen only handles any already-issued legacy
-            token balances still waiting to be claimed.
-          </p>
-        </section>
+      {needsOnboarding ? (
+        <Section
+          kicker="First entry required"
+          title="Finish onboarding before claim access"
+          description="Backend still marks this profile as first-entry. Return home to complete the onboarding learning cards and identity setup before opening claim flow."
+        >
+          <NavLinkButton href="/" variant="primary">
+            Go to onboarding
+          </NavLinkButton>
+        </Section>
+      ) : null}
 
-        {needsOnboarding ? (
-          <section className="bubble-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">
-              First entry required
-            </p>
-            <h2 className="mt-1 text-lg font-bold text-[#27457b]">
-              Finish onboarding before claim access
-            </h2>
-            <p className="mt-3 text-sm text-[#5d76a5]">
-              Backend still marks this profile as first-entry. Return home to complete the onboarding learning cards and
-              identity setup before opening claim flow.
-            </p>
-            <Link
-              href={withBubbleDropContext("/", {
-                profileId,
-                walletAddress: connectedWalletAddress ?? walletAddress,
-              }, { skipIntro: true })}
-              className="gloss-pill mt-4 inline-flex rounded-xl bg-gradient-to-r from-[#a7efff] to-[#c0ccff] px-4 py-3 text-sm font-semibold text-[#1f3561]"
-            >
-              Go to onboarding
-            </Link>
-          </section>
+      <Section
+        kicker="Season status"
+        title={seasonTitle}
+        description={seasonDescription}
+        trailing={<Badge tone={qualificationBadge.tone}>{qualificationBadge.label}</Badge>}
+      >
+        {profileSummary ? (
+          <Grid columns={2} gap={3}>
+            <StatTile label="Qualification" value={qualificationBadge.label} />
+            <StatTile
+              label="Claim requests"
+              value={needsOnboarding ? "Locked" : "Legacy only"}
+            />
+          </Grid>
         ) : null}
+      </Section>
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#536ea4]">
-                Season status
-              </p>
-              <h2 className="mt-1 text-lg font-bold text-[#27457b]">
-                {profileSummary?.seasonProgress.eligibleAtSeasonEnd
-                  ? "Season-end chance active"
-                  : "Season chance building"}
-              </h2>
-            </div>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${qualificationBadge.className}`}
-            >
-              {qualificationBadge.label}
-            </span>
-          </div>
-          <p className="mt-3 text-sm text-[#5d76a5]">
-            {isResolvingOnboardingState
-              ? "Loading season status."
-              : needsOnboarding
-                ? "Claim requests stay locked until backend confirms onboarding completion."
-                : "Legacy token claims stay available when a balance already exists. New season rewards are decided at season end."}
-          </p>
-          {profileSummary ? (
-            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-              <div className="gloss-pill rounded-xl bg-white/80 p-3">
-                <p className="text-xs text-[#6074a0]">Qualification</p>
-                <p className="mt-1 font-semibold">{qualificationBadge.label}</p>
-              </div>
-              <div className="gloss-pill rounded-xl bg-white/80 p-3">
-                <p className="text-xs text-[#6074a0]">Claim requests</p>
-                <p className="mt-1 font-semibold">
-                  {needsOnboarding ? "Locked" : "Legacy only"}
-                </p>
-              </div>
-            </div>
-          ) : null}
-        </section>
+      <Section variant="accent" padding="md">
+        <Text variant="overline" tone="accent">
+          Season reward flow
+        </Text>
+        <Text variant="body" tone="primary" weight="semibold">
+          Daily check-in, streak, and XP now feed a season-end chance instead of instant run-by-run token issuance.
+        </Text>
+      </Section>
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <div className="gloss-pill rounded-2xl bg-gradient-to-r from-[#ffe39f] via-[#ffcdea] to-[#d8d0ff] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#6c4b1c]">
-              Season reward flow
-            </p>
-            <div className="mt-2 flex items-center gap-3">
-              <span className="h-10 w-10 rounded-full bg-gradient-to-br from-[#fff0b9] to-[#ffb5e7] shadow-[0_0_20px_rgba(255,191,123,0.8)]" />
-              <p className="text-sm font-semibold text-[#5b3f1f]">
-                Daily check-in, streak, and XP now feed a season-end chance instead of instant run-by-run
-                token issuance.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-            <UnifiedIcon kind="claim" className="ui-icon text-[#48608f]" />
-            Claimable balance summary
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div className="gloss-pill rounded-xl bg-white/80 p-3">
-              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
-                <UnifiedIcon kind="tokens" className="ui-icon text-[#6074a0]" />
-                Tokens
-              </p>
-              <p className="mt-1 font-semibold">{canUseBackend ? balances.length : "—"}</p>
-            </div>
-            <div className="gloss-pill rounded-xl bg-white/80 p-3">
-              <p className="inline-flex items-center gap-1 text-xs text-[#6074a0]">
-                <UnifiedIcon kind="vault" className="ui-icon text-[#6074a0]" />
-                Total claimable
-              </p>
-              <p className="mt-1 font-semibold">{canUseBackend ? totalClaimable : "—"}</p>
-            </div>
-          </div>
-          {profileId ? <p className="mt-2 text-xs text-[#6b7fa8]">Profile: {profileId}</p> : null}
-          {canUseBackend && !needsOnboarding ? (
-            <button
-              type="button"
+      <Section
+        title="Claimable balance summary"
+        trailing={
+          canUseBackend && !needsOnboarding ? (
+            <IconButton
+              label="Refresh balances"
+              variant="secondary"
+              size="sm"
+              disabled={isLoadingBalances}
               onClick={() => {
                 if (!profileId) {
                   return;
                 }
                 void loadBalances(profileId);
               }}
-              disabled={isLoadingBalances}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#48608f] disabled:opacity-60"
             >
-              <UnifiedIcon kind="refresh" className="ui-icon ui-icon-active text-[#48608f]" />
-              {isLoadingBalances ? "Refreshing..." : "Refresh balances"}
-            </button>
-          ) : null}
-        </section>
+              <UnifiedIcon kind="refresh" />
+            </IconButton>
+          ) : undefined
+        }
+      >
+        <Grid columns={2} gap={3}>
+          <StatTile
+            label="Tokens"
+            value={canUseBackend ? balances.length : "—"}
+            icon={<UnifiedIcon kind="tokens" />}
+          />
+          <StatTile
+            label="Total claimable"
+            value={canUseBackend ? totalClaimable : "—"}
+            icon={<UnifiedIcon kind="vault" />}
+          />
+        </Grid>
+        {profileId ? (
+          <Text variant="caption" tone="muted">
+            Profile: {profileId}
+          </Text>
+        ) : null}
+      </Section>
 
-        <section className={`bubble-card p-4 ${needsOnboarding ? "opacity-60" : ""}`}>
-          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-            <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
-            Claimable legacy balances
-          </h2>
-          <p className="mt-2 text-xs font-semibold text-[#6074a0]">
-            Sponsored payout • No gas from you
-          </p>
+      <Section title="Claimable legacy balances">
+        <Text variant="caption" tone="muted" weight="semibold">
+          Sponsored payout • No gas from you
+        </Text>
 
-          {isResolvingOnboardingState ? (
-            <p className="mt-3 text-sm text-[#6074a0]">Loading backend onboarding state...</p>
-          ) : null}
+        <LoadingState
+          message={
+            isResolvingOnboardingState
+              ? "Loading backend onboarding state..."
+              : !isLoadingBalances
+                ? null
+                : "Loading balances..."
+          }
+        />
 
-          {!isResolvingOnboardingState && isLoadingBalances ? (
-            <p className="mt-3 text-sm text-[#6074a0]">Loading balances...</p>
-          ) : null}
+        {!isResolvingOnboardingState &&
+        !isLoadingBalances &&
+        canUseBackend &&
+        !needsOnboarding &&
+        balances.length === 0 ? (
+          <EmptyState message="No claimable balances available." />
+        ) : null}
 
-          {!isResolvingOnboardingState &&
-          !isLoadingBalances &&
-          canUseBackend &&
-          !needsOnboarding &&
-          balances.length === 0 ? (
-            <p className="mt-3 text-sm text-[#6074a0]">No claimable balances available.</p>
-          ) : null}
-
-          {!isResolvingOnboardingState && !isLoadingBalances && canUseBackend && !needsOnboarding
-            ? balances.map((item) => {
-                const isClaiming = claimingToken === item.tokenSymbol;
-                return (
-                  <div key={item.tokenSymbol} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#2f4a7f]">{item.tokenSymbol}</p>
-                      <p className="text-sm font-bold text-[#384d78]">{item.claimableAmount}</p>
-                    </div>
-                    <button
-                      type="button"
+        {!isResolvingOnboardingState && !isLoadingBalances && canUseBackend && !needsOnboarding ? (
+          <Stack gap={3}>
+            {balances.map((item) => {
+              const isClaiming = claimingToken === item.tokenSymbol;
+              return (
+                <Card key={item.tokenSymbol} variant="muted" padding="sm">
+                  <Stack gap={2}>
+                    <Row justify="between" align="center">
+                      <Text variant="body" tone="primary" weight="semibold">
+                        {item.tokenSymbol}
+                      </Text>
+                      <Text variant="body" tone="primary" weight="bold">
+                        {item.claimableAmount}
+                      </Text>
+                    </Row>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      fullWidth
                       disabled={isClaiming || !canRequestClaims}
                       onClick={() => onClaimToken(item.tokenSymbol, item.claimableAmount)}
-                      className="gloss-pill mt-2 w-full rounded-lg bg-gradient-to-r from-[#c7efff] to-[#d6d8ff] px-3 py-2 text-left text-xs font-semibold text-[#294578] disabled:opacity-60"
                     >
                       {isClaiming
                         ? "Submitting claim..."
                         : canRequestClaims
                           ? "Request full claim amount"
                           : "Sign in to claim"}
-                    </button>
-                  </div>
-                );
-              })
-            : null}
+                    </Button>
+                  </Stack>
+                </Card>
+              );
+            })}
+          </Stack>
+        ) : null}
 
-          {!canUseBackend ? (
-            <p className="mt-3 text-sm text-[#6074a0]">
-              Connect and sign in on the home screen to load live claim data.
-            </p>
-          ) : null}
-          {canUseBackend && needsOnboarding ? (
-            <p className="mt-3 text-sm text-[#6074a0]">
-              Claim flow is locked until backend confirms onboarding completion.
-            </p>
-          ) : null}
-        </section>
+        {!canUseBackend ? (
+          <Text variant="body" tone="muted">
+            Connect and sign in on the home screen to load live claim data.
+          </Text>
+        ) : null}
+        {canUseBackend && needsOnboarding ? (
+          <Text variant="body" tone="muted">
+            Claim flow is locked until backend confirms onboarding completion.
+          </Text>
+        ) : null}
+      </Section>
 
-        {claimResult ? (
-          <section className="bubble-card p-4">
-            <h2 className="text-sm font-semibold text-[#30466f]">Latest claim request</h2>
-            <div className="mt-3 rounded-xl bg-white/80 p-3 text-sm text-[#465d88]">
-              <p>
-                Claim {claimResult.claimId} for {claimResult.tokenSymbol} {claimResult.amount}
-              </p>
-              <p className="mt-1">
-                Status: <span className="font-semibold uppercase">{claimResult.status}</span>
-              </p>
+      {claimResult ? (
+        <Section title="Latest claim request" headingLevel="h3">
+          <Card variant="muted" padding="sm">
+            <Stack gap={2}>
+              <Text variant="body" tone="accent">
+                {`Claim ${claimResult.claimId} for ${claimResult.tokenSymbol} ${claimResult.amount}`}
+              </Text>
+              <Row gap={1} align="baseline">
+                <Text variant="label" tone="accent">Status:</Text>
+                <Text variant="label" tone="primary" weight="semibold">
+                  {claimResult.status.toUpperCase()}
+                </Text>
+              </Row>
               {claimResult.txHash ? (
-                <p className="mt-1">
-                  Gasless relay tx: <span className="font-semibold">{claimResult.txHash}</span>
-                </p>
+                <Row gap={1} align="baseline" wrap>
+                  <Text variant="label" tone="accent">Gasless relay tx:</Text>
+                  <Text variant="label" tone="primary" weight="semibold">
+                    {claimResult.txHash}
+                  </Text>
+                </Row>
               ) : null}
               {claimResult.settlementRecordTxHash ? (
-                <p className="mt-1">
-                  Claim ledger tx:{" "}
-                  <span className="font-semibold">{claimResult.settlementRecordTxHash}</span>
-                </p>
+                <Row gap={1} align="baseline" wrap>
+                  <Text variant="label" tone="accent">Claim ledger tx:</Text>
+                  <Text variant="label" tone="primary" weight="semibold">
+                    {claimResult.settlementRecordTxHash}
+                  </Text>
+                </Row>
               ) : null}
-              <p className="mt-1">
-                Remaining claimable balance after this claim:{" "}
-                <span className="font-semibold">{claimResult.remainingClaimableBalance}</span>
-              </p>
-              <p className="mt-1 text-xs text-[#6074a0]">
+              <Row gap={1} align="baseline" wrap>
+                <Text variant="label" tone="accent">
+                  Remaining claimable balance after this claim:
+                </Text>
+                <Text variant="label" tone="primary" weight="semibold">
+                  {claimResult.remainingClaimableBalance}
+                </Text>
+              </Row>
+              <Text variant="caption" tone="muted">
                 Sponsored payout • No gas from you
-              </p>
-            </div>
-          </section>
-        ) : null}
+              </Text>
+            </Stack>
+          </Card>
+        </Section>
+      ) : null}
 
-        {errorMessage ? (
-          <section className="bubble-card p-4">
-            <p className="rounded-xl bg-[#fff2f7] p-3 text-sm text-[#7f3a53]">{errorMessage}</p>
-          </section>
-        ) : null}
-      </main>
-    </div>
+      <ErrorMessage message={mapErrorMessage(errorMessage)} />
+    </ScreenLayout>
   );
 }

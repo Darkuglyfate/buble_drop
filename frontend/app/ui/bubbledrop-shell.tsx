@@ -41,6 +41,14 @@ import { useOnboardingCards } from "../hooks/shell/useOnboardingCards";
 import { useIntroBubbleGame } from "../hooks/shell/useIntroBubbleGame";
 import { useWalletFlow } from "../hooks/shell/useWalletFlow";
 import { useDailyCheckIn } from "../hooks/shell/useDailyCheckIn";
+import {
+  Button,
+  Card,
+  Row,
+  ScreenLayout,
+  Section,
+  Text,
+} from "../components";
 
 type ProfileBootstrapResponse = {
   profileId: string;
@@ -62,36 +70,20 @@ type QualificationStatus =
   | "paused"
   | "restored";
 
+type QualificationBadgeTone = "neutral" | "info" | "muted" | "rare" | "qualified";
+
 const QUALIFICATION_BADGE_COPY: Record<
   QualificationStatus,
   {
     label: string;
-    className: string;
+    tone: QualificationBadgeTone;
   }
 > = {
-  locked: {
-    label: "Locked",
-    className: "bg-[#eef2fb] text-[#5d6f93]",
-  },
-  in_progress: {
-    label: "In progress",
-    className:
-      "bg-gradient-to-r from-[#dff2ff] to-[#e7e3ff] text-[#39588d]",
-  },
-  paused: {
-    label: "Paused",
-    className: "bg-[#f2ecff] text-[#6a5d93]",
-  },
-  restored: {
-    label: "Restored",
-    className:
-      "bg-gradient-to-r from-[#fff0b0] to-[#ffd8ef] text-[#6e4f1f] shadow-[0_0_16px_rgba(255,212,135,0.45)]",
-  },
-  qualified: {
-    label: "Qualified",
-    className:
-      "bg-gradient-to-r from-[#ffe38f] to-[#ffb5e7] text-[#6b3f00] shadow-[0_0_20px_rgba(255,208,128,0.65)]",
-  },
+  locked: { label: "Locked", tone: "neutral" },
+  in_progress: { label: "In progress", tone: "info" },
+  paused: { label: "Paused", tone: "muted" },
+  restored: { label: "Restored", tone: "rare" },
+  qualified: { label: "Qualified", tone: "qualified" },
 };
 
 /** Local-only demo: cycles profile bubble through all five rarity tiers (motion + styling). */
@@ -168,136 +160,6 @@ function inferStyleCategoryLabel(rewardKey: string): string {
     return "Badge";
   }
   return "Bubble skin";
-}
-
-type WorldIconKind =
-  | "season"
-  | "hunt"
-  | "style"
-  | "board"
-  | "referrals"
-  | "tokens"
-  | "refresh"
-  | "sync"
-  | "disconnect"
-  | "vault"
-  | "claim"
-  | "auth";
-
-function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: string }) {
-  const iconClassName = "h-3.5 w-3.5 text-[#4f6796]";
-  const mergedClassName = className
-    ? `${iconClassName} ${className}`
-    : iconClassName;
-  if (kind === "season") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M8 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M16 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M7 10.5H17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "hunt") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="11" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M15.8 15.8L20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "style") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path
-          d="M12 3.5L13.8 8.2L18.5 10L13.8 11.8L12 16.5L10.2 11.8L5.5 10L10.2 8.2L12 3.5Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (kind === "board") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M12 4.5L14.3 9.2L19.5 9.9L15.7 13.5L16.6 18.7L12 16.2L7.4 18.7L8.3 13.5L4.5 9.9L9.7 9.2L12 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "referrals") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <circle cx="9" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="16.5" cy="10.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M4.8 17.8C5.5 15.7 7.1 14.6 9 14.6C10.9 14.6 12.5 15.7 13.2 17.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M14.6 17.5C15.1 16.2 16.1 15.4 17.3 15.4C18.1 15.4 18.8 15.7 19.4 16.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "refresh") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M19 9.5A7.2 7.2 0 1 0 20 13.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M19.8 5.5V10H15.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "sync") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M8 7H16V17H8V7Z" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M10 4.8H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M11.2 10.5L14.3 12L11.2 13.5V10.5Z" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (kind === "disconnect") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M9 8.2V6.8C9 5.8 9.8 5 10.8 5H17.2C18.2 5 19 5.8 19 6.8V17.2C19 18.2 18.2 19 17.2 19H10.8C9.8 19 9 18.2 9 17.2V15.8" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M14 12H3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M6.4 9.4L3.8 12L6.4 14.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "vault") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <rect x="4" y="6" width="16" height="12" rx="2.6" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M13 12H16.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <circle cx="10" cy="12" r="1.6" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === "claim") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M7 12.2L10.3 15.5L17.2 8.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === "auth") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M7.2 10V7.8C7.2 5.6 9 3.8 11.2 3.8H12.8C15 3.8 16.8 5.6 16.8 7.8V10" stroke="currentColor" strokeWidth="1.8" />
-        <rect x="5.2" y="10" width="13.6" height="10.2" rx="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="12" cy="15.1" r="1.2" fill="currentColor" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-      <ellipse cx="12" cy="13.6" rx="7" ry="5.8" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M8.2 11.7C9.1 10.7 10.5 10 12 10C13.5 10 14.9 10.7 15.8 11.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="9.2" cy="13.2" r="0.8" fill="currentColor" />
-      <circle cx="14.8" cy="13.2" r="0.8" fill="currentColor" />
-    </svg>
-  );
 }
 
 const NETWORK_REQUEST_TIMEOUT_MS = 15_000;
@@ -636,12 +498,6 @@ export function BubbleDropShell() {
       ? 100
       : 8;
 
-  const walletFlowCardStyle =
-    walletFlowState.stage === "connect_failed" ||
-    walletFlowState.stage === "sign_in_failed" ||
-    walletFlowState.stage === "timed_out"
-      ? "border-[#f6c2d4] bg-[#fff2f7] text-[#7f3a53]"
-      : "border-[#dce6ff] bg-[#f8fbff] text-[#2d4578]";
   const walletFlowTitle =
     walletFlowState.stage === "connecting"
       ? "Signing in…"
@@ -1072,8 +928,6 @@ export function BubbleDropShell() {
   let heroTitle = "Start here — then play, streak, earn.";
   let heroBody =
     "Pop bubbles in runs, check in daily to grow your streak, and build your season-end reward chance. Your first move: connect your wallet, sign in, and mark the day on Base.";
-  let heroAccentClass =
-    "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
   const secondaryHeroActionLabel: string | null = null;
   const secondaryHeroActionDisabled = false;
   const secondaryHeroActionHandler: (() => void) | null = null;
@@ -1156,66 +1010,48 @@ export function BubbleDropShell() {
     heroStatusLabel = "Base needed";
     heroTitle = "Your bubble is here, but it still needs the Base lane.";
     heroBody = "Switch network to Base.";
-    heroAccentClass =
-      "from-[#ffe4bb]/95 via-[#ffd7f0]/92 to-[#e5d6ff]/92 text-[#5a391d]";
     heroPortalCopy = "Base lane waiting";
   } else if (effectiveIsConnected && !isSignedInWithBase) {
     heroStatusLabel = "Secure sign-in";
     heroTitle = "Confirm this bubble so the app can trust your next move.";
     heroBody =
       "Use the Sign in with Base button on your Player profile card above — only place to sign in.";
-    heroAccentClass =
-      "from-[#b8f3ff]/95 via-[#d7ddff]/92 to-[#ffe2f4]/92 text-[#173056]";
     heroPortalCopy = "Seal your glow";
   } else if (!profileId) {
     heroStatusLabel = "Profile sync";
     heroTitle = "Shape this bubble into your BubbleDrop identity.";
     heroBody = "Create your player profile.";
-    heroAccentClass =
-      "from-[#9ae8ff]/95 via-[#cdd8ff]/92 to-[#ffd9eb]/92 text-[#173056]";
     heroPortalCopy = "Home still forming";
   } else if (!profileSummary) {
     heroStatusLabel = "Refreshing";
     heroTitle = "Your bubble is almost ready to glow.";
     heroBody = "Updating profile state...";
-    heroAccentClass =
-      "from-[#c3e9ff]/95 via-[#e4ddff]/92 to-[#ffe6f2]/92 text-[#173056]";
     heroPortalCopy = "Glow calibrating";
   } else if (!dailyCheckInCompletedToday) {
     /* ARRIVAL: ежедневный check-in на Base (газ), пока визит не отмечен */
     heroStatusLabel = "Arrival";
     heroTitle = "Mark today's visit on Base.";
     heroBody = "Onchain on Base • You pay gas for this step";
-    heroAccentClass =
-      "from-[#8fdcff]/95 via-[#c6d7ff]/92 to-[#ffd9ef]/92 text-[#173056]";
     heroPortalCopy = "Base check-in";
   } else if (qualificationStatus === "paused") {
     heroStatusLabel = "Season paused";
     heroTitle = "Your season chance paused after the streak broke.";
     heroBody = "Check in again, rebuild momentum, and return to active runs.";
-    heroAccentClass =
-      "from-[#fff0be]/95 via-[#ffd9e8]/92 to-[#e8deff]/92 text-[#63411d]";
     heroPortalCopy = "Season lane resting";
   } else if (isRareRewardAccessActive && qualificationStatus === "qualified") {
     heroStatusLabel = "Qualified";
     heroTitle = "Your profile is on pace for the season-end reward draw.";
     heroBody = "Season-end reward chance is active today. Keep the streak alive and keep earning XP.";
-    heroAccentClass =
-      "from-[#ffe9a8]/95 via-[#ffd7ec]/92 to-[#ddd8ff]/92 text-[#593612]";
     heroPortalCopy = "Season lane live";
   } else if (!isRareRewardAccessActive) {
     heroStatusLabel = "Season build";
     heroTitle = "Today still moves your bubble toward season-end rewards.";
     heroBody = "XP progress is active. Keep the streak alive and bank more active-play XP.";
-    heroAccentClass =
-      "from-[#ccecff]/95 via-[#dce2ff]/92 to-[#ffe7f4]/92 text-[#173056]";
     heroPortalCopy = "XP lane open";
   } else if (profileSummary) {
     heroStatusLabel = "Ready to play";
     heroTitle = "You're checked in — time for bubbles.";
     heroBody = "Open the bubble session when you're ready.";
-    heroAccentClass =
-      "from-[#b7f0ff]/95 via-[#d8dcff]/92 to-[#ffe0f0]/92 text-[#173056]";
     heroPortalCopy = "Play portal ready";
   }
 
@@ -1287,17 +1123,18 @@ export function BubbleDropShell() {
     : null;
 
   return (
-    <div className="relative min-h-screen px-4 py-6 sm:px-6">
-      <div className="ambient-aura">
+    <ScreenLayout>
+      {/*
+        ambient-aura and the extra b5/b6 bubbles come from globals.css keyframes
+        and are additive decoration on top of ScreenLayout's built-in bubbles.
+        Kept inline because ScreenLayout exposes no slot for extra background layers.
+      */}
+      <div className="ambient-aura" aria-hidden="true">
         <span className="aura aura1" />
         <span className="aura aura2" />
         <span className="aura aura3" />
       </div>
-      <div className="floating-bubbles">
-        <span className="bubble b1" />
-        <span className="bubble b2" />
-        <span className="bubble b3" />
-        <span className="bubble b4" />
+      <div className="floating-bubbles" aria-hidden="true">
         <span className="bubble b5" />
         <span className="bubble b6" />
       </div>
@@ -1316,8 +1153,7 @@ export function BubbleDropShell() {
         />
       ) : null}
 
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
-        {onboardingVisible || onboardingCompletionVisible ? (
+      {onboardingVisible || onboardingCompletionVisible ? (
           <OnboardingFlow
             onboardingVisible={onboardingVisible}
             onboardingCompletionVisible={onboardingCompletionVisible}
@@ -1393,11 +1229,9 @@ export function BubbleDropShell() {
                 heroStatusLabel={heroStatusLabel}
                 heroTitle={heroTitle}
                 heroBody={heroBody}
-                heroAccentClass={heroAccentClass}
                 heroPortalCopy={heroPortalCopy}
                 homeStatusPills={homeStatusPills}
                 walletFlowTitle={walletFlowTitle}
-                walletFlowCardStyle={walletFlowCardStyle}
                 walletFlowState={walletFlowState}
                 showConnectRecovery={showConnectRecovery}
                 showSignInRecovery={showSignInRecovery}
@@ -1422,43 +1256,35 @@ export function BubbleDropShell() {
               walletAddress={activeWalletAddress}
             />
 
-            <section className="bubble-card p-4">
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 px-3 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7b8fb8]">
-                  Glass
-                </p>
-                <div className="flex items-center gap-1">
-                  {(["soft", "medium", "strong"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setGlassMode(mode)}
-                      className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                        glassMode === mode
-                          ? "bg-[#dce9ff] text-[#2f4f84]"
-                          : "bg-white/80 text-[#5f739b]"
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
+            <Section title="Glass mode">
+              <Row gap={2}>
+                {(["soft", "medium", "strong"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    size="sm"
+                    variant={glassMode === mode ? "primary" : "secondary"}
+                    onClick={() => setGlassMode(mode)}
+                  >
+                    {mode}
+                  </Button>
+                ))}
+              </Row>
+            </Section>
 
             </>
             ) : null}
 
             {actionMessage ? (
-              <section className="sticky bottom-3 z-20">
-                <p className="bubble-card whitespace-pre-line rounded-[1.2rem] px-4 py-3 text-sm font-semibold text-[#3f5887]">
-                  {actionMessage}
-                </p>
-              </section>
+              // Sticky positioning preserved inline because the component library
+              // has no Sticky/Toast primitive; visible content wrapped in Card+Text.
+              <div style={{ position: "sticky", bottom: "0.75rem", zIndex: 20 }}>
+                <Card variant="warning" padding="sm">
+                  <Text>{actionMessage}</Text>
+                </Card>
+              </div>
             ) : null}
           </>
         )}
-      </main>
-    </div>
+    </ScreenLayout>
   );
 }

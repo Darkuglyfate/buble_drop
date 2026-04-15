@@ -1,6 +1,15 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import {
+  Badge,
+  Button,
+  Card,
+  Heading,
+  Row,
+  Section,
+  Stack,
+  Text,
+} from "../../components";
 import type { WalletFlowState } from "../../hooks/shell/useWalletFlow";
 
 export type HeroSectionProps = {
@@ -9,11 +18,9 @@ export type HeroSectionProps = {
   heroStatusLabel: string;
   heroTitle: string;
   heroBody: string;
-  heroAccentClass: string;
   heroPortalCopy: string;
   homeStatusPills: string[];
   walletFlowTitle: string | null;
-  walletFlowCardStyle: string;
   walletFlowState: WalletFlowState;
   showConnectRecovery: boolean;
   showSignInRecovery: boolean;
@@ -38,11 +45,9 @@ export function HeroSection({
   heroStatusLabel,
   heroTitle,
   heroBody,
-  heroAccentClass,
   heroPortalCopy,
   homeStatusPills,
   walletFlowTitle,
-  walletFlowCardStyle,
   walletFlowState,
   showConnectRecovery,
   showSignInRecovery,
@@ -60,151 +65,130 @@ export function HeroSection({
   secondaryHeroActionDisabled,
   secondaryHeroActionHandler,
 }: HeroSectionProps) {
+  const heroVariant = isRareRewardAccessActive ? "accent" : "default";
+
   return (
-    <section className={`bubble-card lounge-hero overflow-hidden p-5 bg-gradient-to-br ${heroAccentClass}`}>
-      <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/30 blur-3xl" />
-      <div className="absolute -bottom-12 left-0 h-32 w-32 rounded-full bg-white/20 blur-3xl" />
-      <div className="hero-portal-glow absolute right-[-1.5rem] top-[-0.6rem] h-44 w-44 rounded-full" />
-      <div className="hero-portal-ring absolute right-[0.9rem] top-[1.1rem] h-24 w-24 rounded-full border border-white/35" />
-      <div className="hero-portal-ring hero-portal-ring-delay absolute right-[0.2rem] top-[0.4rem] h-32 w-32 rounded-full border border-white/20" />
-      <div className="relative">
+    <Section variant={heroVariant} padding="lg">
+      <Stack gap={3}>
         {!effectiveIsConnected ? (
-          <>
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                {heroStatusLabel}
-              </p>
-              <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                {heroPortalCopy}
-              </p>
-            </div>
-            <div className="mt-3 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
-                  {heroTitle}
-                </h2>
-                <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">
-                  {heroBody}
-                </p>
-              </div>
-              <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
-                <div className="absolute inset-3 rounded-full border border-white/28" />
-                <div className="hero-portal-core h-10 w-10 rounded-full bg-gradient-to-br from-white/90 to-white/45" />
-              </div>
-            </div>
-          </>
+          <Row justify="between" align="baseline" gap={3} wrap>
+            <Text variant="overline" tone="muted">
+              {heroStatusLabel}
+            </Text>
+            <Text variant="overline" tone="muted">
+              {heroPortalCopy}
+            </Text>
+          </Row>
         ) : (
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                {heroStatusLabel}
-              </p>
-              <h2 className="mt-2 text-[1.75rem] font-black leading-[1.05] tracking-[-0.05em]">
-                {heroTitle}
-              </h2>
-              <p className="mt-3 max-w-[28rem] text-sm leading-6 opacity-80">{heroBody}</p>
-            </div>
-            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center rounded-[2rem] bg-white/16 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] backdrop-blur-xl">
-              <div className="absolute inset-3 rounded-full border border-white/28" />
-              <div
-                className={`hero-portal-core h-10 w-10 rounded-full ${
-                  isRareRewardAccessActive
-                    ? "bg-gradient-to-br from-[#fff1a8] via-[#ffd8e8] to-[#b5dfff] shadow-[0_0_30px_rgba(255,215,146,0.95)]"
-                    : "bg-gradient-to-br from-white/90 to-white/45"
-                }`}
-              />
-              <span className="absolute bottom-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#29456f]/70">
-                {heroPortalCopy}
-              </span>
-            </div>
-          </div>
+          <Text variant="overline" tone="muted">
+            {heroStatusLabel}
+          </Text>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {homeStatusPills.map((pill) => (
-            <span
-              key={pill}
-              className="rounded-full bg-white/60 px-3 py-1.5 text-[11px] font-semibold tracking-[0.04em] text-[#28456f] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]"
-            >
-              {pill}
-            </span>
-          ))}
-        </div>
+        <Heading level="h1">{heroTitle}</Heading>
+        <Text variant="body" tone="secondary">
+          {heroBody}
+        </Text>
+
+        {effectiveIsConnected ? (
+          <Text variant="overline" tone="accent">
+            {heroPortalCopy}
+          </Text>
+        ) : null}
+
+        {homeStatusPills.length > 0 ? (
+          <Row gap={2} wrap>
+            {homeStatusPills.map((pill) => (
+              <Badge key={pill} tone="info">
+                {pill}
+              </Badge>
+            ))}
+          </Row>
+        ) : null}
 
         {!effectiveIsConnected ? (
-          <p className="mt-5 rounded-[1.1rem] border border-white/40 bg-white/35 px-4 py-3 text-center text-sm font-semibold leading-snug text-[#28456f]">
-            <span className="block text-[11px] font-bold uppercase tracking-[0.14em] text-[#5d729d]">
-              Do this next
-            </span>
-            <span className="mt-2 block">
-              Connect your wallet first, then use the{" "}
-              <strong className="text-[#1f3561]">profile card</strong> action above to sign in.
-            </span>
-          </p>
+          <Card variant="muted" padding="sm">
+            <Stack gap={1}>
+              <Text variant="overline" tone="accent">
+                Do this next
+              </Text>
+              <Text variant="body" tone="primary" weight="semibold">
+                Connect your wallet first, then use the profile card action above to sign in.
+              </Text>
+            </Stack>
+          </Card>
         ) : null}
+
         {showHeroSecondaryAction && secondaryHeroActionLabel && secondaryHeroActionHandler ? (
-          <button
-            type="button"
-            onClick={secondaryHeroActionHandler}
+          <Button
+            variant="secondary"
+            size="md"
+            fullWidth
             disabled={secondaryHeroActionDisabled}
-            className="mt-3 rounded-[1.1rem] bg-white/56 px-4 py-3 text-left text-sm font-semibold text-[#28456f] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] transition-transform duration-150 hover:-translate-y-[1px] disabled:opacity-60"
+            onClick={secondaryHeroActionHandler}
           >
             {secondaryHeroActionLabel}
-          </button>
+          </Button>
         ) : null}
 
         {walletFlowTitle && walletFlowState.message ? (
-          <div className={`mt-3 rounded-[1.2rem] border px-4 py-3 ${walletFlowCardStyle}`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">
-              {walletFlowTitle}
-            </p>
-            <p className="mt-1 text-sm font-semibold leading-6">{walletFlowState.message}</p>
-          </div>
+          <Card variant="muted" padding="sm">
+            <Stack gap={1}>
+              <Text variant="overline" tone="muted">
+                {walletFlowTitle}
+              </Text>
+              <Text variant="body" tone="primary" weight="semibold">
+                {walletFlowState.message}
+              </Text>
+            </Stack>
+          </Card>
         ) : null}
 
         {showConnectRecovery ? (
-          <div className="mt-3 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={onConnectWallet}
+          <Stack gap={2}>
+            <Button
+              variant="primary"
+              size="md"
+              fullWidth
               disabled={isWalletFlowBusy || isSubmittingAction}
-            className="action-chip gloss-pill rounded-[1.1rem] bg-white/72 px-4 py-3 text-left text-sm font-semibold text-[#28456f] disabled:opacity-60"
+              onClick={onConnectWallet}
             >
-            Retry{" "}
-            {preferredConnectorUsesCoinbaseWallet
-              ? "Coinbase Wallet"
-              : preferredConnectorUsesBaseAccount
-                ? "Base connection"
-                : "in-app Base"}
-            </button>
+              {`Retry ${
+                preferredConnectorUsesCoinbaseWallet
+                  ? "Coinbase Wallet"
+                  : preferredConnectorUsesBaseAccount
+                    ? "Base connection"
+                    : "in-app Base"
+              }`}
+            </Button>
             {fallbackWalletConnector ? (
-              <button
-                type="button"
-                onClick={onConnectCoinbaseWallet}
+              <Button
+                variant="secondary"
+                size="md"
+                fullWidth
                 disabled={isWalletFlowBusy || isSubmittingAction}
-                className="action-chip rounded-[1.1rem] bg-white/52 px-4 py-3 text-left text-sm font-semibold text-[#355889] disabled:opacity-60"
+                onClick={onConnectCoinbaseWallet}
               >
                 {fallbackConnectorUsesCoinbaseWallet
                   ? "Try Coinbase Wallet fallback"
                   : "Try alternate Base route"}
-              </button>
+              </Button>
             ) : null}
-          </div>
+          </Stack>
         ) : null}
 
         {showSignInRecovery ? (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={onSignInWithBase}
-              disabled={isWalletFlowBusy || isSubmittingAction}
-              className="action-chip gloss-pill rounded-[1.1rem] bg-white/72 px-4 py-3 text-left text-sm font-semibold text-[#28456f] disabled:opacity-60"
-            >
-              Retry Base sign-in
-            </button>
-          </div>
+          <Button
+            variant="primary"
+            size="md"
+            fullWidth
+            disabled={isWalletFlowBusy || isSubmittingAction}
+            onClick={onSignInWithBase}
+          >
+            Retry Base sign-in
+          </Button>
         ) : null}
-      </div>
-    </section>
+      </Stack>
+    </Section>
   );
 }
