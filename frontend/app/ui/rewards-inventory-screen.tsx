@@ -410,6 +410,16 @@ export function RewardsInventoryScreen() {
     );
   }, [walletAddress]);
 
+  // Starter avatars are a public endpoint (no auth required) and the
+  // list doesn't depend on profile state. Load them independently on
+  // mount so they appear even if onboarding resolution fails or takes
+  // a while — otherwise the Avatar slot shows an empty "No items"
+  // state when it should show the 8 starter colors.
+  useEffect(() => {
+    void loadStarterAvatars();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!profileId) return;
     const persisted = loadPersistedEquippedStyles(profileId);
