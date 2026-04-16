@@ -201,11 +201,20 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
   const isConnectedToBase =
     effectiveIsConnected && effectiveChainId === base.id;
 
-  const isSignedInWithBase = signInSessionMatchesWallet(
-    signInSession,
-    connectedWalletAddress,
-    effectiveChainId,
-  );
+  // While wagmi is still rehydrating its connection (e.g. on a fresh page
+  // mount after navigation), connectedWalletAddress is null. Don't drop
+  // the user back to "Sign in with Base" in that window — trust the
+  // stored session if it exists. Once accountStatus settles to
+  // 'connected', we re-evaluate against the real wallet address.
+  const isWalletStillRehydrating =
+    accountStatus === "reconnecting" || accountStatus === "connecting";
+  const isSignedInWithBase = isWalletStillRehydrating && hasVerifiedAuthSession(signInSession)
+    ? true
+    : signInSessionMatchesWallet(
+        signInSession,
+        connectedWalletAddress,
+        effectiveChainId,
+      );
   const authenticatedSessionToken =
     isSignedInWithBase && hasVerifiedAuthSession(signInSession)
       ? signInSession?.authSessionToken ?? null
