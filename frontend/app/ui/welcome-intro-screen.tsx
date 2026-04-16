@@ -99,10 +99,14 @@ export function WelcomeIntroScreen({
     }
     window.setTimeout(() => {
       setPortalRippleActive(false);
-    }, 420);
+    }, 520);
+    // Hold the "waking" state long enough for the 340ms box-shadow /
+    // 300ms transform transitions on ring/core/halo to finish their
+    // forward curve before we start the reverse one. Otherwise the
+    // class flips back mid-transition and the portal feels choppy.
     window.setTimeout(() => {
       setPortalWakeActive(false);
-    }, 320);
+    }, 460);
   };
 
   const getAmbientDisplayPosition = (bubble: IntroBubbleSpec) => {
