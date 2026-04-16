@@ -587,7 +587,7 @@ export function RewardsInventoryScreen() {
         <span className="bubble b4" />
       </div>
 
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
+      <main className="screen-main relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
         <section className="vault-drop-panel p-4">
           <div className="flex items-start justify-between gap-3">
             <div>
