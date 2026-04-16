@@ -2,7 +2,7 @@
 
 import { useBubbleDropQuery } from "../hooks/useBubbleDropQuery";
 import { UnifiedIcon } from "./unified-icons";
-import { BackButton, ErrorMessage, LoadingState, ScreenLayout } from "./shared";
+import { BackButton, ErrorMessage, ScreenLayout } from "./shared";
 
 type SeasonHubView = {
   season: {
@@ -88,30 +88,17 @@ export function SeasonHubScreen() {
         )}
       </section>
 
-      <section className="bubble-card p-4">
-        <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#30466f]">
-          <UnifiedIcon kind="tokens" className="ui-icon text-[#48608f]" />
-          Season tokens
-        </h2>
-        <LoadingState isLoading={isLoading} message="Loading the current token lineup..." />
-        {hub?.tokens.length ? (
-          hub.tokens.map((token) => (
-            <article key={token.id} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-[#2f4a7f]">{token.name}</p>
-                  <p className="mt-1 text-xs text-[#6074a0]">{token.symbol}</p>
-                </div>
-              </div>
-            </article>
-          ))
-        ) : (
-          !isLoading ? (
-            <div className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-4 text-sm text-[#6074a0]">
-              Featured season partners will appear here when the lineup is live.
-            </div>
-          ) : null
-        )}
+      <section className="bubble-card p-6 text-center">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#c8ecff] to-[#e8d8ff]">
+          <UnifiedIcon kind="tokens" className="ui-icon ui-icon-active text-[#3b4e85]" />
+        </div>
+        <p className="mt-4 text-3xl font-black uppercase tracking-[0.26em] text-[#27457b]">
+          SOON
+        </p>
+        <p className="mt-3 text-sm text-[#5d76a5]">
+          Season tokens are coming soon. Featured partner lineup will be announced here before
+          the season ends.
+        </p>
       </section>
 
       <ErrorMessage message={error} />
