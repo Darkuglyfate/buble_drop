@@ -372,6 +372,31 @@ button.gloss-pill:disabled {
   z-index: 0;
 }
 
+/* Smooth entrance animation for every ScreenLayout main content.
+   Runs once on mount so that navigating between screens (Season,
+   Board, Referrals, Tokens, Claim, Inventory, home) feels soft
+   instead of snapping instantly. */
+.screen-main {
+  animation: screenEnter 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes screenEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-main {
+    animation: none;
+  }
+}
+
 .bubble {
   position: absolute;
   border-radius: 999px;

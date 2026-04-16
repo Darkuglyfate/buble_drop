@@ -1316,7 +1316,7 @@ export function BubbleDropShell() {
         />
       ) : null}
 
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
+      <main className="screen-main relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
         {onboardingVisible || onboardingCompletionVisible ? (
           <OnboardingFlow
             onboardingVisible={onboardingVisible}

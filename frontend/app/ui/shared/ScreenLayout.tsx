@@ -15,7 +15,7 @@ export function ScreenLayout({ children }: ScreenLayoutProps) {
         <span className="bubble b3" />
         <span className="bubble b4" />
       </div>
-      <main className="relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
+      <main className="screen-main relative z-10 mx-auto flex w-full max-w-md flex-col gap-4">
         {children}
       </main>
     </div>
