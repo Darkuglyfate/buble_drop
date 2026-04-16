@@ -187,7 +187,7 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     useState<WalletFlowState>(IDLE_WALLET_FLOW_STATE);
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
 
-  const { address, chainId, isConnected, status: accountStatus } = useAccount();
+  const { address, chainId, isConnected } = useAccount();
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
@@ -201,20 +201,20 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
   const isConnectedToBase =
     effectiveIsConnected && effectiveChainId === base.id;
 
-  // While wagmi is still rehydrating its connection (e.g. on a fresh page
-  // mount after navigation), connectedWalletAddress is null. Don't drop
-  // the user back to "Sign in with Base" in that window — trust the
-  // stored session if it exists. Once accountStatus settles to
-  // 'connected', we re-evaluate against the real wallet address.
-  const isWalletStillRehydrating =
-    accountStatus === "reconnecting" || accountStatus === "connecting";
-  const isSignedInWithBase = isWalletStillRehydrating && hasVerifiedAuthSession(signInSession)
-    ? true
-    : signInSessionMatchesWallet(
+  // Trust the stored session if it has a valid auth token AND either:
+  //   - wallet is not yet available (rehydrating after navigation), or
+  //   - wallet IS available and matches the session.
+  // This prevents Coinbase Wallet's webview — which can transiently lose
+  // wagmi connection state across navigations — from kicking the user
+  // back to "Sign in with Base" between pages.
+  const isSignedInWithBase =
+    hasVerifiedAuthSession(signInSession) &&
+    (!connectedWalletAddress ||
+      signInSessionMatchesWallet(
         signInSession,
         connectedWalletAddress,
         effectiveChainId,
-      );
+      ));
   const authenticatedSessionToken =
     isSignedInWithBase && hasVerifiedAuthSession(signInSession)
       ? signInSession?.authSessionToken ?? null
@@ -277,15 +277,13 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     }
 
     if (!connectedWalletAddress || !effectiveChainId) {
-      // While wagmi is still rehydrating its connection state on page mount
-      // or navigation, accountStatus is "connecting" or "reconnecting".
-      // Don't nuke the stored session in that window — wait for a definitive
-      // "disconnected" before clearing, otherwise the user is forced to
-      // sign in again every time they navigate back to the home screen.
-      if (accountStatus === "disconnected") {
-        clearBubbleDropFrontendSignInSession();
-        setSignInSession(null);
-      }
+      // Wallet not currently available. This can mean any of:
+      //   (a) wagmi is still rehydrating from cookieStorage
+      //   (b) Coinbase webview lost its connection state on navigation
+      //   (c) the user actually disconnected
+      // We can't reliably distinguish (a)/(b) from (c) here, so DO NOT
+      // touch the stored session. If the user actually wants to sign out,
+      // the explicit disconnect handler clears it.
       return;
     }
 
@@ -301,9 +299,12 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
       return;
     }
 
+    // Confirmed mismatch — wallet is connected but the stored session
+    // belongs to a different wallet (or there is no stored session at all).
+    // It's now safe to drop it.
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
-  }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride, accountStatus]);
+  }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride]);
 
   useEffect(() => {
     if (!effectiveIsConnected) {
@@ -645,6 +646,11 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
   };
 
   const onDisconnectWallet = () => {
+    // Explicit user disconnect: drop the stored sign-in session here,
+    // since the auto-clear in the session-restore effect no longer
+    // touches storage when the wallet is just transiently unavailable.
+    clearBubbleDropFrontendSignInSession();
+    setSignInSession(null);
     setWalletFlowState(IDLE_WALLET_FLOW_STATE);
     disconnect();
   };
