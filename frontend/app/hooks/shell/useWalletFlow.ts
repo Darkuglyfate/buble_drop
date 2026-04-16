@@ -10,7 +10,7 @@ import {
   useSwitchChain,
 } from "wagmi";
 import { base } from "wagmi/chains";
-import type { Address } from "viem";
+import { getAddress, type Address } from "viem";
 import {
   captureAnalyticsEvent,
 } from "../../analytics";
@@ -512,8 +512,12 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
       const noncePayload =
         (await nonceResponse.json()) as AuthSessionNonceResponse;
       const issuedAt = new Date();
+      // Convert to EIP-55 checksum format — Base Smart Wallet strictly
+      // validates the address case in the SIWE message and rejects the
+      // lowercase form returned by the backend normaliser.
+      const checksummedAddress = getAddress(noncePayload.walletAddress);
       const message = createSiweMessage({
-        address: noncePayload.walletAddress as Address,
+        address: checksummedAddress,
         chainId: noncePayload.chainId,
         domain: window.location.host,
         nonce: noncePayload.nonce,
