@@ -234,8 +234,18 @@ export function RewardsInventoryScreen() {
   const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>("all");
   const [rarityFilter, setRarityFilter] = useState<RarityFilter>("all");
   const [seasonFilter, setSeasonFilter] = useState<SeasonFilter>("all");
-  const [authSession, setAuthSession] =
-    useState<BubbleDropFrontendSignInSession | null>(null);
+  // Initialize synchronously from sessionStorage so the very first render
+  // already has the auth token. Otherwise the starter-avatar buttons are
+  // briefly disabled while useEffect populates authSession, which feels
+  // like the UI is unresponsive.
+  const [authSession, setAuthSession] = useState<
+    BubbleDropFrontendSignInSession | null
+  >(
+    () =>
+      (typeof window !== "undefined"
+        ? getSmokeSignInSessionFromCurrentUrl()
+        : null) ?? loadBubbleDropFrontendSignInSession(),
+  );
 
   const backendUrl = BUBBLEDROP_API_BASE;
   const authSessionToken = authSession?.authSessionToken ?? null;
@@ -494,41 +504,50 @@ export function RewardsInventoryScreen() {
       return;
     }
 
+    // Optimistic UI: update immediately so the tap feels instant.
+    // If the server rejects, we roll back.
+    const previousAvatarId = selectedAvatarId;
+    const optimisticPalette =
+      starterAvatars.find((avatar) => avatar.id === avatarId)?.paletteKey ?? null;
+    setSelectedAvatarId(avatarId);
+    setEquippedBySlot((current) => ({ ...current, avatar: avatarId }));
+    saveSelectedAvatarOverride(profileId, avatarId, optimisticPalette);
     setIsSwitchingAvatar(true);
     setErrorMessage(null);
+
     try {
       const response = await fetch(`${backendUrl}/profile/avatar/select`, {
         method: "POST",
         headers: createAuthenticatedJsonHeaders(authSessionToken),
-        body: JSON.stringify({
-          profileId,
-          avatarId,
-        }),
+        body: JSON.stringify({ profileId, avatarId }),
       });
       if (!response.ok) {
+        // Roll back optimistic update
+        setSelectedAvatarId(previousAvatarId);
+        setEquippedBySlot((current) => ({ ...current, avatar: previousAvatarId }));
+        if (previousAvatarId) {
+          const previousPalette =
+            starterAvatars.find((avatar) => avatar.id === previousAvatarId)?.paletteKey ??
+            null;
+          saveSelectedAvatarOverride(profileId, previousAvatarId, previousPalette);
+        }
         setErrorMessage("We couldn't switch avatar right now.");
         return;
       }
 
-      const payload = (await response.json()) as AvatarSelectionResponse;
-      const refreshedOnboardingState = await fetchOnboardingStateForProfile(
-        backendUrl,
-        profileId,
-        authSessionToken,
-      );
-      const resolvedAvatarId =
-        refreshedOnboardingState?.currentAvatarId ?? payload.avatarId;
-      const resolvedAvatarPaletteKey =
-        refreshedOnboardingState?.currentAvatarPaletteKey ??
-        starterAvatars.find((avatar) => avatar.id === resolvedAvatarId)?.paletteKey ??
-        null;
-      setSelectedAvatarId(resolvedAvatarId);
-      setEquippedBySlot((current) => ({
-        ...current,
-        avatar: resolvedAvatarId,
-      }));
-      saveSelectedAvatarOverride(profileId, resolvedAvatarId, resolvedAvatarPaletteKey);
+      // Server confirmed the new avatar — nothing more to do.
+      // The payload.avatarId should match what we already set optimistically.
+      await response.json();
     } catch {
+      // Network failure: roll back
+      setSelectedAvatarId(previousAvatarId);
+      setEquippedBySlot((current) => ({ ...current, avatar: previousAvatarId }));
+      if (previousAvatarId) {
+        const previousPalette =
+          starterAvatars.find((avatar) => avatar.id === previousAvatarId)?.paletteKey ??
+          null;
+        saveSelectedAvatarOverride(profileId, previousAvatarId, previousPalette);
+      }
       setErrorMessage("We couldn't switch avatar right now.");
     } finally {
       setIsSwitchingAvatar(false);
@@ -768,7 +787,7 @@ export function RewardsInventoryScreen() {
                       key={avatar.id}
                       type="button"
                       onClick={() => void onSelectAvatar(avatar.id)}
-                      disabled={isSwitchingAvatar || !authSessionToken}
+                      disabled={!authSessionToken}
                       className={`inventory-starter-avatar-card rounded-2xl border px-3 py-2 text-left transition-all ${
                         isEquipped
                           ? "inventory-starter-avatar-card-active"
