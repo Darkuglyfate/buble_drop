@@ -177,13 +177,17 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     address: string;
     chainId: number;
   } | null>(null);
-  const [signInSession, setSignInSession] =
-    useState<BubbleDropFrontendSignInSession | null>(null);
+  // Initialize synchronously from sessionStorage so the very first render
+  // already knows the user is signed in. Otherwise the shell briefly shows
+  // the "Sign in with Base" button while wagmi is still rehydrating.
+  const [signInSession, setSignInSession] = useState<
+    BubbleDropFrontendSignInSession | null
+  >(() => loadBubbleDropFrontendSignInSession());
   const [walletFlowState, setWalletFlowState] =
     useState<WalletFlowState>(IDLE_WALLET_FLOW_STATE);
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
 
-  const { address, chainId, isConnected } = useAccount();
+  const { address, chainId, isConnected, status: accountStatus } = useAccount();
   const { connectAsync, connectors, isPending: isWalletConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
@@ -264,8 +268,15 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     }
 
     if (!connectedWalletAddress || !effectiveChainId) {
-      clearBubbleDropFrontendSignInSession();
-      setSignInSession(null);
+      // While wagmi is still rehydrating its connection state on page mount
+      // or navigation, accountStatus is "connecting" or "reconnecting".
+      // Don't nuke the stored session in that window — wait for a definitive
+      // "disconnected" before clearing, otherwise the user is forced to
+      // sign in again every time they navigate back to the home screen.
+      if (accountStatus === "disconnected") {
+        clearBubbleDropFrontendSignInSession();
+        setSignInSession(null);
+      }
       return;
     }
 
@@ -283,7 +294,7 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
 
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
-  }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride]);
+  }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride, accountStatus]);
 
   useEffect(() => {
     if (!effectiveIsConnected) {
