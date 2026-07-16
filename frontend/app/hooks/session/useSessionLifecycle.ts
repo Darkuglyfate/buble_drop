@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { captureAnalyticsEvent } from "../../analytics";
-import { createAuthenticatedJsonHeaders } from "../../base-sign-in";
+import { fetchBubbleDropMutation } from "../../base-sign-in";
 
 const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
@@ -88,7 +88,7 @@ export type SessionCompleteResponse = {
 
 export type UseSessionLifecycleParams = {
   profileId: string | null;
-  authSessionToken: string | null;
+  authenticatedSessionMarker: string | null;
   backendUrl: string;
   needsOnboarding: boolean;
   activeTapCount: number;
@@ -103,7 +103,7 @@ const ACTIVE_SECONDS_PER_TAP = 12;
 export function useSessionLifecycle(params: UseSessionLifecycleParams) {
   const {
     profileId,
-    authSessionToken,
+    authenticatedSessionMarker,
     backendUrl,
     needsOnboarding,
     activeTapCount,
@@ -202,7 +202,7 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
       setActionMessage("Finish wallet setup before starting a session.");
       return;
     }
-    if (!authSessionToken) {
+    if (!authenticatedSessionMarker) {
       setActionMessage("Sign in with Base on the home screen before starting a session.");
       return;
     }
@@ -211,9 +211,8 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
     setActionMessage(null);
     void (async () => {
       try {
-        const response = await fetch(`${backendUrl}/bubble-session/start`, {
+        const response = await fetchBubbleDropMutation(`${backendUrl}/bubble-session/start`, {
           method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({ profileId }),
         });
 
@@ -253,7 +252,7 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
       setActionMessage("Start a live session before trying to finish it.");
       return;
     }
-    if (!authSessionToken) {
+    if (!authenticatedSessionMarker) {
       setActionMessage("Sign in with Base on the home screen before finishing a session.");
       return;
     }
@@ -262,9 +261,8 @@ export function useSessionLifecycle(params: UseSessionLifecycleParams) {
     setActionMessage(null);
     void (async () => {
       try {
-        const response = await fetch(`${backendUrl}/bubble-session/complete`, {
+        const response = await fetchBubbleDropMutation(`${backendUrl}/bubble-session/complete`, {
           method: "POST",
-          headers: createAuthenticatedJsonHeaders(authSessionToken),
           body: JSON.stringify({
             profileId,
             sessionId: backendSessionId,

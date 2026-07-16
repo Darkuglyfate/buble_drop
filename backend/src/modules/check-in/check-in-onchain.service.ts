@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Address,
@@ -121,7 +125,9 @@ export class CheckInOnchainService {
 
   private getSignerAccount() {
     const rawPrivateKey =
-      this.configService.get<string>('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY')?.trim() ||
+      this.configService
+        .get<string>('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY')
+        ?.trim() ||
       this.configService.get<string>('ONCHAIN_STREAK_PRIVATE_KEY')?.trim();
     if (!rawPrivateKey) {
       throw new ServiceUnavailableException(
@@ -151,7 +157,9 @@ export class CheckInOnchainService {
       configuredAddress,
       'ONCHAIN_STREAK_SIGNER_ADDRESS',
     );
-    if (normalizedConfiguredAddress.toLowerCase() !== derivedAddress.toLowerCase()) {
+    if (
+      normalizedConfiguredAddress.toLowerCase() !== derivedAddress.toLowerCase()
+    ) {
       throw new ServiceUnavailableException(
         `ONCHAIN_STREAK_SIGNER_ADDRESS ${normalizedConfiguredAddress} does not match signer ${derivedAddress}`,
       );

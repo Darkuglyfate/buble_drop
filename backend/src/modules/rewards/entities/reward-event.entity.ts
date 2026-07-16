@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
+import { Season } from '../../partner-token/entities/season.entity';
 
 export enum RewardEventType {
   XP = 'xp',
@@ -16,7 +17,12 @@ export enum RewardEventType {
   COSMETIC = 'cosmetic',
 }
 
+@Index('IDX_reward_events_idempotency_key_unique', ['idempotencyKey'], {
+  unique: true,
+  where: '"idempotencyKey" IS NOT NULL',
+})
 @Entity({ name: 'reward_events' })
+@Index('IDX_reward_events_profile_season', ['profileId', 'seasonId'])
 export class RewardEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -29,6 +35,13 @@ export class RewardEvent {
   @JoinColumn({ name: 'profileId' })
   profile: Profile;
 
+  @Column({ type: 'uuid', nullable: true })
+  seasonId: string | null;
+
+  @ManyToOne(() => Season, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'seasonId' })
+  season: Season | null;
+
   @Column({ type: 'enum', enum: RewardEventType })
   eventType: RewardEventType;
 
@@ -37,6 +50,9 @@ export class RewardEvent {
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   tokenSymbol: string | null;
+
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  idempotencyKey: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, unknown> | null;

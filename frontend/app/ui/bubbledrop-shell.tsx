@@ -1,14 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useConnection } from "wagmi";
 import {
   captureAnalyticsEvent,
   identifyAnalyticsUser,
 } from "../analytics";
-import {
-  createAuthenticatedJsonHeaders,
-} from "../base-sign-in";
+import { fetchBubbleDropMutation } from "../base-sign-in";
 import {
   BUBBLEDROP_API_BASE,
   useBubbleDropRuntime,
@@ -170,136 +167,6 @@ function inferStyleCategoryLabel(rewardKey: string): string {
   return "Bubble skin";
 }
 
-type WorldIconKind =
-  | "season"
-  | "hunt"
-  | "style"
-  | "board"
-  | "referrals"
-  | "tokens"
-  | "refresh"
-  | "sync"
-  | "disconnect"
-  | "vault"
-  | "claim"
-  | "auth";
-
-function WorldIcon({ kind, className }: { kind: WorldIconKind; className?: string }) {
-  const iconClassName = "h-3.5 w-3.5 text-[#4f6796]";
-  const mergedClassName = className
-    ? `${iconClassName} ${className}`
-    : iconClassName;
-  if (kind === "season") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M8 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M16 3.8V7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M7 10.5H17" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "hunt") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="11" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M15.8 15.8L20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "style") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path
-          d="M12 3.5L13.8 8.2L18.5 10L13.8 11.8L12 16.5L10.2 11.8L5.5 10L10.2 8.2L12 3.5Z"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  if (kind === "board") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M12 4.5L14.3 9.2L19.5 9.9L15.7 13.5L16.6 18.7L12 16.2L7.4 18.7L8.3 13.5L4.5 9.9L9.7 9.2L12 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "referrals") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <circle cx="9" cy="9" r="2.5" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="16.5" cy="10.5" r="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M4.8 17.8C5.5 15.7 7.1 14.6 9 14.6C10.9 14.6 12.5 15.7 13.2 17.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M14.6 17.5C15.1 16.2 16.1 15.4 17.3 15.4C18.1 15.4 18.8 15.7 19.4 16.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "refresh") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M19 9.5A7.2 7.2 0 1 0 20 13.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M19.8 5.5V10H15.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "sync") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M8 7H16V17H8V7Z" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M10 4.8H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M11.2 10.5L14.3 12L11.2 13.5V10.5Z" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (kind === "disconnect") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M9 8.2V6.8C9 5.8 9.8 5 10.8 5H17.2C18.2 5 19 5.8 19 6.8V17.2C19 18.2 18.2 19 17.2 19H10.8C9.8 19 9 18.2 9 17.2V15.8" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M14 12H3.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M6.4 9.4L3.8 12L6.4 14.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  if (kind === "vault") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <rect x="4" y="6" width="16" height="12" rx="2.6" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M13 12H16.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        <circle cx="10" cy="12" r="1.6" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === "claim") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M7 12.2L10.3 15.5L17.2 8.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-    );
-  }
-  if (kind === "auth") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-        <path d="M7.2 10V7.8C7.2 5.6 9 3.8 11.2 3.8H12.8C15 3.8 16.8 5.6 16.8 7.8V10" stroke="currentColor" strokeWidth="1.8" />
-        <rect x="5.2" y="10" width="13.6" height="10.2" rx="2.2" stroke="currentColor" strokeWidth="1.8" />
-        <circle cx="12" cy="15.1" r="1.2" fill="currentColor" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={mergedClassName} aria-hidden="true">
-      <ellipse cx="12" cy="13.6" rx="7" ry="5.8" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M8.2 11.7C9.1 10.7 10.5 10 12 10C13.5 10 14.9 10.7 15.8 11.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="9.2" cy="13.2" r="0.8" fill="currentColor" />
-      <circle cx="14.8" cy="13.2" r="0.8" fill="currentColor" />
-    </svg>
-  );
-}
-
 const NETWORK_REQUEST_TIMEOUT_MS = 15_000;
 const PROFILE_SYNC_RETRY_COUNT = 1;
 
@@ -380,7 +247,7 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, {
+    return await fetchBubbleDropMutation(input, {
       ...init,
       signal: controller.signal,
     });
@@ -413,13 +280,10 @@ export function BubbleDropShell() {
   const [cosmeticTierPreviewActive, setCosmeticTierPreviewActive] = useState(false);
   const [cosmeticPreviewIndex, setCosmeticPreviewIndex] = useState(0);
 
-  const connection = useConnection();
-
   // ---- Wallet flow hook ----
   const {
     connectedWalletAddress,
     effectiveIsConnected,
-    effectiveChainId,
     isConnectedToBase,
     isSignedInWithBase,
     authenticatedSessionToken,
@@ -436,8 +300,6 @@ export function BubbleDropShell() {
     onConnectCoinbaseWallet,
     onSwitchToBase: walletOnSwitchToBase,
     onSignInWithBase: walletOnSignInWithBase,
-    onClearBaseSignIn: walletOnClearBaseSignIn,
-    onDisconnectWallet,
   } = useWalletFlow({ backendUrl });
 
   // ---- Onboarding cards hook ----
@@ -450,7 +312,6 @@ export function BubbleDropShell() {
     setSelectedOption,
     setShowWrongExplanation,
     goNextCard: hookGoNextCard,
-    resetCards,
   } = useOnboardingCards();
 
   // ---- Intro bubble game hook ----
@@ -526,7 +387,6 @@ export function BubbleDropShell() {
     dailyCheckInUiState,
     isSubmittingCheckIn,
     onDailyCheckIn: checkInOnDailyCheckIn,
-    setDailyCheckInCompletedToday,
   } = useDailyCheckIn({
     backendUrl,
     profileId,
@@ -780,7 +640,6 @@ export function BubbleDropShell() {
         try {
           response = await fetchWithTimeout(`${backendUrl}/profile/connect-wallet`, {
             method: "POST",
-            headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
             body: JSON.stringify({ walletAddress: normalizedWalletAddress }),
           });
           timeoutTriggered = false;
@@ -825,12 +684,6 @@ export function BubbleDropShell() {
         profileId: payload.profileId,
         walletAddress: payload.walletAddress,
       });
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.set("profileId", payload.profileId);
-        url.searchParams.set("walletAddress", payload.walletAddress);
-        window.history.replaceState(null, "", url.toString());
-      }
       await refreshProfileSummary(payload.profileId);
       identifyAnalyticsUser(payload.profileId, {
         wallet_address: payload.walletAddress,
@@ -921,10 +774,6 @@ export function BubbleDropShell() {
     void walletOnSignInWithBase(setActionMessage);
   };
 
-  const onClearBaseSignIn = () => {
-    walletOnClearBaseSignIn(setActionMessage);
-  };
-
   const onBootstrapProfile = async () => {
     if (!connectedWalletAddress) {
       setActionMessage("Connect your Base wallet to continue.");
@@ -940,26 +789,6 @@ export function BubbleDropShell() {
     }
 
     await bootstrapProfileForWallet(connectedWalletAddress);
-  };
-
-  const onRefreshProfile = async () => {
-    if (!profileId) {
-      setActionMessage("Connect and sign in to open your BubbleDrop home.");
-      return;
-    }
-    setIsSubmittingAction(true);
-    setActionMessage(null);
-    try {
-      await refreshProfileSummary(profileId);
-      setActionMessage("Your home is refreshed.");
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
-
-  const onReplayIntro = () => {
-    // Note: intro replay would need hook support; currently just a placeholder
-    // since the hook manages its own state. For full replay we'd need a reset method on the hook.
   };
 
   const onDailyCheckIn = (opts?: { openBubbleSessionAfter?: boolean }) => {
@@ -989,9 +818,8 @@ export function BubbleDropShell() {
     setIsSubmittingAction(true);
     setActionMessage(null);
     try {
-      const response = await fetch(`${backendUrl}/profile/onboarding/complete`, {
+      const response = await fetchBubbleDropMutation(`${backendUrl}/profile/onboarding/complete`, {
         method: "POST",
-        headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
         body: JSON.stringify({
           profileId,
           nickname,

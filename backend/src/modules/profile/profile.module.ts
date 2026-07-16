@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthSessionModule } from '../auth-session/auth-session.module';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { GaslessRelayModule } from '../onchain-relay/gasless-relay.module';
+import { SeasonModule } from '../partner-token/season.module';
 import { QualificationModule } from '../qualification/qualification.module';
 import { RewardsModule } from '../rewards/rewards.module';
 import { WalletBindingModule } from '../wallet-binding/wallet-binding.module';
@@ -34,6 +35,7 @@ import { ProfileService } from './profile.service';
     ]),
     AuthSessionModule,
     GaslessRelayModule,
+    SeasonModule,
     QualificationModule,
     RewardsModule,
     WalletBindingModule,

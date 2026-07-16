@@ -109,9 +109,11 @@ $ npm run start:prod:skip-migrate
 
 1. Set `NODE_ENV=production`, `FRONTEND_ORIGIN`, `DB_*` (or compatible Postgres URL via env your host provides), `AUTH_SESSION_SECRET`, etc.
 2. Build: `npm ci && npm run build`
-3. Start: **`npm run start:prod`** — on each deploy this **applies pending TypeORM migrations** then starts Nest. No manual `db:migration:run` on the server unless you prefer it.
+3. Start: **`npm run start:prod`** — each replica waits on the same PostgreSQL advisory lock, applies pending TypeORM migrations through the production wrapper, releases the lock, and then starts Nest. Later replicas see an already-current schema. Do not configure a separate automatic migration command.
 4. After **first** production DB setup, run reference seed once if your checklist requires it: `npm run db:seed:reference-data` (needs DB env; may use Render shell).
-5. To disable auto-migrate: `RUN_MIGRATIONS_ON_START=0 npm run start:prod` (not recommended).
+5. Emergency only: bypass the wrapper migration step with `npm run start:prod:skip-migrate` after confirming the schema is already current.
+
+Production PostgreSQL connections always use TLS with certificate verification. `DATABASE_URL` enables TLS automatically; host-based production configuration does the same. `DB_SSL_ALLOW_SELF_SIGNED=true` is accepted only outside production for isolated troubleshooting.
 
 ## Run tests
 
@@ -135,13 +137,13 @@ Use the compiled production entry instead:
 
 ```bash
 # build command
-npm install && npm run build
+npm ci --include=dev && npm run build
 
 # start command
-npm run start
+npm run start:prod
 ```
 
-`npm run start` now runs `node dist/main`, which is the same lightweight production path as `npm run start:prod`.
+`npm run start:prod` is the only production command that owns automatic migrations. Concurrent replicas serialize on the database advisory lock. `npm run start` starts the compiled API without applying migrations.
 
 Required Render runtime env values:
 
@@ -162,12 +164,26 @@ REDIS_DB=0
 BASE_RPC_URL=https://your-stable-base-mainnet-rpc
 ```
 
+Production readiness contract:
+
+- auth: `AUTH_SESSION_SECRET`, exact `FRONTEND_ORIGIN`, `SIWE_ALLOWED_DOMAINS`, and `SIWE_ALLOWED_URIS`
+- storage: PostgreSQL (`DATABASE_URL` or the complete `DB_*` bundle) and the complete `REDIS_*` bundle
+- Base: `BASE_RPC_URL` must answer with chain ID `8453`; `CHECK_IN_MIN_CONFIRMATIONS` must match the rollout policy
+- health: `/health/live` checks only the process; `/health/ready` checks PostgreSQL, Redis, and Base with `READINESS_TIMEOUT_MS`
+- relay: every `GASLESS_*_ENABLED` flag stays `0` until its complete address/key bundle below is configured
+
 If live reward-wallet payout is intended for launch, also set:
 
 ```bash
 REWARD_WALLET_ADDRESS=0x...
 REWARD_WALLET_PRIVATE_KEY=0x...
+REWARD_PAYOUT_MIN_CONFIRMATIONS=2
+PAYOUT_RECONCILIATION_INTERVAL_MS=15000
 ```
+
+Claimable balances are keyed by profile, season, and token symbol. After migrating an existing database, inspect any `claimable_token_balances` rows with a null `seasonId`; the migration intentionally leaves ambiguous reused-symbol history unassigned rather than paying it from the wrong contract.
+
+Reward-wallet transfers use a durable signed-transaction outbox and a single-flight nonce reservation. Keep the payout reconciliation processor enabled so a process restart rebroadcasts prepared transactions without requiring a user retry.
 
 ## Gasless relay boundary
 
@@ -200,6 +216,8 @@ GASLESS_CLAIM_ENABLED=1
 BASE_RPC_URL=https://your-stable-base-mainnet-rpc
 ```
 
+The checked-in defaults keep every gasless relay flag off. Enable the global flag and an action flag only in the same rollout that supplies that action's full signer/address bundle.
+
 Daily check-in is now user-paid and no longer uses the backend-sponsored relay path.
 The backend only records the provided transaction hash after the wallet transaction succeeds.
 
@@ -215,6 +233,8 @@ Claim relay additionally requires:
 ```bash
 REWARD_WALLET_ADDRESS=0x...
 REWARD_WALLET_PRIVATE_KEY=0x...
+REWARD_PAYOUT_MIN_CONFIRMATIONS=2
+PAYOUT_RECONCILIATION_INTERVAL_MS=15000
 REWARD_LEDGER_CONTRACT_ADDRESS=0x...
 REWARD_LEDGER_WRITER_PRIVATE_KEY=0x...
 ```

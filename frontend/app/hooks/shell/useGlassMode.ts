@@ -16,7 +16,10 @@ export function useGlassMode() {
 
     const storedMode = window.localStorage.getItem(GLASS_MODE_STORAGE_KEY);
     if (storedMode === "soft" || storedMode === "medium" || storedMode === "strong") {
-      setGlassMode(storedMode);
+      const timeoutId = window.setTimeout(() => {
+        setGlassMode(storedMode);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, []);
 

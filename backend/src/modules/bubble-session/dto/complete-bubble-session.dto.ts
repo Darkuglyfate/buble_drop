@@ -1,4 +1,6 @@
-import { IsUUID, IsInt, Min, Max } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+
+const POSTGRES_INT_MAX = 2_147_483_647;
 
 export class CompleteBubbleSessionDto {
   @IsUUID()
@@ -12,11 +14,15 @@ export class CompleteBubbleSessionDto {
   @Max(3600)
   activeSeconds: number;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  finalScore: number;
+  @Max(POSTGRES_INT_MAX)
+  finalScore = 0;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  bestCombo: number;
+  @Max(POSTGRES_INT_MAX)
+  bestCombo = 0;
 }

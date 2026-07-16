@@ -55,16 +55,14 @@ export class Profile {
   onboardingCompletedAt: Date | null;
 
   @Column({ type: 'jsonb', nullable: true, select: false })
-  equippedStyleSnapshot:
-    | {
-        rewardId: string;
-        rewardKey: string;
-        rarity: 'common' | 'rare' | 'epic' | 'legendary';
-        source: 'nft' | 'cosmetic';
-        variant: string;
-        appliedAt: string;
-      }
-    | null;
+  equippedStyleSnapshot: {
+    rewardId: string;
+    rewardKey: string;
+    rarity: 'common' | 'rare' | 'epic' | 'legendary';
+    source: 'nft' | 'cosmetic';
+    variant: string;
+    appliedAt: string;
+  } | null;
 
   @OneToMany(() => ProfileAvatarUnlock, (unlock) => unlock.profile)
   avatarUnlocks: ProfileAvatarUnlock[];

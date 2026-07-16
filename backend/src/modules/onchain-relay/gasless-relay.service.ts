@@ -66,10 +66,16 @@ export class GaslessRelayService {
         return this.unavailable(action, 'missing REWARD_WALLET_ADDRESS');
       }
       if (!this.getTrimmed('REWARD_LEDGER_CONTRACT_ADDRESS')) {
-        return this.unavailable(action, 'missing REWARD_LEDGER_CONTRACT_ADDRESS');
+        return this.unavailable(
+          action,
+          'missing REWARD_LEDGER_CONTRACT_ADDRESS',
+        );
       }
       if (!this.getTrimmed('REWARD_LEDGER_WRITER_PRIVATE_KEY')) {
-        return this.unavailable(action, 'missing REWARD_LEDGER_WRITER_PRIVATE_KEY');
+        return this.unavailable(
+          action,
+          'missing REWARD_LEDGER_WRITER_PRIVATE_KEY',
+        );
       }
 
       return this.available(action);
@@ -83,10 +89,16 @@ export class GaslessRelayService {
         return this.unavailable(action, 'missing BASE_RPC_URL');
       }
       if (!this.getTrimmed('REWARD_LEDGER_CONTRACT_ADDRESS')) {
-        return this.unavailable(action, 'missing REWARD_LEDGER_CONTRACT_ADDRESS');
+        return this.unavailable(
+          action,
+          'missing REWARD_LEDGER_CONTRACT_ADDRESS',
+        );
       }
       if (!this.getTrimmed('REWARD_LEDGER_WRITER_PRIVATE_KEY')) {
-        return this.unavailable(action, 'missing REWARD_LEDGER_WRITER_PRIVATE_KEY');
+        return this.unavailable(
+          action,
+          'missing REWARD_LEDGER_WRITER_PRIVATE_KEY',
+        );
       }
       return this.available(action);
     }
@@ -98,10 +110,16 @@ export class GaslessRelayService {
       return this.unavailable(action, 'missing BASE_RPC_URL');
     }
     if (!this.getTrimmed('SESSION_OUTCOME_CONTRACT_ADDRESS')) {
-      return this.unavailable(action, 'missing SESSION_OUTCOME_CONTRACT_ADDRESS');
+      return this.unavailable(
+        action,
+        'missing SESSION_OUTCOME_CONTRACT_ADDRESS',
+      );
     }
     if (!this.getTrimmed('SESSION_OUTCOME_SIGNER_PRIVATE_KEY')) {
-      return this.unavailable(action, 'missing SESSION_OUTCOME_SIGNER_PRIVATE_KEY');
+      return this.unavailable(
+        action,
+        'missing SESSION_OUTCOME_SIGNER_PRIVATE_KEY',
+      );
     }
     return this.available(action);
   }

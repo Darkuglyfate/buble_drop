@@ -12,9 +12,6 @@ type UseBubbleDropQueryResult<T> = {
 
 export function useBubbleDropQuery<T>(
   path: string | null,
-  options?: {
-    authSessionToken?: string | null;
-  },
 ): UseBubbleDropQueryResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,14 +35,9 @@ export function useBubbleDropQuery<T>(
       setIsLoading(true);
       setError(null);
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (options?.authSessionToken) {
-          headers["x-bubbledrop-auth-session"] = options.authSessionToken;
-        }
-
         const response = await fetch(`${BUBBLEDROP_API_BASE}${path}`, {
           method: "GET",
-          headers,
+          headers: { "Content-Type": "application/json" },
           cache: "no-store",
         });
 
@@ -74,7 +66,6 @@ export function useBubbleDropQuery<T>(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, fetchTrigger]);
 
   return { data, isLoading, error, refetch };

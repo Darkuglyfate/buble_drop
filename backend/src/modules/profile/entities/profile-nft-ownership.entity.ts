@@ -36,6 +36,13 @@ export class ProfileNftOwnership {
   @JoinColumn({ name: 'nftDefinitionId' })
   nftDefinition: NftDefinition;
 
+  @Index('IDX_profile_nft_ownerships_idempotency_key_unique', {
+    unique: true,
+    where: '"idempotencyKey" IS NOT NULL',
+  })
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  idempotencyKey: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   acquiredAt: Date;
 }

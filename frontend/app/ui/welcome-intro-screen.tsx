@@ -69,12 +69,18 @@ export function WelcomeIntroScreen({
     if (introPopBursts.length === 0) {
       return;
     }
-    setPortalWakeActive(true);
-    const timeoutId = window.setTimeout(() => {
-      setPortalWakeActive(false);
-    }, 460);
+    let resetTimeoutId: number | undefined;
+    const startTimeoutId = window.setTimeout(() => {
+      setPortalWakeActive(true);
+      resetTimeoutId = window.setTimeout(() => {
+        setPortalWakeActive(false);
+      }, 460);
+    }, 0);
     return () => {
-      window.clearTimeout(timeoutId);
+      window.clearTimeout(startTimeoutId);
+      if (resetTimeoutId !== undefined) {
+        window.clearTimeout(resetTimeoutId);
+      }
     };
   }, [introPopBursts.length]);
 
@@ -82,12 +88,18 @@ export function WelcomeIntroScreen({
     if (!introComplete) {
       return;
     }
-    setPortalWakeActive(true);
-    const timeoutId = window.setTimeout(() => {
-      setPortalWakeActive(false);
-    }, 900);
+    let resetTimeoutId: number | undefined;
+    const startTimeoutId = window.setTimeout(() => {
+      setPortalWakeActive(true);
+      resetTimeoutId = window.setTimeout(() => {
+        setPortalWakeActive(false);
+      }, 900);
+    }, 0);
     return () => {
-      window.clearTimeout(timeoutId);
+      window.clearTimeout(startTimeoutId);
+      if (resetTimeoutId !== undefined) {
+        window.clearTimeout(resetTimeoutId);
+      }
     };
   }, [introComplete]);
 

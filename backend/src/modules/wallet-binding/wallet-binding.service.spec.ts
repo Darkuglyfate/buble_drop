@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -68,6 +72,50 @@ describe('WalletBindingService', () => {
         '0x1111111111111111111111111111111111111111',
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it('resolves the authenticated wallet to its profile id', async () => {
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
+    });
+
+    await expect(
+      service.resolveAuthenticatedProfileId('valid-session-token'),
+    ).resolves.toBe('11111111-1111-4111-8111-111111111111');
+    expect(profileRepository.findOne).toHaveBeenCalledWith({
+      where: {
+        wallet: {
+          address: '0x1111111111111111111111111111111111111111',
+        },
+      },
+      relations: {
+        wallet: true,
+      },
+    });
+  });
+
+  it('fails closed when the authenticated wallet has no profile', async () => {
+    profileRepository.findOne!.mockResolvedValue(null);
+
+    await expect(
+      service.resolveAuthenticatedProfileId('valid-session-token'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects a missing authenticated session before profile lookup', async () => {
+    authSessionService.getAuthenticatedWalletAddress = jest
+      .fn()
+      .mockImplementation(() => {
+        throw new UnauthorizedException('Missing auth session');
+      });
+
+    await expect(
+      service.resolveAuthenticatedProfileId(undefined),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(profileRepository.findOne).not.toHaveBeenCalled();
   });
 
   it('rejects profile mutation when wallet does not own profile', async () => {

@@ -4,11 +4,12 @@ import {
   Entity,
   Index,
   JoinColumn,
-  OneToOne,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
+import { Season } from '../../partner-token/entities/season.entity';
 
 export enum QualificationStatus {
   LOCKED = 'locked',
@@ -19,17 +20,28 @@ export enum QualificationStatus {
 }
 
 @Entity({ name: 'qualification_states' })
+@Index('UQ_qualification_states_profile_season', ['profileId', 'seasonId'], {
+  unique: true,
+  where: '"seasonId" IS NOT NULL',
+})
 export class QualificationState {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index({ unique: true })
+  @Index('IDX_qualification_states_profile_id')
   @Column({ type: 'uuid' })
   profileId: string;
 
-  @OneToOne(() => Profile, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Profile, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'profileId' })
   profile: Profile;
+
+  @Column({ type: 'uuid', nullable: true })
+  seasonId: string | null;
+
+  @ManyToOne(() => Season, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'seasonId' })
+  season: Season | null;
 
   @Column({
     type: 'enum',

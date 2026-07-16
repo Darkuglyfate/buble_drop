@@ -91,7 +91,10 @@ export class SessionOutcomeOnchainService {
     const signer = this.getWriterAccount();
     const rpcUrl = this.getRequiredEnv('BASE_RPC_URL');
     const walletAddress = this.normalizeAddress(input.walletAddress, 'wallet');
-    const integrityHash = this.normalizeBytes32(input.integrityHash, 'integrityHash');
+    const integrityHash = this.normalizeBytes32(
+      input.integrityHash,
+      'integrityHash',
+    );
 
     try {
       const publicClient = createPublicClient({
@@ -154,7 +157,9 @@ export class SessionOutcomeOnchainService {
     }
   }
 
-  async getLatestOutcome(walletAddress: string): Promise<LatestSessionOutcomeView | null> {
+  async getLatestOutcome(
+    walletAddress: string,
+  ): Promise<LatestSessionOutcomeView | null> {
     const normalizedWallet = this.normalizeOptionalAddress(walletAddress);
     const contractAddress = this.getReadableContractAddress();
     const rpcUrl = this.configService.get<string>('BASE_RPC_URL')?.trim();
@@ -220,12 +225,16 @@ export class SessionOutcomeOnchainService {
   }
 
   private getWriterAccount() {
-    const rawPrivateKey = this.getRequiredEnv('SESSION_OUTCOME_SIGNER_PRIVATE_KEY');
+    const rawPrivateKey = this.getRequiredEnv(
+      'SESSION_OUTCOME_SIGNER_PRIVATE_KEY',
+    );
     const privateKey = rawPrivateKey.startsWith('0x')
       ? rawPrivateKey
       : `0x${rawPrivateKey}`;
     if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-      throw new Error('SESSION_OUTCOME_SIGNER_PRIVATE_KEY must be a 32-byte hex value');
+      throw new Error(
+        'SESSION_OUTCOME_SIGNER_PRIVATE_KEY must be a 32-byte hex value',
+      );
     }
     const account = privateKeyToAccount(privateKey as Hex);
     const configuredWriterAddress = this.configService

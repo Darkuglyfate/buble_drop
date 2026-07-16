@@ -106,7 +106,7 @@ function createIntroBubbles(count = 26, patternSeed = 0): IntroBubbleSpec[] {
       role,
       topPct: Number(baseTop.toFixed(2)),
       leftPct: Number(baseLeft.toFixed(2)),
-      sizeRem,
+      sizeRem: Number(sizeRem.toFixed(4)),
       delayMs: Math.round(speedSeed * 1600),
       driftDurationMs,
       pulseDurationMs,
@@ -119,12 +119,14 @@ function createIntroBubbles(count = 26, patternSeed = 0): IntroBubbleSpec[] {
       driftX4: `${Math.round((pathSeedB - 0.5) * 26 * driftScale)}vw`,
       driftY4: `${Math.round((pathSeedD - 0.5) * 22 * driftScale)}vh`,
       hue,
-      alpha:
-        role === "ambient"
+      alpha: Number(
+        (role === "ambient"
           ? 0.22 + seededUnit(idx * 8.21 + seedOffset) * 0.12
           : role === "interactive"
             ? 0.34 + seededUnit(idx * 8.21 + seedOffset) * 0.18
-            : 0.46 + seededUnit(idx * 8.21 + seedOffset) * 0.2,
+            : 0.46 + seededUnit(idx * 8.21 + seedOffset) * 0.2
+        ).toFixed(4),
+      ),
     };
   });
 }
@@ -181,19 +183,16 @@ export function useIntroBubbleGame({ onIntroComplete }: UseIntroBubbleGameOption
 
   // Seed the pattern & detect skipIntro on mount
   useEffect(() => {
-    const nextSeed = Math.floor(Math.random() * 1_000_000);
-    setIntroPatternSeed(nextSeed);
     if (typeof window === "undefined") {
-      setWelcomeIntroVisible(true);
       return;
     }
 
+    const nextSeed = Math.floor(Math.random() * 1_000_000);
     const url = new URL(window.location.href);
     const skipIntroFromQuery = url.searchParams.get("skipIntro") === "1";
     const skipIntroFromSession =
       window.sessionStorage.getItem(INTRO_SKIP_SESSION_KEY) === "1";
     const skipIntro = skipIntroFromQuery || skipIntroFromSession;
-    setWelcomeIntroVisible(!skipIntro);
 
     if (skipIntroFromQuery) {
       window.sessionStorage.setItem(INTRO_SKIP_SESSION_KEY, "1");
@@ -203,6 +202,12 @@ export function useIntroBubbleGame({ onIntroComplete }: UseIntroBubbleGameOption
     if (skipIntroFromSession) {
       window.sessionStorage.removeItem(INTRO_SKIP_SESSION_KEY);
     }
+
+    const timeoutId = window.setTimeout(() => {
+      setIntroPatternSeed(nextSeed);
+      setWelcomeIntroVisible(!skipIntro);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   // Auto-hide when all required bubbles are popped

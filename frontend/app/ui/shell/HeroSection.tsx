@@ -1,6 +1,5 @@
 "use client";
 
-import type { CSSProperties } from "react";
 import type { WalletFlowState } from "../../hooks/shell/useWalletFlow";
 
 export type HeroSectionProps = {

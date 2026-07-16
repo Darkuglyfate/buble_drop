@@ -4,7 +4,9 @@ import {
   createContext,
   ReactNode,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -35,19 +37,25 @@ function loadInitialAppContext(): BubbleDropAppContextState {
     const parsed = rawValue
       ? (JSON.parse(rawValue) as BubbleDropAppContextState)
       : null;
+    const smokeTestMode =
+      process.env.NODE_ENV !== "production" &&
+      process.env.NEXT_PUBLIC_SMOKE_TEST_MODE === "1";
     const searchParams = new URLSearchParams(window.location.search);
-    const urlProfileId = searchParams.get("profileId")?.trim() || null;
-    const urlWalletAddress =
-      searchParams.get("walletAddress")?.trim().toLowerCase() || null;
+    const smokeProfileId = smokeTestMode
+      ? searchParams.get("smokeProfileId")?.trim() || null
+      : null;
+    const smokeWalletAddress = smokeTestMode
+      ? searchParams.get("smokeWalletAddress")?.trim().toLowerCase() || null
+      : null;
 
     return {
       profileId:
-        urlProfileId ||
+        smokeProfileId ||
         (typeof parsed?.profileId === "string" && parsed.profileId.trim()
           ? parsed.profileId.trim()
           : null),
       walletAddress:
-        urlWalletAddress ||
+        smokeWalletAddress ||
         (typeof parsed?.walletAddress === "string" && parsed.walletAddress.trim()
           ? parsed.walletAddress.trim().toLowerCase()
           : null),
@@ -67,22 +75,15 @@ function saveStoredAppContext(value: BubbleDropAppContextState): void {
 
 export function withBubbleDropContext(
   path: string,
-  context: BubbleDropAppContextState,
+  _context: BubbleDropAppContextState,
   options?: { skipIntro?: boolean },
 ): string {
-  const searchParams = new URLSearchParams();
-  if (context.profileId) {
-    searchParams.set("profileId", context.profileId);
-  }
-  if (context.walletAddress) {
-    searchParams.set("walletAddress", context.walletAddress);
-  }
-  if (options?.skipIntro) {
-    searchParams.set("skipIntro", "1");
+  void _context;
+  if (!options?.skipIntro) {
+    return path;
   }
 
-  const query = searchParams.toString();
-  return query ? `${path}?${query}` : path;
+  return `${path}${path.includes("?") ? "&" : "?"}skipIntro=1`;
 }
 
 export function BubbleDropRuntimeProvider({
@@ -90,14 +91,26 @@ export function BubbleDropRuntimeProvider({
 }: {
   children: ReactNode;
 }) {
-  const [appContext, setAppContextState] = useState<BubbleDropAppContextState>(
-    () => loadInitialAppContext(),
-  );
+  const [appContext, setAppContextState] = useState<BubbleDropAppContextState>({
+    profileId: null,
+    walletAddress: null,
+  });
+  const hasExplicitContextUpdateRef = useRef(false);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (!hasExplicitContextUpdateRef.current) {
+        setAppContextState(loadInitialAppContext());
+      }
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const value = useMemo<BubbleDropRuntimeContextValue>(
     () => ({
       ...appContext,
       setAppContext: (nextValue) => {
+        hasExplicitContextUpdateRef.current = true;
         const normalizedValue = {
           profileId: nextValue.profileId?.trim() || null,
           walletAddress: nextValue.walletAddress?.trim().toLowerCase() || null,
@@ -106,6 +119,7 @@ export function BubbleDropRuntimeProvider({
         saveStoredAppContext(normalizedValue);
       },
       clearAppContext: () => {
+        hasExplicitContextUpdateRef.current = true;
         const emptyValue = { profileId: null, walletAddress: null };
         setAppContextState(emptyValue);
         saveStoredAppContext(emptyValue);

@@ -1,15 +1,20 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
+import { SeasonService } from '../partner-token/season.service';
 import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
 import { RedisService } from '../../redis/redis.service';
+import { RareRewardEntitlementStatus } from '../rewards/entities/rare-reward-entitlement.entity';
+import { RareRewardEntitlementService } from '../rewards/rare-reward-entitlement.service';
 import { XpService } from '../rewards/xp.service';
 import { BubbleSession } from './entities/bubble-session.entity';
 import { BubbleSessionService } from './bubble-session.service';
@@ -33,12 +38,26 @@ describe('BubbleSessionService', () => {
   let sessionOutcomeOnchainService: {
     recordOutcome: jest.Mock;
     getRelayStatus: jest.Mock;
+    getSessionIdHash: jest.Mock;
   };
   let redisClient: {
     zadd: jest.Mock;
     zrange: jest.Mock;
     expire: jest.Mock;
     del: jest.Mock;
+  };
+  let dataSource: { transaction: jest.Mock };
+  let transactionManager: EntityManager;
+  let rareRewardEntitlementService: {
+    createForEligibleCompletedSession: jest.Mock;
+    issueEntitlement: jest.Mock;
+  };
+  let seasonService: { getActiveSeason: jest.Mock };
+  let sessionClaimQueryBuilder: {
+    update: jest.Mock;
+    set: jest.Mock;
+    where: jest.Mock;
+    execute: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -47,6 +66,15 @@ describe('BubbleSessionService', () => {
       create: jest.fn(),
       save: jest.fn(),
     };
+    sessionClaimQueryBuilder = {
+      update: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    sessionRepository.createQueryBuilder = jest
+      .fn()
+      .mockReturnValue(sessionClaimQueryBuilder);
     profileRepository = {
       findOne: jest.fn(),
       save: jest.fn(),
@@ -102,6 +130,28 @@ describe('BubbleSessionService', () => {
         userPaysGas: false,
         reason: 'session outcome relay disabled',
       }),
+      getSessionIdHash: jest.fn().mockReturnValue('0xsession'),
+    };
+    transactionManager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === BubbleSession) {
+          return sessionRepository;
+        }
+        throw new Error('Unexpected repository');
+      }),
+    } as unknown as EntityManager;
+    dataSource = {
+      transaction: jest.fn(
+        (work: (manager: EntityManager) => Promise<unknown>) =>
+          work(transactionManager),
+      ),
+    };
+    rareRewardEntitlementService = {
+      createForEligibleCompletedSession: jest.fn().mockResolvedValue(null),
+      issueEntitlement: jest.fn().mockResolvedValue(null),
+    };
+    seasonService = {
+      getActiveSeason: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -119,11 +169,55 @@ describe('BubbleSessionService', () => {
           provide: SessionOutcomeOnchainService,
           useValue: sessionOutcomeOnchainService,
         },
+        { provide: DataSource, useValue: dataSource },
+        {
+          provide: RareRewardEntitlementService,
+          useValue: rareRewardEntitlementService,
+        },
+        { provide: SeasonService, useValue: seasonService },
       ],
     }).compile();
 
     service = module.get<BubbleSessionService>(BubbleSessionService);
   });
+
+  it('defaults missing telemetry to zero before service processing', async () => {
+    profileRepository.findOne!.mockResolvedValue(null);
+
+    await expect(
+      service.completeSession(
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+        0,
+        undefined as unknown as number,
+        undefined as unknown as number,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(profileRepository.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['finalScore', 2_147_483_648, 0],
+    ['bestCombo', 0, 2_147_483_648],
+  ])(
+    'rejects overflowing %s before Redis or transaction side effects',
+    async (_field, finalScore, bestCombo) => {
+      await expect(
+        service.completeSession(
+          '11111111-1111-4111-8111-111111111111',
+          '22222222-2222-4222-8222-222222222222',
+          0,
+          finalScore,
+          bestCombo,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(profileRepository.findOne).not.toHaveBeenCalled();
+      expect(redisService.getClient).not.toHaveBeenCalled();
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it('starts a session for an existing profile', async () => {
     profileRepository.findOne!.mockResolvedValue({
@@ -133,6 +227,7 @@ describe('BubbleSessionService', () => {
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
     });
     sessionRepository.findOne!.mockResolvedValue(null);
+    seasonService.getActiveSeason.mockResolvedValue({ id: 'season-1' });
     sessionRepository.create!.mockImplementation(
       (payload: Partial<BubbleSession>): Partial<BubbleSession> => payload,
     );
@@ -146,24 +241,54 @@ describe('BubbleSessionService', () => {
       '11111111-1111-4111-8111-111111111111',
     );
     expect(result.sessionId).toBe('session-1');
+    expect(sessionRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ seasonId: 'season-1' }),
+    );
   });
 
-  it('completes session and grants xp only for active play', async () => {
-    const startedAt = new Date(Date.now() - 600_000);
+  it('stores a null season snapshot when no season is active', async () => {
     profileRepository.findOne!.mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
       nickname: 'ready',
       currentAvatarId: 'avatar-1',
       onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
-      totalXp: 50,
-      currentStreak: 0,
-      wallet: {
-        address: '0x1111111111111111111111111111111111111111',
-      },
     });
+    sessionRepository.findOne!.mockResolvedValue(null);
+    sessionRepository.create!.mockImplementation(
+      (payload: Partial<BubbleSession>): Partial<BubbleSession> => payload,
+    );
+    sessionRepository.save!.mockImplementation(async (session) => ({
+      id: 'session-1',
+      startedAt: new Date('2026-03-14T10:00:00.000Z'),
+      ...session,
+    }));
+
+    await service.startSession('11111111-1111-4111-8111-111111111111');
+
+    expect(sessionRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ seasonId: null }),
+    );
+  });
+
+  it('completes session and grants xp only for active play', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: 'ready',
+        currentAvatarId: 'avatar-1',
+        onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+        totalXp: 50,
+        currentStreak: 0,
+        wallet: {
+          address: '0x1111111111111111111111111111111111111111',
+        },
+      })
+      .mockResolvedValueOnce({ totalXp: 90 });
     sessionRepository.findOne!.mockResolvedValue({
       id: '22222222-2222-4222-8222-222222222222',
       profileId: '11111111-1111-4111-8111-111111111111',
+      seasonId: 'season-session',
       startedAt,
       isCompleted: false,
       endedAt: null,
@@ -201,7 +326,29 @@ describe('BubbleSessionService', () => {
     expect(result.grantedXp).toBeGreaterThan(0);
     expect(result.totalXp).toBe(50 + result.grantedXp);
     expect(result.activeSeconds).toBe(360);
-    expect(xpService.grantXp).toHaveBeenCalled();
+    expect(xpService.grantXp).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.arrayContaining([
+        expect.objectContaining({
+          idempotencyKey:
+            'session:22222222-2222-4222-8222-222222222222:session_reward_bubbles',
+        }),
+        expect.objectContaining({
+          idempotencyKey:
+            'session:22222222-2222-4222-8222-222222222222:session_active_play',
+        }),
+        expect.objectContaining({
+          idempotencyKey:
+            'session:22222222-2222-4222-8222-222222222222:session_completion_bonus',
+        }),
+        expect.objectContaining({
+          idempotencyKey:
+            'session:22222222-2222-4222-8222-222222222222:session_reserve_bonus',
+        }),
+      ]),
+      undefined,
+      transactionManager,
+    );
     expect(result.qualificationStatus).toBe(QualificationStatus.IN_PROGRESS);
     expect(result.seasonProgress).toEqual({
       qualificationStatus: QualificationStatus.IN_PROGRESS,
@@ -213,6 +360,22 @@ describe('BubbleSessionService', () => {
       requiredXp: 300,
       requiredActiveSessions: 4,
     });
+    expect(qualificationService.evaluateProgress).toHaveBeenNthCalledWith(
+      1,
+      '11111111-1111-4111-8111-111111111111',
+      'season-session',
+      undefined,
+      transactionManager,
+    );
+    expect(qualificationService.evaluateProgress).toHaveBeenNthCalledWith(
+      2,
+      '11111111-1111-4111-8111-111111111111',
+      'season-session',
+    );
+    expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'season-session',
+    );
     expect(result.rareRewardOutcome).toEqual({
       tokenSymbolAwarded: null,
       tokenAmountAwarded: '0',
@@ -229,13 +392,175 @@ describe('BubbleSessionService', () => {
     expect(sessionOutcomeOnchainService.recordOutcome).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: '22222222-2222-4222-8222-222222222222',
-        finalScore: 42,
-        bestCombo: 6,
+        finalScore: 0,
+        bestCombo: 0,
         xpGained: 40,
       }),
     );
-    expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
-      '11111111-1111-4111-8111-111111111111',
+  });
+
+  it('creates an eligible entitlement with XP and starts issuance after committing', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    const profile = {
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'ready',
+      currentAvatarId: 'avatar-1',
+      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+      totalXp: 500,
+      currentStreak: 8,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
+    };
+    profileRepository.findOne!.mockResolvedValue(profile);
+    sessionRepository.findOne!.mockResolvedValue({
+      id: '33333333-3333-4333-8333-333333333333',
+      profileId: profile.id,
+      startedAt,
+      isCompleted: false,
+      endedAt: null,
+      activeSeconds: 0,
+    });
+    sessionRepository.save!.mockImplementation(
+      (session: BubbleSession): Promise<BubbleSession> =>
+        Promise.resolve(session),
+    );
+    redisClient.zrange.mockResolvedValue(
+      Array.from({ length: 15 }, (_, index) =>
+        String(startedAt.getTime() + index * 12_000),
+      ),
+    );
+    qualificationService.evaluateProgress.mockResolvedValue({
+      qualificationStatus: QualificationStatus.QUALIFIED,
+      rareRewardAccessActive: true,
+    });
+    xpService.grantXp.mockResolvedValue({
+      grantedTotal: 70,
+      remainingDailyCap: 30,
+      grantedAllocations: [],
+    });
+    rareRewardEntitlementService.createForEligibleCompletedSession.mockResolvedValue(
+      {
+        id: 'entitlement-1',
+        status: RareRewardEntitlementStatus.PENDING,
+      },
+    );
+    rareRewardEntitlementService.issueEntitlement.mockResolvedValue({
+      id: 'entitlement-1',
+      status: RareRewardEntitlementStatus.ISSUED,
+      outcome: {
+        tokenSymbolAwarded: 'BUBL',
+        tokenAmountAwarded: '1',
+        weeklyTicketsIssued: 1,
+        nftIdsAwarded: [],
+        cosmeticIdsAwarded: [],
+        tokenReward: null,
+        nftRewards: [],
+        cosmeticRewards: [],
+      },
+    });
+
+    const result = await service.completeSession(
+      profile.id,
+      '33333333-3333-4333-8333-333333333333',
+      300,
+      42,
+      6,
+    );
+
+    expect(
+      rareRewardEntitlementService.createForEligibleCompletedSession,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityManager: transactionManager,
+        profileId: profile.id,
+        sessionId: '33333333-3333-4333-8333-333333333333',
+        rareRewardAccessActive: true,
+        isCompletionEligible: true,
+      }),
+    );
+    expect(xpService.grantXp).toHaveBeenCalledWith(
+      profile.id,
+      expect.any(Array),
+      undefined,
+      transactionManager,
+    );
+    expect(rareRewardEntitlementService.issueEntitlement).toHaveBeenCalledWith(
+      'entitlement-1',
+    );
+    expect(result.rareRewardOutcome.tokenSymbolAwarded).toBe('BUBL');
+  });
+
+  it('creates an entitlement when this completion qualifies the profile', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    const profile = {
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'ready',
+      currentAvatarId: 'avatar-1',
+      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+      totalXp: 280,
+      currentStreak: 5,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
+    };
+    profileRepository.findOne!.mockResolvedValue(profile);
+    sessionRepository.findOne!.mockResolvedValue({
+      id: '34343434-3434-4434-8434-343434343434',
+      profileId: profile.id,
+      startedAt,
+      isCompleted: false,
+      endedAt: null,
+      activeSeconds: 0,
+    });
+    sessionRepository.save!.mockImplementation(
+      (session: BubbleSession): Promise<BubbleSession> =>
+        Promise.resolve(session),
+    );
+    redisClient.zrange.mockResolvedValue(
+      Array.from({ length: 15 }, (_, index) =>
+        String(startedAt.getTime() + index * 12_000),
+      ),
+    );
+    xpService.grantXp.mockResolvedValue({
+      grantedTotal: 70,
+      remainingDailyCap: 30,
+      grantedAllocations: [],
+    });
+    qualificationService.evaluateProgress.mockImplementation(
+      async (
+        _profileId: string,
+        _seasonId: string | null,
+        _existingState: unknown,
+        entityManager?: EntityManager,
+      ) => ({
+        qualificationStatus:
+          entityManager === transactionManager
+            ? QualificationStatus.QUALIFIED
+            : QualificationStatus.IN_PROGRESS,
+        rareRewardAccessActive: entityManager === transactionManager,
+      }),
+    );
+    rareRewardEntitlementService.createForEligibleCompletedSession.mockResolvedValue(
+      null,
+    );
+
+    await service.completeSession(
+      profile.id,
+      '34343434-3434-4434-8434-343434343434',
+      300,
+      42,
+      6,
+    );
+
+    expect(
+      rareRewardEntitlementService.createForEligibleCompletedSession,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityManager: transactionManager,
+        rareRewardAccessActive: true,
+        isCompletionEligible: true,
+      }),
     );
   });
 
@@ -351,6 +676,7 @@ describe('BubbleSessionService', () => {
 
     expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
+      null,
     );
   });
 
@@ -378,6 +704,168 @@ describe('BubbleSessionService', () => {
       profileId: '11111111-1111-4111-8111-111111111111',
       startedAt,
     });
+  });
+
+  it('keeps a failed session completion retryable by sharing its transaction with XP', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: 'ready',
+        currentAvatarId: 'avatar-1',
+        onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+        totalXp: 0,
+        currentStreak: 0,
+      })
+      .mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: 'ready',
+        currentAvatarId: 'avatar-1',
+        onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+        totalXp: 0,
+        currentStreak: 0,
+      })
+      .mockResolvedValueOnce({ totalXp: 0 });
+    sessionRepository
+      .findOne!.mockResolvedValueOnce({
+        id: '55555555-5555-4555-8555-555555555555',
+        profileId: '11111111-1111-4111-8111-111111111111',
+        startedAt,
+        isCompleted: false,
+        endedAt: null,
+        activeSeconds: 0,
+      })
+      .mockResolvedValueOnce({
+        id: '55555555-5555-4555-8555-555555555555',
+        profileId: '11111111-1111-4111-8111-111111111111',
+        startedAt,
+        isCompleted: false,
+        endedAt: null,
+        activeSeconds: 0,
+      });
+    sessionRepository.save!.mockImplementation(
+      (session: BubbleSession): Promise<BubbleSession> =>
+        Promise.resolve(session),
+    );
+    redisClient.zrange.mockResolvedValue([
+      String(startedAt.getTime()),
+      String(startedAt.getTime() + 12_000),
+    ]);
+    xpService.grantXp
+      .mockRejectedValueOnce(new Error('xp persistence failed'))
+      .mockResolvedValueOnce({
+        grantedTotal: 0,
+        remainingDailyCap: 100,
+        grantedAllocations: [],
+      });
+
+    await expect(
+      service.completeSession(
+        '11111111-1111-4111-8111-111111111111',
+        '55555555-5555-4555-8555-555555555555',
+        0,
+        0,
+        0,
+      ),
+    ).rejects.toThrow('xp persistence failed');
+
+    expect(redisClient.del).not.toHaveBeenCalled();
+
+    const retried = await service.completeSession(
+      '11111111-1111-4111-8111-111111111111',
+      '55555555-5555-4555-8555-555555555555',
+      120,
+      0,
+      0,
+    );
+
+    expect(retried.success).toBe(true);
+    expect(retried.activeSeconds).toBe(24);
+    expect(redisClient.zrange).toHaveBeenCalledTimes(2);
+    expect(redisClient.del).toHaveBeenCalledTimes(1);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(2);
+    expect(xpService.grantXp).toHaveBeenNthCalledWith(
+      1,
+      '11111111-1111-4111-8111-111111111111',
+      expect.any(Array),
+      undefined,
+      transactionManager,
+    );
+  });
+
+  it('allows only one concurrent completion to claim the open session before XP', async () => {
+    const startedAt = new Date(Date.now() - 600_000);
+    const profile = {
+      id: '11111111-1111-4111-8111-111111111111',
+      nickname: 'ready',
+      currentAvatarId: 'avatar-1',
+      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+      totalXp: 0,
+      currentStreak: 0,
+      wallet: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
+    };
+    profileRepository.findOne!.mockResolvedValue(profile);
+    sessionRepository.findOne!.mockImplementation(
+      (): BubbleSession =>
+        ({
+          id: '55555555-5555-4555-8555-555555555555',
+          profileId: profile.id,
+          startedAt,
+          isCompleted: false,
+          endedAt: null,
+          activeSeconds: 0,
+        }) as BubbleSession,
+    );
+    sessionRepository.save!.mockImplementation(
+      (session: BubbleSession): Promise<BubbleSession> =>
+        Promise.resolve(session),
+    );
+    sessionClaimQueryBuilder.execute
+      .mockResolvedValueOnce({ affected: 1 })
+      .mockResolvedValueOnce({ affected: 0 });
+    xpService.grantXp.mockResolvedValue({
+      grantedTotal: 0,
+      remainingDailyCap: 100,
+      grantedAllocations: [],
+    });
+
+    const completions = await Promise.allSettled([
+      service.completeSession(
+        profile.id,
+        '55555555-5555-4555-8555-555555555555',
+        0,
+        0,
+        0,
+      ),
+      service.completeSession(
+        profile.id,
+        '55555555-5555-4555-8555-555555555555',
+        0,
+        0,
+        0,
+      ),
+    ]);
+
+    expect(
+      completions.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejectedCompletion = completions.find(
+      (result) => result.status === 'rejected',
+    );
+    expect(rejectedCompletion).toMatchObject({
+      reason: expect.any(ConflictException),
+    });
+    expect(xpService.grantXp).toHaveBeenCalledTimes(1);
+    expect(sessionOutcomeOnchainService.recordOutcome).toHaveBeenCalledTimes(1);
+    expect(sessionClaimQueryBuilder.where).toHaveBeenCalledWith(
+      '"id" = :sessionId AND "profileId" = :profileId AND "isCompleted" = false',
+      {
+        sessionId: '55555555-5555-4555-8555-555555555555',
+        profileId: profile.id,
+      },
+    );
   });
 
   it('throws if profile is missing on completion', async () => {
@@ -525,6 +1013,7 @@ describe('BubbleSessionService', () => {
       String(startedAt.getTime() + 1_000),
       String(startedAt.getTime() + 2_000),
     ]);
+    redisClient.del.mockRejectedValue(new Error('redis cleanup failed'));
     sessionRepository.save!.mockImplementation(
       (session: unknown): Promise<unknown> => Promise.resolve(session),
     );
@@ -551,19 +1040,21 @@ describe('BubbleSessionService', () => {
     expect(redisClient.del).toHaveBeenCalled();
   });
 
-  it('falls back to reported active seconds when redis replay fails', async () => {
+  it('fails closed to zero reward activity when redis replay fails', async () => {
     const startedAt = new Date(Date.now() - 600_000);
-    profileRepository.findOne!.mockResolvedValue({
-      id: '11111111-1111-4111-8111-111111111111',
-      nickname: 'ready',
-      currentAvatarId: 'avatar-1',
-      onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
-      totalXp: 15,
-      currentStreak: 4,
-      wallet: {
-        address: '0x1111111111111111111111111111111111111111',
-      },
-    });
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: 'ready',
+        currentAvatarId: 'avatar-1',
+        onboardingCompletedAt: new Date('2026-03-14T00:00:00.000Z'),
+        totalXp: 15,
+        currentStreak: 4,
+        wallet: {
+          address: '0x1111111111111111111111111111111111111111',
+        },
+      })
+      .mockResolvedValueOnce({ totalXp: 15 });
     sessionRepository.findOne!.mockResolvedValue({
       id: '77777777-7777-4777-8777-777777777777',
       profileId: '11111111-1111-4111-8111-111111111111',
@@ -577,8 +1068,8 @@ describe('BubbleSessionService', () => {
       (session: unknown): Promise<unknown> => Promise.resolve(session),
     );
     xpService.grantXp.mockResolvedValue({
-      grantedTotal: 10,
-      remainingDailyCap: 90,
+      grantedTotal: 0,
+      remainingDailyCap: 100,
       grantedAllocations: [],
     });
     profileRepository.save!.mockImplementation(
@@ -594,11 +1085,11 @@ describe('BubbleSessionService', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.xpAwarded).toBe(10);
+    expect(result.xpAwarded).toBe(0);
     expect(result.newStreak).toBe(4);
     expect(result.rareAccessActive).toBe(false);
-    expect(result.activeSeconds).toBe(120);
-    expect(result.totalXp).toBe(25);
+    expect(result.activeSeconds).toBe(0);
+    expect(result.totalXp).toBe(15);
     expect(redisClient.zrange).toHaveBeenCalled();
   });
 });

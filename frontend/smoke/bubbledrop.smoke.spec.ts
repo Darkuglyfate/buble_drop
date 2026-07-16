@@ -1,7 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
+declare global {
+  interface Window {
+    bubbleDropSmokeHistoryDestinations: string[];
+  }
+}
+
 const walletAddress = "0x1000000000000000000000000000000000000001";
 const smokeWalletQuery = `smokeWalletAddress=${walletAddress}&smokeChainId=8453`;
+const smokeIdentityQuery = (profileId: string) =>
+  `smokeProfileId=${profileId}&${smokeWalletQuery}`;
 const activeProfileId = "20000000-0000-4000-8000-000000000001";
 const onboardingProfileId = "20000000-0000-4000-8000-000000000099";
 const claimGatedProfileId = "20000000-0000-4000-8000-000000000055";
@@ -122,16 +130,48 @@ async function mockBubbleDropApi(page: Page) {
   const state = {
     onboardingCompleted: false,
     currentStreak: 6,
+    profileId: activeProfileId,
   };
 
   await page.route("**/api/bubbledrop/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const pathname = url.pathname.replace(/^\/api\/bubbledrop/, "");
-    const { searchParams } = url;
+    const smokeProfileId = new URL(page.url()).searchParams.get("smokeProfileId");
+    if (smokeProfileId) {
+      state.profileId = smokeProfileId;
+    }
+
+    if (pathname === "/auth/session/csrf" && request.method() === "GET") {
+      await route.fulfill({
+        headers: {
+          "set-cookie": "bubbledrop-csrf=smoke-csrf; Path=/; SameSite=Strict",
+        },
+        json: { csrfToken: "smoke-csrf" },
+      });
+      return;
+    }
+
+    if (pathname === "/auth/session/status" && request.method() === "GET") {
+      await route.fulfill({
+        json: {
+          authenticated: true,
+          walletAddress,
+          chainId: 8453,
+          issuedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        },
+      });
+      return;
+    }
+
+    if (pathname === "/auth/session/logout" && request.method() === "POST") {
+      await route.fulfill({ json: { authenticated: false } });
+      return;
+    }
 
     if (pathname === "/profile/summary" && request.method() === "GET") {
-      const profileId = searchParams.get("profileId");
+      const profileId = state.profileId;
       if (profileId === onboardingProfileId) {
         await route.fulfill({
           json: buildProfileSummary(onboardingProfileId, {
@@ -219,7 +259,7 @@ async function mockBubbleDropApi(page: Page) {
     }
 
     if (pathname === "/claim/balances" && request.method() === "GET") {
-      const profileId = searchParams.get("profileId");
+      const profileId = state.profileId;
       await route.fulfill({
         json:
           profileId === claimGatedProfileId
@@ -540,9 +580,161 @@ test.beforeEach(async ({ page }) => {
   await mockBubbleDropApi(page);
 });
 
+test("hydrates home and owner routes without React mismatches", async ({
+  page,
+}) => {
+  const hydrationErrors: string[] = [];
+  const recordHydrationError = (message: string) => {
+    if (/hydration failed|hydrated but some attributes/i.test(message)) {
+      hydrationErrors.push(message);
+    }
+  };
+
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      recordHydrationError(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    recordHydrationError(error.message);
+  });
+
+  await page.goto(`/?${smokeIdentityQuery(activeProfileId)}&skipIntro=1`);
+  await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
+  await page.goto(`/claim?${smokeIdentityQuery(activeProfileId)}`);
+  await expect(
+    page.getByRole("button", { name: "Request full claim amount" }),
+  ).toBeVisible();
+
+  expect(hydrationErrors).toEqual([]);
+});
+
+test("successful profile bootstrap keeps ordinary identity out of current and history URLs", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.bubbleDropSmokeHistoryDestinations = [];
+    const originalReplaceState = window.history.replaceState;
+    const originalPushState = window.history.pushState;
+
+    window.history.replaceState = function (
+      this: History,
+      data: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) {
+      const destination =
+        url === undefined || url === null
+          ? null
+          : new URL(url, window.location.href).toString();
+      originalReplaceState.call(this, data, unused, url);
+      if (destination) {
+        window.bubbleDropSmokeHistoryDestinations.push(destination);
+      }
+    };
+    window.history.pushState = function (
+      this: History,
+      data: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) {
+      const destination =
+        url === undefined || url === null
+          ? null
+          : new URL(url, window.location.href).toString();
+      originalPushState.call(this, data, unused, url);
+      if (destination) {
+        window.bubbleDropSmokeHistoryDestinations.push(destination);
+      }
+    };
+  });
+
+  const bootstrapResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/bubbledrop/profile/connect-wallet" &&
+      response.ok(),
+  );
+  const profileRefreshResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === "/api/bubbledrop/profile/summary" &&
+      response.ok(),
+  );
+
+  await page.goto(`/?${smokeWalletQuery}&skipIntro=1`);
+  await bootstrapResponse;
+  await profileRefreshResponse;
+
+  const finalUrl = new URL(page.url());
+  expect(finalUrl.searchParams.has("profileId")).toBe(false);
+  expect(finalUrl.searchParams.has("walletAddress")).toBe(false);
+
+  const historyDestinations = await page.evaluate(
+    () => window.bubbleDropSmokeHistoryDestinations,
+  );
+  for (const destination of historyDestinations) {
+    const historyUrl = new URL(destination);
+    expect(historyUrl.searchParams.has("profileId")).toBe(false);
+    expect(historyUrl.searchParams.has("walletAddress")).toBe(false);
+  }
+});
+
+test("keeps identity out of navigation and owner GET URLs", async ({ page }) => {
+  const ownerPaths = new Set([
+    "/api/bubbledrop/profile/summary",
+    "/api/bubbledrop/profile/rewards-inventory",
+    "/api/bubbledrop/claim/balances",
+    "/api/bubbledrop/partner-token/referral/progress",
+  ]);
+  const ownerRequestUrls: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "GET" && ownerPaths.has(url.pathname)) {
+      ownerRequestUrls.push(url.toString());
+    }
+  });
+
+  await page.goto(`/?${smokeIdentityQuery(activeProfileId)}&skipIntro=1`);
+  await expect(page.getByRole("link", { name: "Season" })).toBeVisible();
+  await page.getByRole("link", { name: "Season" }).click();
+  await expect(page.getByRole("heading", { name: "Season hub" })).toBeVisible();
+
+  const seasonUrl = new URL(page.url());
+  expect(seasonUrl.searchParams.has("profileId")).toBe(false);
+  expect(seasonUrl.searchParams.has("walletAddress")).toBe(false);
+
+  await page.goto(`/claim?${smokeIdentityQuery(activeProfileId)}`);
+  await expect(page.getByRole("button", { name: "Request full claim amount" })).toBeVisible();
+  await page.goto(`/inventory?${smokeIdentityQuery(activeProfileId)}`);
+  await expect(page.getByRole("heading", { name: "Rewards inventory" })).toBeVisible();
+  await page.goto(`/referrals?${smokeIdentityQuery(activeProfileId)}`);
+  await expect(page.getByRole("heading", { name: "Referral progress" })).toBeVisible();
+
+  await expect
+    .poll(() => new Set(ownerRequestUrls.map((value) => new URL(value).pathname)))
+    .toEqual(ownerPaths);
+  for (const ownerRequestUrl of ownerRequestUrls) {
+    const searchParams = new URL(ownerRequestUrl).searchParams;
+    expect(searchParams.has("profileId")).toBe(false);
+    expect(searchParams.has("walletAddress")).toBe(false);
+  }
+});
+
+test("ignores ordinary identity query parameters", async ({ page }) => {
+  await page.goto(
+    `/?profileId=${onboardingProfileId}&walletAddress=0x2000000000000000000000000000000000000002&${smokeWalletQuery}&skipIntro=1`,
+  );
+
+  await expect(
+    page.getByTestId("daily-mission-card").getByText("Daily mission", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Daily rhythm" })).toBeHidden();
+});
+
 test("renders wallet/bootstrap entry affordances on home", async ({ page }) => {
   await page.goto(
-    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
+    `/?${smokeIdentityQuery(activeProfileId)}&skipIntro=1`,
   );
 
   const dailyMissionCard = page.getByTestId("daily-mission-card");
@@ -564,7 +756,7 @@ test("completes onboarding flow with mocked backend confirmation", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${onboardingProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
+    `/?${smokeIdentityQuery(onboardingProfileId)}&skipIntro=1`,
   );
 
   await expect(page.getByRole("heading", { name: "Daily rhythm" })).toBeVisible();
@@ -592,7 +784,7 @@ test("runs daily check-in and shows refreshed summary state", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
+    `/?${smokeIdentityQuery(activeProfileId)}&skipIntro=1`,
   );
 
   const dailyMissionCard = page.getByTestId("daily-mission-card");
@@ -608,7 +800,7 @@ test("completes session and reveals confirmed season progress", async ({
   page,
 }) => {
   await page.goto(
-    `/session?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+    `/session?${smokeIdentityQuery(activeProfileId)}`,
   );
 
   await page.getByRole("button", { name: "Start session" }).click();
@@ -652,7 +844,7 @@ test("shows legacy claim flow even when season chance is still building", async 
   page,
 }) => {
   await page.goto(
-    `/claim?profileId=${claimGatedProfileId}&walletAddress=${walletAddress}`,
+    `/claim?${smokeIdentityQuery(claimGatedProfileId)}`,
   );
 
   await expect(page.getByRole("heading", { name: "Season chance building" })).toBeVisible();
@@ -665,35 +857,34 @@ test("shows legacy claim flow even when season chance is still building", async 
   ).toBeEnabled();
 });
 
-test("navigates season hub, token detail, and partner transparency", async ({
+test("loads season status, token route, and partner placeholder", async ({
   page,
 }) => {
   await page.goto(
-    `/?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}&skipIntro=1`,
+    `/?${smokeIdentityQuery(activeProfileId)}&skipIntro=1`,
   );
 
   await page.getByRole("link", { name: "Season" }).click();
   await expect(page.getByRole("heading", { name: "Season hub" })).toBeVisible();
   await expect(page.getByText("Genesis Bloom")).toBeVisible();
+  await expect(page.getByText(/Season tokens are coming soon/)).toBeVisible();
 
-  await page.getByRole("link", { name: "Details" }).click();
-  await page.waitForURL(/\/token\/token-bubl/);
+  await page.goto(`/token/token-bubl?${smokeIdentityQuery(activeProfileId)}`);
   await expect(page.getByRole("heading", { name: "Token detail" })).toBeVisible();
   await expect(page.getByText("Bubble Bloom (BUBL)")).toBeVisible();
 
   await page.goto(
-    `/partner-tokens?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/partner-tokens?${smokeIdentityQuery(activeProfileId)}`,
   );
   await expect(page.getByText("Partner token transparency")).toBeVisible();
-  await expect(page.getByText("Season token overview")).toBeVisible();
-  await expect(page.getByText("Bubble Bloom")).toBeVisible();
+  await expect(page.getByText(/Partner tokens are coming soon/)).toBeVisible();
 });
 
 test("supports inventory filters and preview-only collection state", async ({
   page,
 }) => {
   await page.goto(
-    `/inventory?profileId=${activeProfileId}&walletAddress=${walletAddress}&${smokeWalletQuery}`,
+    `/inventory?${smokeIdentityQuery(activeProfileId)}`,
   );
 
   await expect(
@@ -710,22 +901,22 @@ test("supports inventory filters and preview-only collection state", async ({
 
 test("loads all world menu screens", async ({ page }) => {
   await page.goto(
-    `/season?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/season?${smokeIdentityQuery(activeProfileId)}`,
   );
   await expect(page.getByRole("heading", { name: "Season hub" })).toBeVisible();
 
   await page.goto(
-    `/leaderboard?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/leaderboard?${smokeIdentityQuery(activeProfileId)}`,
   );
   await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
 
   await page.goto(
-    `/referrals?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/referrals?${smokeIdentityQuery(activeProfileId)}`,
   );
   await expect(page.getByRole("heading", { name: "Referral progress" })).toBeVisible();
 
   await page.goto(
-    `/partner-tokens?profileId=${activeProfileId}&walletAddress=${walletAddress}`,
+    `/partner-tokens?${smokeIdentityQuery(activeProfileId)}`,
   );
   await expect(
     page.getByRole("heading", { name: "Partner token transparency" }),

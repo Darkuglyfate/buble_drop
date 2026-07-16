@@ -10,9 +10,7 @@ import {
 import {
   classifyWalletFlowError,
 } from "../../base-wallet-runtime";
-import {
-  createAuthenticatedJsonHeaders,
-} from "../../base-sign-in";
+import { fetchBubbleDropMutation } from "../../base-sign-in";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,7 +84,7 @@ export function useDailyCheckIn({
   activeWalletAddress,
   effectiveIsConnected,
   isConnectedToBase,
-  authenticatedSessionToken,
+  authenticatedSessionToken: authenticatedSessionMarker,
   quickSessionHref,
   refreshProfileSummary,
 }: UseDailyCheckInOptions) {
@@ -135,7 +133,7 @@ export function useDailyCheckIn({
       setActionMessage("Switch to Base before daily check-in.");
       return;
     }
-    if (!authenticatedSessionToken) {
+    if (!authenticatedSessionMarker) {
       setDailyCheckInUiState("generic_failure");
       setActionMessage("Sign in with Base before daily check-in.");
       return;
@@ -187,9 +185,8 @@ export function useDailyCheckIn({
         }
       }
 
-      const response = await fetch(`${backendUrl}/check-in/daily`, {
+      const response = await fetchBubbleDropMutation(`${backendUrl}/check-in/daily`, {
         method: "POST",
-        headers: createAuthenticatedJsonHeaders(authenticatedSessionToken),
         body: JSON.stringify({
           profileId,
           txHash: checkInTxHash ?? undefined,
