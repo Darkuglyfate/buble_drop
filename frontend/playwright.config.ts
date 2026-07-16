@@ -15,18 +15,26 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: "npx next dev --port 3002",
-    url: "http://127.0.0.1:3002",
-    reuseExistingServer: false,
-    env: {
-      NEXT_PUBLIC_BACKEND_URL: "http://localhost:3000",
-      NEXT_PUBLIC_SMOKE_TEST_MODE: "1",
-      NEXT_SMOKE_TEST_SERVER: "1",
-      NEXT_PUBLIC_POSTHOG_KEY: "",
-      NEXT_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
+  webServer: [
+    {
+      command: "node smoke/mock-backend.mjs",
+      url: "http://127.0.0.1:4010/__requests",
+      reuseExistingServer: false,
     },
-  },
+    {
+      command: "npx next dev --hostname 127.0.0.1 --port 3002",
+      url: "http://127.0.0.1:3002",
+      reuseExistingServer: false,
+      env: {
+        BACKEND_URL: "http://127.0.0.1:4010",
+        FRONTEND_ORIGIN: "http://127.0.0.1:3002",
+        NEXT_PUBLIC_SMOKE_TEST_MODE: "1",
+        NEXT_SMOKE_TEST_SERVER: "1",
+        NEXT_PUBLIC_POSTHOG_KEY: "",
+        NEXT_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
+      },
+    },
+  ],
   projects: [
     {
       name: "chromium",
@@ -36,6 +44,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chrome",
+      grepInvert: /@security/,
       use: {
         ...devices["Pixel 7"],
       },

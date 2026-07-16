@@ -8,7 +8,8 @@ import {
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
 import {
-  createAuthenticatedJsonHeaders,
+  fetchBubbleDropMutation,
+  getAuthenticatedSessionMarker,
   getSmokeSignInSessionFromCurrentUrl,
   loadBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
@@ -20,7 +21,6 @@ import {
   getPrimaryEquippedStyle,
   inferSlotFromRewardKey,
   loadPersistedEquippedStyles,
-  savePersistedEquippedStyles,
   type EquippedStyleSnapshot,
 } from "./equipped-style-sync";
 import { UnifiedIcon } from "./unified-icons";
@@ -69,12 +69,6 @@ type StarterAvatar = {
   paletteKey: string;
 };
 
-type AvatarSelectionResponse = {
-  profileId: string;
-  avatarId: string;
-  avatarLabel: string;
-};
-
 type InventoryCollectible = {
   id: string;
   key: string;
@@ -92,7 +86,7 @@ type InventoryCollectible = {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
-  authSessionToken?: string | null,
+  authenticatedSessionMarker?: string | null,
 ): Promise<{
   needsOnboarding: boolean;
   currentAvatarId: string | null;
@@ -100,7 +94,11 @@ async function fetchOnboardingStateForProfile(
   equippedStyle: EquippedStyleSnapshot | null;
   equippedStyleRewardId: string | null;
 } | null> {
-  const payload = await fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
+  const payload = await fetchBackendProfileSummary(
+    backendUrl,
+    profileId,
+    authenticatedSessionMarker,
+  );
   if (!payload) {
     return null;
   }
@@ -182,14 +180,6 @@ function inferSeason(key: string, label: string): Exclude<SeasonFilter, "all"> {
   return "core";
 }
 
-function formatShortDate(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return "Unknown date";
-  }
-  return parsed.toISOString().slice(0, 10);
-}
-
 function slotLabel(slot: CosmeticSlot): string {
   if (slot === "bubbleSkin") {
     return "Bubble skin";
@@ -221,7 +211,6 @@ export function RewardsInventoryScreen() {
   const [starterAvatars, setStarterAvatars] = useState<StarterAvatar[]>([]);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [isSwitchingAvatar, setIsSwitchingAvatar] = useState(false);
-  const [isApplyingCollectibleId, setIsApplyingCollectibleId] = useState<string | null>(null);
   const [equippedStyleRewardId, setEquippedStyleRewardId] = useState<string | null>(null);
   const [activeSlot, setActiveSlot] = useState<CosmeticSlot>("avatar");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
@@ -248,7 +237,7 @@ export function RewardsInventoryScreen() {
   );
 
   const backendUrl = BUBBLEDROP_API_BASE;
-  const authSessionToken = authSession?.authSessionToken ?? null;
+  const authenticatedSessionMarker = getAuthenticatedSessionMarker(authSession);
 
   const loadStarterAvatars = async () => {
     try {
@@ -269,17 +258,15 @@ export function RewardsInventoryScreen() {
   };
 
   const loadInventory = async (resolvedProfileId: string) => {
+    void resolvedProfileId;
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(
-        `${backendUrl}/profile/rewards-inventory?profileId=${encodeURIComponent(resolvedProfileId)}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(`${backendUrl}/profile/rewards-inventory`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
 
       if (!response.ok) {
         setInventory(null);
@@ -385,13 +372,6 @@ export function RewardsInventoryScreen() {
     [displayCollectibles],
   );
 
-  const getItemById = (itemId: string | null): InventoryCollectible | null => {
-    if (!itemId) {
-      return null;
-    }
-    return collectibleMap.get(itemId) ?? null;
-  };
-
   const equipCollectible = (item: InventoryCollectible) => {
     if (item.slot === "avatar" && starterAvatarIdSet.has(item.id)) {
       void onSelectAvatar(item.id);
@@ -447,7 +427,7 @@ export function RewardsInventoryScreen() {
       const onboardingState = await fetchOnboardingStateForProfile(
         backendUrl,
         resolvedProfileId,
-        authSessionToken,
+        authenticatedSessionMarker,
       );
       if (!onboardingState) {
         setNeedsOnboarding(false);
@@ -507,7 +487,7 @@ export function RewardsInventoryScreen() {
   }, [collectibleMap, equippedStyleRewardId]);
 
   const onSelectAvatar = async (avatarId: string) => {
-    if (!profileId || !authSessionToken || needsOnboarding) {
+    if (!profileId || !authenticatedSessionMarker || needsOnboarding) {
       return;
     }
     if (selectedAvatarId === avatarId) {
@@ -526,9 +506,8 @@ export function RewardsInventoryScreen() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${backendUrl}/profile/avatar/select`, {
+      const response = await fetchBubbleDropMutation(`${backendUrl}/profile/avatar/select`, {
         method: "POST",
-        headers: createAuthenticatedJsonHeaders(authSessionToken),
         body: JSON.stringify({ profileId, avatarId }),
       });
       if (!response.ok) {
@@ -797,7 +776,7 @@ export function RewardsInventoryScreen() {
                       key={avatar.id}
                       type="button"
                       onClick={() => void onSelectAvatar(avatar.id)}
-                      disabled={!authSessionToken}
+                      disabled={!authenticatedSessionMarker}
                       className={`inventory-starter-avatar-card rounded-2xl border px-3 py-2 text-left transition-all ${
                         isEquipped
                           ? "inventory-starter-avatar-card-active"
@@ -877,9 +856,8 @@ export function RewardsInventoryScreen() {
                           onClick={() => equipCollectible(item)}
                           disabled={
                             (item.slot === "avatar" &&
-                              (!authSessionToken || isSwitchingAvatar)) ||
-                            (item.slot !== "avatar" && item.previewOnly) ||
-                            (item.slot !== "avatar" && isApplyingCollectibleId !== null)
+                              (!authenticatedSessionMarker || isSwitchingAvatar)) ||
+                            (item.slot !== "avatar" && item.previewOnly)
                           }
                           className="vault-drop-btn-main min-h-11 px-3 py-2 text-xs disabled:opacity-60"
                         >

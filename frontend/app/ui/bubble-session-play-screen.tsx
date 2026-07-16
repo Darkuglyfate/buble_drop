@@ -9,24 +9,18 @@ import {
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
 import {
-  createAuthenticatedJsonHeaders,
+  fetchBubbleDropMutation,
+  getAuthenticatedSessionMarker,
   getSmokeSignInSessionFromCurrentUrl,
   loadBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
 } from "../base-sign-in";
 import { fetchBackendProfileSummary } from "./backend-profile-summary";
-import type { ProfileStyleRarity } from "./profile-style-rarity";
 import { useSessionAudio } from "../hooks/session/useSessionAudio";
 import { usePlayfieldMeasurement } from "../hooks/session/usePlayfieldMeasurement";
 import { useSessionLifecycle } from "../hooks/session/useSessionLifecycle";
 import { useActivePlayTracking } from "../hooks/session/useActivePlayTracking";
-import {
-  useTapFeedbackEffects,
-  type PopBurst,
-  type ComboBurst,
-  type FunOverlayItem,
-  type PlayfieldTouchCue,
-} from "../hooks/session/useTapFeedbackEffects";
+import { useTapFeedbackEffects } from "../hooks/session/useTapFeedbackEffects";
 
 const SESSION_DURATION_SECONDS = 10 * 60;
 const MIN_SESSION_SECONDS_FOR_COMPLETION = 5 * 60;
@@ -217,36 +211,16 @@ type HelperShotCue = {
   beamAngleDeg: number;
 };
 
-type SkinRarity = ProfileStyleRarity;
-type SkinLayout = "diagonal" | "split" | "frame";
-
-type SkinRewardCard = {
-  id: string;
-  key: string;
-  source: "nft" | "cosmetic";
-  rarity: SkinRarity;
-  layout: SkinLayout;
-  variantLabel: string;
-};
-
-type EquipStyleResponse = {
-  profileId: string;
-  equippedStyle: {
-    rewardId: string;
-    rewardKey: string;
-    rarity: SkinRarity;
-    source: "nft" | "cosmetic";
-    variant: string;
-    appliedAt: string;
-  };
-};
-
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
-  authSessionToken?: string | null,
+  authenticatedSessionMarker?: string | null,
 ): Promise<{ walletAddress: string; needsOnboarding: boolean } | null> {
-  const payload = await fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
+  const payload = await fetchBackendProfileSummary(
+    backendUrl,
+    profileId,
+    authenticatedSessionMarker,
+  );
   if (!payload) {
     return null;
   }
@@ -284,96 +258,6 @@ function formatDurationLabel(totalSeconds: number): string {
 
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min);
-}
-
-function hashValue(input: string): number {
-  return Array.from(input).reduce((acc, char, index) => {
-    return (acc + char.charCodeAt(0) * (index + 17)) % 10000;
-  }, 0);
-}
-
-function getSkinRarityFromHash(hash: number): SkinRarity {
-  const roll = hash % 100;
-  if (roll < 40) {
-    return "common";
-  }
-  if (roll < 58) {
-    return "uncommon";
-  }
-  if (roll < 74) {
-    return "rare";
-  }
-  if (roll < 90) {
-    return "epic";
-  }
-  return "legendary";
-}
-
-function getSkinLayoutFromHash(hash: number): SkinLayout {
-  const layoutIdx = hash % 3;
-  if (layoutIdx === 0) {
-    return "diagonal";
-  }
-  if (layoutIdx === 1) {
-    return "split";
-  }
-  return "frame";
-}
-
-function getRarityIntensity(rarity: SkinRarity): string {
-  if (rarity === "common") {
-    return "1/5";
-  }
-  if (rarity === "uncommon") {
-    return "2/5";
-  }
-  if (rarity === "rare") {
-    return "3/5";
-  }
-  if (rarity === "epic") {
-    return "4/5";
-  }
-  return "5/5";
-}
-
-function getDropStylePalette(rarity: SkinRarity): {
-  shell: string;
-  chip: string;
-  glow: string;
-} {
-  if (rarity === "common") {
-    return {
-      shell: "from-[#3d4a69] to-[#2f3955]",
-      chip: "bg-[#dce7ff] text-[#3b588f]",
-      glow: "shadow-[0_14px_34px_rgba(0,0,0,0.24)]",
-    };
-  }
-  if (rarity === "uncommon") {
-    return {
-      shell: "from-[#2d5560] to-[#2a4a58]",
-      chip: "bg-[#d4f5f0] text-[#0d5c5c]",
-      glow: "shadow-[0_14px_34px_rgba(64,180,170,0.22)]",
-    };
-  }
-  if (rarity === "rare") {
-    return {
-      shell: "from-[#27477a] to-[#27507d]",
-      chip: "bg-[#d5f0ff] text-[#125f89]",
-      glow: "shadow-[0_14px_34px_rgba(70,164,220,0.24)]",
-    };
-  }
-  if (rarity === "epic") {
-    return {
-      shell: "from-[#3f2f72] to-[#29426f]",
-      chip: "bg-[#f1ddff] text-[#7040a8]",
-      glow: "shadow-[0_14px_34px_rgba(164,114,255,0.3)]",
-    };
-  }
-  return {
-    shell: "from-[#6f4d2b] via-[#7e4b2d] to-[#6f3f1f]",
-    chip: "bg-gradient-to-r from-[#fff2c5] to-[#ffd98a] text-[#6f4100]",
-    glow: "shadow-[0_14px_34px_rgba(255,187,80,0.34)] ring-1 ring-[#ffe4aa]/70",
-  };
 }
 
 function pickBubbleSizeTier(): BubbleSizeTier {
@@ -740,14 +624,6 @@ export function BubbleSessionPlayScreen() {
   const [sessionEventScheduleTick, setSessionEventScheduleTick] = useState(0);
   const [finishCelebrationVisible, setFinishCelebrationVisible] = useState(false);
   const [postTimerChoiceVisible, setPostTimerChoiceVisible] = useState(false);
-  const [equippedSkinRewardId, setEquippedSkinRewardId] = useState<string | null>(null);
-  const [inventorySavedRewardIds, setInventorySavedRewardIds] = useState<string[]>([]);
-  const [lastApplyMoment, setLastApplyMoment] = useState<{
-    rewardId: string;
-    rewardKey: string;
-    rarity: SkinRarity;
-    source: "nft" | "cosmetic";
-  } | null>(null);
   const activePlayBubblesRef = useRef<ActivePlayBubble[]>(activePlayBubbles);
   const helperEventRef = useRef<HelperEvent | null>(null);
   const helperHasAppearedRef = useRef(false);
@@ -759,6 +635,8 @@ export function BubbleSessionPlayScreen() {
   const finishCelebrationTimeoutRef = useRef<number | null>(null);
   const helperTimeoutsRef = useRef<number[]>([]);
   const sessionEventTimeoutsRef = useRef<number[]>([]);
+  const triggerHelperEventRef = useRef<() => boolean>(() => false);
+  const triggerSessionMicroEventRef = useRef<() => boolean>(() => false);
   const hasShownMinimumCelebrationRef = useRef(false);
   const hasShownTimerChoiceRef = useRef(false);
 
@@ -804,11 +682,11 @@ export function BubbleSessionPlayScreen() {
     normalizedAuthSessionAddress === normalizedWalletAddress;
   const authSessionMatchesConnectedWallet =
     !connectedWalletAddress || normalizedAuthSessionAddress === connectedWalletAddress;
-  const authSessionToken =
+  const authenticatedSessionMarker =
     authSession &&
     authSessionMatchesRuntimeWallet &&
     authSessionMatchesConnectedWallet
-      ? authSession.authSessionToken
+      ? getAuthenticatedSessionMarker(authSession)
       : null;
 
   const {
@@ -826,7 +704,7 @@ export function BubbleSessionPlayScreen() {
     resetSession,
   } = useSessionLifecycle({
     profileId: effectiveProfileId,
-    authSessionToken,
+    authenticatedSessionMarker,
     backendUrl,
     needsOnboarding,
     activeTapCount,
@@ -882,9 +760,6 @@ export function BubbleSessionPlayScreen() {
     hasShownTimerChoiceRef.current = false;
     setFinishCelebrationVisible(false);
     setPostTimerChoiceVisible(false);
-    setEquippedSkinRewardId(null);
-    setInventorySavedRewardIds([]);
-    setLastApplyMoment(null);
     setActivePlayBubbles(createActivePlayBubbleSet());
   };
 
@@ -926,7 +801,7 @@ export function BubbleSessionPlayScreen() {
         const onboardingState = await fetchOnboardingStateForProfile(
           backendUrl,
           profileId,
-          authSessionToken,
+          authenticatedSessionMarker,
         );
         if (!onboardingState) {
           setNeedsOnboarding(false);
@@ -1214,7 +1089,7 @@ export function BubbleSessionPlayScreen() {
     return () => {
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, [isActive, sessionCompleted, isPaused]);
+  }, [isActive, sessionCompleted, isPaused, playfieldMetricsRef]);
 
   const displayElapsedSeconds = Math.min(elapsedSeconds, SESSION_DURATION_SECONDS);
   const rawActiveSeconds = activeTapCount * ACTIVE_SECONDS_PER_TAP;
@@ -1299,7 +1174,7 @@ export function BubbleSessionPlayScreen() {
     !isResolvingOnboardingState &&
     Boolean(effectiveProfileId) &&
     !needsOnboarding &&
-    Boolean(authSessionToken);
+    Boolean(authenticatedSessionMarker);
   const canCompleteSession =
     isActive &&
     !sessionCompleted &&
@@ -1314,7 +1189,7 @@ export function BubbleSessionPlayScreen() {
           ? "Starting session..."
           : !effectiveProfileId || needsOnboarding
             ? "Finish wallet setup on Home before starting a run."
-            : !authSessionToken
+            : !authenticatedSessionMarker
               ? "Use Sign in with Base on Home before starting a run."
               : null;
   const startSessionStatusMessage =
@@ -1436,7 +1311,7 @@ export function BubbleSessionPlayScreen() {
       setFinishCelebrationVisible(false);
       finishCelebrationTimeoutRef.current = null;
     }, FINISH_CELEBRATION_DURATION_MS);
-  }, [isActive, localCompletionEstimateMet, sessionCompleted]);
+  }, [isActive, localCompletionEstimateMet, playPopSound, sessionCompleted]);
 
   useEffect(() => {
     if (!isActive || sessionCompleted) {
@@ -1468,7 +1343,13 @@ export function BubbleSessionPlayScreen() {
         finishCelebrationTimeoutRef.current = null;
       }, FINISH_CELEBRATION_DURATION_MS);
     }
-  }, [isActive, localCompletionEstimateMet, sessionCompleted, sessionTimerGoalReached]);
+  }, [
+    isActive,
+    localCompletionEstimateMet,
+    playPopSound,
+    sessionCompleted,
+    sessionTimerGoalReached,
+  ]);
 
   const onKeepPopping = () => {
     setPostTimerChoiceVisible(false);
@@ -1852,6 +1733,7 @@ export function BubbleSessionPlayScreen() {
     helperTimeoutsRef.current.push(cleanupTimeout);
     return true;
   };
+  triggerHelperEventRef.current = triggerHelperEvent;
 
   useEffect(() => {
     if (!isActive || sessionCompleted || sessionTimerGoalReached || postTimerChoiceVisible || sessionMicroEvent) {
@@ -1871,7 +1753,7 @@ export function BubbleSessionPlayScreen() {
       maxDelayMs,
     );
     const timeoutId = window.setTimeout(() => {
-      const triggered = triggerHelperEvent();
+      const triggered = triggerHelperEventRef.current();
       if (!triggered) {
         setHelperScheduleTick((current) => current + 1);
       }
@@ -1912,7 +1794,7 @@ export function BubbleSessionPlayScreen() {
       : [SESSION_EVENT_INITIAL_MIN_DELAY_MS, SESSION_EVENT_INITIAL_MAX_DELAY_MS];
     const scheduleDelayMs = randomBetween(minDelayMs, maxDelayMs);
     const timeoutId = window.setTimeout(() => {
-      const triggered = triggerSessionMicroEvent();
+      const triggered = triggerSessionMicroEventRef.current();
       if (!triggered) {
         setSessionEventScheduleTick((current) => current + 1);
       }
@@ -2172,20 +2054,7 @@ export function BubbleSessionPlayScreen() {
     sessionEventTimeoutsRef.current.push(cleanupTimeout);
     return true;
   };
-
-  const onEquipRewardNow = (rewardCard: SkinRewardCard) => {
-    void rewardCard;
-    setActionMessage(
-      "Seasonal skin rewards stay preview-only for now. Inventory apply is locked until season-end distribution.",
-    );
-  };
-
-  const onSaveRewardToInventory = (rewardCard: SkinRewardCard) => {
-    setInventorySavedRewardIds((current) =>
-      current.includes(rewardCard.id) ? current : [...current, rewardCard.id],
-    );
-    setActionMessage(`${rewardCard.key} saved to inventory.`);
-  };
+  triggerSessionMicroEventRef.current = triggerSessionMicroEvent;
 
   const onRecordActivePlay = (
     bubbleId?: number,
@@ -2264,13 +2133,12 @@ export function BubbleSessionPlayScreen() {
       navigator.vibrate(nextCombo >= 5 ? [10, 24, 12] : 10);
     }
 
-    if (!effectiveProfileId || !backendSessionId || !authSessionToken) {
+    if (!effectiveProfileId || !backendSessionId || !authenticatedSessionMarker) {
       return;
     }
 
-    void fetch(`${backendUrl}/bubble-session/activity`, {
+    void fetchBubbleDropMutation(`${backendUrl}/bubble-session/activity`, {
       method: "POST",
-      headers: createAuthenticatedJsonHeaders(authSessionToken),
       body: JSON.stringify({
         profileId: effectiveProfileId,
         sessionId: backendSessionId,

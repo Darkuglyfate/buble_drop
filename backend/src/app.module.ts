@@ -3,9 +3,10 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { buildPostgresConnectionOptions } from './database/postgres-options';
+import { HealthModule } from './health/health.module';
 import { AuthSessionModule } from './modules/auth-session/auth-session.module';
 import { CheckInModule } from './modules/check-in/check-in.module';
 import { BubbleSessionModule } from './modules/bubble-session/bubble-session.module';
@@ -15,10 +16,6 @@ import { ProfileModule } from './modules/profile/profile.module';
 import { QualificationModule } from './modules/qualification/qualification.module';
 import { RewardsModule } from './modules/rewards/rewards.module';
 import { RedisModule } from './redis/redis.module';
-
-const shouldRunMigrationsOnStart =
-  process.env.RUN_MIGRATIONS_ON_START !== '0' &&
-  process.env.RUN_MIGRATIONS_ON_START !== 'false';
 
 @Module({
   imports: [
@@ -31,39 +28,26 @@ const shouldRunMigrationsOnStart =
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const databaseUrl = configService.get<string>('DATABASE_URL')?.trim();
-        return {
-          type: 'postgres' as const,
-          ...(databaseUrl
-            ? {
-                url: databaseUrl,
-              }
-            : {
-                host: configService.get<string>('DB_HOST', 'localhost'),
-                port: configService.get<number>('DB_PORT', 5432),
-                username: configService.get<string>('DB_USER', 'postgres'),
-                password: configService.get<string>('DB_PASSWORD', 'postgres'),
-                database: configService.get<string>('DB_NAME', 'bubbledrop'),
-              }),
-          autoLoadEntities: true,
-          migrations: [join(__dirname, 'database', 'migrations', '*{.ts,.js}')],
-          migrationsRun:
-            configService.get<string>('NODE_ENV') === 'production' &&
-            shouldRunMigrationsOnStart,
-          synchronize: false,
-          extra: {
-            connectionTimeoutMillis: 5000,
-            query_timeout: 5000,
-            statement_timeout: 5000,
-            idle_in_transaction_session_timeout: 5000,
-            keepAlive: true,
-          },
-          ssl: databaseUrl ? { rejectUnauthorized: false } : undefined,
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        ...buildPostgresConnectionOptions({
+          NODE_ENV: configService.get('NODE_ENV'),
+          DATABASE_URL: configService.get('DATABASE_URL'),
+          DB_HOST: configService.get('DB_HOST'),
+          DB_PORT: configService.get('DB_PORT'),
+          DB_USER: configService.get('DB_USER'),
+          DB_PASSWORD: configService.get('DB_PASSWORD'),
+          DB_NAME: configService.get('DB_NAME'),
+          DB_SSL: configService.get('DB_SSL'),
+          DB_SSL_ALLOW_SELF_SIGNED: configService.get(
+            'DB_SSL_ALLOW_SELF_SIGNED',
+          ),
+        }),
+        autoLoadEntities: true,
+        synchronize: false,
+      }),
     }),
     AuthSessionModule,
+    HealthModule,
     RedisModule,
     ProfileModule,
     CheckInModule,
@@ -74,9 +58,6 @@ const shouldRunMigrationsOnStart =
     ClaimModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-  ],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

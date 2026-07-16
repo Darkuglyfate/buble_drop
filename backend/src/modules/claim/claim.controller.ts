@@ -1,11 +1,10 @@
-import { Body, Controller, Get, Headers, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
 import {
   ClaimService,
   ClaimableTokenBalanceView,
   CreateTokenClaimResult,
 } from './claim.service';
 import { CreateTokenClaimDto } from './dto/create-token-claim.dto';
-import { GetClaimBalancesDto } from './dto/get-claim-balances.dto';
 import { AUTH_SESSION_HEADER } from '../auth-session/auth-session.service';
 import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
 
@@ -18,14 +17,13 @@ export class ClaimController {
 
   @Get('balances')
   async getClaimableBalances(
-    @Query() dto: GetClaimBalancesDto,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ClaimableTokenBalanceView[]> {
-    await this.walletBindingService.assertProfileAccess(
-      dto.profileId,
-      authSessionHeader,
-    );
-    return this.claimService.getClaimableBalances(dto.profileId);
+    const profileId =
+      await this.walletBindingService.resolveAuthenticatedProfileId(
+        authSessionHeader,
+      );
+    return this.claimService.getClaimableBalances(profileId);
   }
 
   @Post('request')

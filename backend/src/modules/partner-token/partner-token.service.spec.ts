@@ -1,7 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CheckInRecord } from '../check-in/entities/check-in-record.entity';
 import { Profile } from '../profile/entities/profile.entity';
 import { XpService } from '../rewards/xp.service';
@@ -10,6 +10,7 @@ import { PartnerTokenPin } from './entities/partner-token-pin.entity';
 import { Referral, ReferralStatus } from './entities/referral.entity';
 import { Season } from './entities/season.entity';
 import { PartnerTokenService } from './partner-token.service';
+import { SeasonService } from './season.service';
 
 type MockRepository<T extends object> = Partial<
   Record<keyof Repository<T>, jest.Mock>
@@ -24,6 +25,8 @@ describe('PartnerTokenService', () => {
   let profileRepository: MockRepository<Profile>;
   let checkInRepository: MockRepository<CheckInRecord>;
   let xpService: { grantXp: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let transactionManager: { getRepository: jest.Mock };
 
   beforeEach(async () => {
     seasonRepository = {
@@ -51,10 +54,34 @@ describe('PartnerTokenService', () => {
     xpService = {
       grantXp: jest.fn(),
     };
+    transactionManager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === Referral) {
+          return referralRepository;
+        }
+        if (entity === Profile) {
+          return profileRepository;
+        }
+        if (entity === CheckInRecord) {
+          return checkInRepository;
+        }
+        if (entity === Season) {
+          return seasonRepository;
+        }
+        throw new Error('Unexpected repository');
+      }),
+    };
+    dataSource = {
+      transaction: jest.fn(
+        async (work: (manager: EntityManager) => Promise<unknown>) =>
+          work(transactionManager as EntityManager),
+      ),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PartnerTokenService,
+        SeasonService,
         {
           provide: getRepositoryToken(Season),
           useValue: seasonRepository,
@@ -83,6 +110,7 @@ describe('PartnerTokenService', () => {
           provide: XpService,
           useValue: xpService,
         },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -119,7 +147,62 @@ describe('PartnerTokenService', () => {
     ]);
   });
 
+  it('excludes an active future season from the season hub', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-03-15T12:00:00.000Z'));
+    seasonRepository.findOne!.mockImplementation(async (options) => {
+      const where = options?.where as Record<string, unknown>;
+      return where.startDate && where.endDate
+        ? null
+        : ({
+            id: 'future-season',
+            key: 'future',
+            title: 'Future season',
+            startDate: '2026-03-16',
+            endDate: '2026-03-31',
+            isActive: true,
+          } as Season);
+    });
+    partnerTokenRepository.find!.mockResolvedValue([]);
+
+    await expect(service.getSeasonHub()).resolves.toEqual({
+      season: null,
+      tokenCount: 0,
+      tokens: [],
+    });
+
+    jest.useRealTimers();
+  });
+
+  it('keeps expired-season token details readable', async () => {
+    partnerTokenRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      symbol: 'OLD',
+      name: 'Old token',
+      contractAddress: '0x1111111111111111111111111111111111111111',
+      twitterUrl: 'https://x.com/old',
+      chartUrl: null,
+      dexscreenerUrl: null,
+      season: {
+        id: 'expired-season',
+        key: 'expired',
+        title: 'Expired season',
+        startDate: '2026-02-01',
+        endDate: '2026-02-28',
+        isActive: true,
+      },
+    });
+    partnerTokenPinRepository.count!.mockResolvedValue(2);
+
+    const result = await service.getTokenDetail(
+      '11111111-1111-4111-8111-111111111111',
+    );
+
+    expect(result.season.key).toBe('expired');
+    expect(result.pinCount).toBe(2);
+  });
+
   it('marks referral as successful and grants referral xp once', async () => {
+    seasonRepository.findOne!.mockResolvedValue({ id: 'season-1' });
     referralRepository.findOne!.mockResolvedValue({
       id: '33333333-3333-4333-8333-333333333333',
       inviterProfileId: '11111111-1111-4111-8111-111111111111',
@@ -129,13 +212,17 @@ describe('PartnerTokenService', () => {
     });
     profileRepository
       .findOne!.mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+        totalXp: 100,
+      })
+      .mockResolvedValueOnce({
         id: '22222222-2222-4222-8222-222222222222',
         nickname: 'invited-user',
         onboardingCompletedAt: new Date('2026-03-14T10:00:00.000Z'),
       })
       .mockResolvedValueOnce({
         id: '11111111-1111-4111-8111-111111111111',
-        totalXp: 100,
+        totalXp: 150,
       });
     checkInRepository.findOne!.mockResolvedValue({
       id: 'check-in-1',
@@ -160,7 +247,14 @@ describe('PartnerTokenService', () => {
     expect(result.status).toBe(ReferralStatus.SUCCESSFUL);
     expect(result.referralXpGranted).toBe(50);
     expect(result.inviterTotalXp).toBe(150);
-    expect(xpService.grantXp).toHaveBeenCalled();
+    expect(xpService.grantXp).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      [expect.objectContaining({ seasonId: 'season-1' })],
+      undefined,
+      transactionManager,
+    );
+    expect(transactionManager.getRepository).toHaveBeenCalledWith(Season);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
   });
 
   it('does not grant referral xp again if referral already successful', async () => {
@@ -171,19 +265,9 @@ describe('PartnerTokenService', () => {
       status: ReferralStatus.SUCCESSFUL,
       successfulAt: new Date('2026-03-14T10:00:00.000Z'),
     });
-    profileRepository
-      .findOne!.mockResolvedValueOnce({
-        id: '22222222-2222-4222-8222-222222222222',
-        nickname: 'invited-user',
-        onboardingCompletedAt: new Date('2026-03-14T10:00:00.000Z'),
-      })
-      .mockResolvedValueOnce({
-        id: '11111111-1111-4111-8111-111111111111',
-        totalXp: 250,
-      });
-    checkInRepository.findOne!.mockResolvedValue({
-      id: 'check-in-1',
-      checkInDate: '2026-03-14',
+    profileRepository.findOne!.mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      totalXp: 250,
     });
 
     const result = await service.markReferralSuccessful(

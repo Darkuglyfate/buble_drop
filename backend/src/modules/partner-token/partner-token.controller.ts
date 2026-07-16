@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 import { MarkReferralSuccessDto } from './dto/mark-referral-success.dto';
 import { AUTH_SESSION_HEADER } from '../auth-session/auth-session.service';
 import { WalletBindingService } from '../wallet-binding/wallet-binding.service';
@@ -46,13 +38,12 @@ export class PartnerTokenController {
 
   @Get('referral/progress')
   async getReferralProgress(
-    @Query('profileId') profileId: string,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ReferralProgressView> {
-    await this.walletBindingService.assertProfileAccess(
-      profileId,
-      authSessionHeader,
-    );
+    const profileId =
+      await this.walletBindingService.resolveAuthenticatedProfileId(
+        authSessionHeader,
+      );
     return this.partnerTokenService.getReferralProgress(profileId);
   }
 

@@ -40,6 +40,13 @@ export class ProfileCosmeticUnlock {
   @JoinColumn({ name: 'cosmeticDefinitionId' })
   cosmeticDefinition: CosmeticDefinition;
 
+  @Index('IDX_profile_cosmetic_unlocks_idempotency_key_unique', {
+    unique: true,
+    where: '"idempotencyKey" IS NOT NULL',
+  })
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  idempotencyKey: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   unlockedAt: Date;
 }

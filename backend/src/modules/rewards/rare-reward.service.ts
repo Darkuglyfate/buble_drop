@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { BubbleSession } from '../bubble-session/entities/bubble-session.entity';
 import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
 import { PartnerToken } from '../partner-token/entities/partner-token.entity';
-import { Season } from '../partner-token/entities/season.entity';
+import { SeasonService } from '../partner-token/season.service';
 import { CosmeticDefinition } from '../profile/entities/cosmetic-definition.entity';
 import { NftDefinition } from '../profile/entities/nft-definition.entity';
 import { ProfileCosmeticUnlock } from '../profile/entities/profile-cosmetic-unlock.entity';
@@ -24,6 +29,9 @@ export interface RareRewardIssueInput {
   session: BubbleSession;
   rareRewardAccessActive: boolean;
   isCompletionEligible: boolean;
+  seasonId?: string | null;
+  idempotencyKey?: string;
+  entityManager?: EntityManager;
 }
 
 export interface RareRewardTokenOutcome {
@@ -50,11 +58,23 @@ export interface RareRewardIssueResult {
   cosmeticRewards: RareRewardCollectibleOutcome[];
 }
 
+interface RareRewardRepositories {
+  partnerTokenRepository: Repository<PartnerToken>;
+  claimableBalanceRepository: Repository<ClaimableTokenBalance>;
+  weeklyTokenTicketRepository: Repository<WeeklyTokenTicket>;
+  nftDefinitionRepository: Repository<NftDefinition>;
+  profileNftOwnershipRepository: Repository<ProfileNftOwnership>;
+  cosmeticDefinitionRepository: Repository<CosmeticDefinition>;
+  profileCosmeticUnlockRepository: Repository<ProfileCosmeticUnlock>;
+  userWalletRepository: Repository<UserWallet>;
+  bubbleSessionRepository: Repository<BubbleSession>;
+  rewardEventRepository: Repository<RewardEvent>;
+}
+
 @Injectable()
 export class RareRewardService {
   constructor(
-    @InjectRepository(Season)
-    private readonly seasonRepository: Repository<Season>,
+    private readonly dataSource: DataSource,
     @InjectRepository(PartnerToken)
     private readonly partnerTokenRepository: Repository<PartnerToken>,
     @InjectRepository(ClaimableTokenBalance)
@@ -76,6 +96,7 @@ export class RareRewardService {
     @InjectRepository(RewardEvent)
     private readonly rewardEventRepository: Repository<RewardEvent>,
     private readonly rewardLedgerOnchainService: RewardLedgerOnchainService,
+    private readonly seasonService: SeasonService,
   ) {}
 
   async issueSessionRareRewards(
@@ -94,14 +115,39 @@ export class RareRewardService {
       };
     }
 
+    if (!input.entityManager) {
+      return this.dataSource.transaction((entityManager) =>
+        this.issueSessionRareRewards({ ...input, entityManager }),
+      );
+    }
+
+    const repositories = this.getRepositories(input.entityManager);
+
     const tokenReward = await this.issueTokenReward(
       input.profile,
       input.session,
+      input.seasonId,
+      input.idempotencyKey,
+      repositories,
+      input.entityManager,
     );
-    const nftRewards = await this.issueNftRewards(input.profile, input.session);
+    const nftRewards = await this.issueNftRewards(
+      input.profile,
+      input.session,
+      input.seasonId === undefined
+        ? (input.session.seasonId ?? null)
+        : input.seasonId,
+      input.idempotencyKey,
+      repositories,
+    );
     const cosmeticRewards = await this.issueCosmeticRewards(
       input.profile,
       input.session,
+      input.seasonId === undefined
+        ? (input.session.seasonId ?? null)
+        : input.seasonId,
+      input.idempotencyKey,
+      repositories,
     );
 
     return {
@@ -119,17 +165,23 @@ export class RareRewardService {
   private async issueTokenReward(
     profile: Profile,
     session: BubbleSession,
+    seasonId: string | null | undefined,
+    entitlementIdempotencyKey?: string,
+    repositories?: RareRewardRepositories,
+    entityManager?: EntityManager,
   ): Promise<{
     tokenSymbolAwarded: string | null;
     tokenAmountAwarded: string;
     weeklyTicketsIssued: number;
     tokenReward: RareRewardTokenOutcome | null;
   }> {
-    const activeSeason = await this.seasonRepository.findOne({
-      where: { isActive: true },
-      order: { startDate: 'DESC' },
-    });
-    if (!activeSeason) {
+    const rewardRepositories = repositories ?? this.getRepositories();
+    const resolvedSeasonId =
+      seasonId === undefined
+        ? ((await this.seasonService.getActiveSeason(new Date(), entityManager))
+            ?.id ?? null)
+        : seasonId;
+    if (!resolvedSeasonId) {
       return {
         tokenSymbolAwarded: null,
         tokenAmountAwarded: '0',
@@ -138,10 +190,11 @@ export class RareRewardService {
       };
     }
 
-    const partnerToken = await this.partnerTokenRepository.findOne({
-      where: { seasonId: activeSeason.id },
-      order: { createdAt: 'ASC' },
-    });
+    const partnerToken =
+      await rewardRepositories.partnerTokenRepository.findOne({
+        where: { seasonId: resolvedSeasonId },
+        order: { createdAt: 'ASC' },
+      });
     if (!partnerToken) {
       return {
         tokenSymbolAwarded: null,
@@ -154,43 +207,57 @@ export class RareRewardService {
     const weekStartDate = this.getUtcWeekStartDate(
       session.endedAt ?? session.startedAt,
     );
-    const ticket = this.weeklyTokenTicketRepository.create({
+    const ticket = rewardRepositories.weeklyTokenTicketRepository.create({
       profileId: profile.id,
+      seasonId: resolvedSeasonId,
       weekStartDate,
       tokenSymbol: partnerToken.symbol,
       weight: 1,
+      idempotencyKey: this.getSideEffectIdempotencyKey(
+        entitlementIdempotencyKey,
+        'token-ticket',
+      ),
     });
-    await this.weeklyTokenTicketRepository.save(ticket);
+    await rewardRepositories.weeklyTokenTicketRepository.save(ticket);
 
-    const existingBalance = await this.claimableBalanceRepository.findOne({
-      where: {
-        profileId: profile.id,
-        tokenSymbol: partnerToken.symbol,
-      },
-    });
+    const existingBalance =
+      await rewardRepositories.claimableBalanceRepository.findOne({
+        where: {
+          profileId: profile.id,
+          seasonId: resolvedSeasonId,
+          tokenSymbol: partnerToken.symbol,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
 
     const nextAmount = (
       this.parseAmount(existingBalance?.claimableAmount ?? '0') +
       CLAIMABLE_TOKEN_REWARD_AMOUNT
     ).toString();
 
-    const balance = this.claimableBalanceRepository.create({
+    const balance = rewardRepositories.claimableBalanceRepository.create({
       id: existingBalance?.id,
       profileId: profile.id,
+      seasonId: resolvedSeasonId,
       tokenSymbol: partnerToken.symbol,
       claimableAmount: nextAmount,
     });
-    await this.claimableBalanceRepository.save(balance);
+    await rewardRepositories.claimableBalanceRepository.save(balance);
 
-    await this.rewardEventRepository.save(
-      this.rewardEventRepository.create({
+    await rewardRepositories.rewardEventRepository.save(
+      rewardRepositories.rewardEventRepository.create({
         profileId: profile.id,
+        seasonId: resolvedSeasonId,
         eventType: RewardEventType.TOKEN_TICKET,
         xpAmount: null,
         tokenSymbol: partnerToken.symbol,
+        idempotencyKey: this.getSideEffectIdempotencyKey(
+          entitlementIdempotencyKey,
+          'token',
+        ),
         metadata: {
           sessionId: session.id,
-          seasonId: activeSeason.id,
+          seasonId: resolvedSeasonId,
           weekStartDate,
           amountAwarded: CLAIMABLE_TOKEN_REWARD_AMOUNT.toString(),
         },
@@ -205,7 +272,7 @@ export class RareRewardService {
         tokenSymbol: partnerToken.symbol,
         tokenAmountAwarded: CLAIMABLE_TOKEN_REWARD_AMOUNT.toString(),
         weeklyTicketsIssued: 1,
-        seasonId: activeSeason.id,
+        seasonId: resolvedSeasonId,
         weekStartDate,
       },
     };
@@ -214,9 +281,13 @@ export class RareRewardService {
   private async issueNftRewards(
     profile: Profile,
     session: BubbleSession,
+    seasonId: string | null,
+    entitlementIdempotencyKey?: string,
+    repositories?: RareRewardRepositories,
   ): Promise<RareRewardCollectibleOutcome[]> {
+    const rewardRepositories = repositories ?? this.getRepositories();
     const eligibleDefinitions = (
-      await this.nftDefinitionRepository.find()
+      await rewardRepositories.nftDefinitionRepository.find()
     ).filter(
       (definition) =>
         definition.minStreak <= profile.currentStreak &&
@@ -226,22 +297,56 @@ export class RareRewardService {
       return [];
     }
 
-    const validCompletedSessions = await this.bubbleSessionRepository.count({
-      where: {
-        profileId: profile.id,
-        isCompleted: true,
-        activeSeconds: MoreThanOrEqual(
-          MIN_ACTIVE_SECONDS_FOR_RARE_REWARD_SESSION,
-        ),
-      },
-    });
+    const validCompletedSessions =
+      await rewardRepositories.bubbleSessionRepository.count({
+        where: {
+          profileId: profile.id,
+          isCompleted: true,
+          activeSeconds: MoreThanOrEqual(
+            MIN_ACTIVE_SECONDS_FOR_RARE_REWARD_SESSION,
+          ),
+        },
+      });
 
-    const existingOwnerships = await this.profileNftOwnershipRepository.find({
-      where: { profileId: profile.id },
-    });
+    const existingOwnerships =
+      await rewardRepositories.profileNftOwnershipRepository.find({
+        where: { profileId: profile.id },
+        relations: { nftDefinition: true },
+        order: { acquiredAt: 'DESC' },
+      });
     const ownedDefinitionIds = new Set(
       existingOwnerships.map((ownership) => ownership.nftDefinitionId),
     );
+    const latestAcquiredAt = existingOwnerships.reduce<number | null>(
+      (latestTimestamp, ownership) => {
+        const acquiredAt = ownership.acquiredAt.getTime();
+        return latestTimestamp === null
+          ? acquiredAt
+          : Math.max(latestTimestamp, acquiredAt);
+      },
+      null,
+    );
+    const cooldownExpiresAt =
+      latestAcquiredAt === null
+        ? null
+        : existingOwnerships.reduce((latestExpiry, ownership) => {
+            if (ownership.acquiredAt.getTime() !== latestAcquiredAt) {
+              return latestExpiry;
+            }
+            return Math.max(
+              latestExpiry,
+              latestAcquiredAt +
+                (ownership.nftDefinition?.cooldownDays ?? 0) *
+                  24 *
+                  60 *
+                  60 *
+                  1000,
+            );
+          }, latestAcquiredAt);
+    const rewardAt = session.endedAt ?? new Date();
+    if (cooldownExpiresAt !== null && rewardAt.getTime() < cooldownExpiresAt) {
+      return [];
+    }
 
     const awardedRewards: RareRewardCollectibleOutcome[] = [];
 
@@ -263,27 +368,42 @@ export class RareRewardService {
         continue;
       }
 
-      const ownership = this.profileNftOwnershipRepository.create({
-        profileId: profile.id,
-        nftDefinitionId: definition.id,
-      });
-      await this.profileNftOwnershipRepository.save(ownership);
+      const ownership = rewardRepositories.profileNftOwnershipRepository.create(
+        {
+          profileId: profile.id,
+          nftDefinitionId: definition.id,
+          idempotencyKey: this.getSideEffectIdempotencyKey(
+            entitlementIdempotencyKey,
+            `nft:${definition.id}`,
+          ),
+        },
+      );
+      await rewardRepositories.profileNftOwnershipRepository.save(ownership);
       awardedRewards.push({
         id: definition.id,
         key: definition.key,
       });
-      await this.mirrorOwnershipGrant(profile.walletId, {
+      await this.mirrorOwnershipGrant(profile.walletId, rewardRepositories, {
         rewardKey: definition.key,
         rewardType: 'nft',
-        sourceId: definition.id,
+        sourceId:
+          this.getSideEffectIdempotencyKey(
+            entitlementIdempotencyKey,
+            `nft:${definition.id}`,
+          ) ?? definition.id,
       });
 
-      await this.rewardEventRepository.save(
-        this.rewardEventRepository.create({
+      await rewardRepositories.rewardEventRepository.save(
+        rewardRepositories.rewardEventRepository.create({
           profileId: profile.id,
+          seasonId,
           eventType: RewardEventType.NFT,
           xpAmount: null,
           tokenSymbol: null,
+          idempotencyKey: this.getSideEffectIdempotencyKey(
+            entitlementIdempotencyKey,
+            `nft:${definition.id}`,
+          ),
           metadata: {
             sessionId: session.id,
             nftDefinitionId: definition.id,
@@ -291,6 +411,9 @@ export class RareRewardService {
           },
         }),
       );
+      if (definition.cooldownDays > 0) {
+        break;
+      }
     }
 
     return awardedRewards;
@@ -299,9 +422,13 @@ export class RareRewardService {
   private async issueCosmeticRewards(
     profile: Profile,
     session: BubbleSession,
+    seasonId: string | null,
+    entitlementIdempotencyKey?: string,
+    repositories?: RareRewardRepositories,
   ): Promise<RareRewardCollectibleOutcome[]> {
+    const rewardRepositories = repositories ?? this.getRepositories();
     const eligibleDefinitions = (
-      await this.cosmeticDefinitionRepository.find()
+      await rewardRepositories.cosmeticDefinitionRepository.find()
     ).filter(
       (definition) =>
         definition.minStreak <= profile.currentStreak &&
@@ -311,9 +438,10 @@ export class RareRewardService {
       return [];
     }
 
-    const existingUnlocks = await this.profileCosmeticUnlockRepository.find({
-      where: { profileId: profile.id },
-    });
+    const existingUnlocks =
+      await rewardRepositories.profileCosmeticUnlockRepository.find({
+        where: { profileId: profile.id },
+      });
     const unlockedDefinitionIds = new Set(
       existingUnlocks.map((unlock) => unlock.cosmeticDefinitionId),
     );
@@ -325,27 +453,40 @@ export class RareRewardService {
         continue;
       }
 
-      const unlock = this.profileCosmeticUnlockRepository.create({
+      const unlock = rewardRepositories.profileCosmeticUnlockRepository.create({
         profileId: profile.id,
         cosmeticDefinitionId: definition.id,
+        idempotencyKey: this.getSideEffectIdempotencyKey(
+          entitlementIdempotencyKey,
+          `cosmetic:${definition.id}`,
+        ),
       });
-      await this.profileCosmeticUnlockRepository.save(unlock);
+      await rewardRepositories.profileCosmeticUnlockRepository.save(unlock);
       awardedRewards.push({
         id: definition.id,
         key: definition.key,
       });
-      await this.mirrorOwnershipGrant(profile.walletId, {
+      await this.mirrorOwnershipGrant(profile.walletId, rewardRepositories, {
         rewardKey: definition.key,
         rewardType: 'cosmetic',
-        sourceId: definition.id,
+        sourceId:
+          this.getSideEffectIdempotencyKey(
+            entitlementIdempotencyKey,
+            `cosmetic:${definition.id}`,
+          ) ?? definition.id,
       });
 
-      await this.rewardEventRepository.save(
-        this.rewardEventRepository.create({
+      await rewardRepositories.rewardEventRepository.save(
+        rewardRepositories.rewardEventRepository.create({
           profileId: profile.id,
+          seasonId,
           eventType: RewardEventType.COSMETIC,
           xpAmount: null,
           tokenSymbol: null,
+          idempotencyKey: this.getSideEffectIdempotencyKey(
+            entitlementIdempotencyKey,
+            `cosmetic:${definition.id}`,
+          ),
           metadata: {
             sessionId: session.id,
             cosmeticDefinitionId: definition.id,
@@ -365,6 +506,14 @@ export class RareRewardService {
     const diffToMonday = (weekday + 6) % 7;
     normalized.setUTCDate(normalized.getUTCDate() - diffToMonday);
     return normalized.toISOString().slice(0, 10);
+  }
+
+  private getSideEffectIdempotencyKey(
+    entitlementIdempotencyKey: string | undefined,
+    suffix: string,
+  ): string | null {
+    const normalized = entitlementIdempotencyKey?.trim();
+    return normalized ? `${normalized}:${suffix}` : null;
   }
 
   private parseAmount(value: string): bigint {
@@ -397,24 +546,69 @@ export class RareRewardService {
 
   private async mirrorOwnershipGrant(
     walletId: string,
+    repositories: RareRewardRepositories,
     input: {
       rewardKey: string;
       rewardType: 'nft' | 'cosmetic';
       sourceId: string;
     },
   ): Promise<void> {
-    const wallet = await this.userWalletRepository.findOne({
+    const wallet = await repositories.userWalletRepository.findOne({
       where: { id: walletId },
     });
     if (!wallet) {
       return;
     }
 
-    await this.rewardLedgerOnchainService.grantOwnership({
-      walletAddress: wallet.address,
-      rewardKey: input.rewardKey,
-      rewardType: input.rewardType,
-      sourceId: input.sourceId,
-    });
+    const ownershipGrant = await this.rewardLedgerOnchainService.grantOwnership(
+      {
+        walletAddress: wallet.address,
+        rewardKey: input.rewardKey,
+        rewardType: input.rewardType,
+        sourceId: input.sourceId,
+      },
+    );
+    if (!ownershipGrant.submitted) {
+      throw new Error('Reward ownership grant was not submitted');
+    }
+  }
+
+  private getRepositories(
+    entityManager?: EntityManager,
+  ): RareRewardRepositories {
+    if (!entityManager) {
+      return {
+        partnerTokenRepository: this.partnerTokenRepository,
+        claimableBalanceRepository: this.claimableBalanceRepository,
+        weeklyTokenTicketRepository: this.weeklyTokenTicketRepository,
+        nftDefinitionRepository: this.nftDefinitionRepository,
+        profileNftOwnershipRepository: this.profileNftOwnershipRepository,
+        cosmeticDefinitionRepository: this.cosmeticDefinitionRepository,
+        profileCosmeticUnlockRepository: this.profileCosmeticUnlockRepository,
+        userWalletRepository: this.userWalletRepository,
+        bubbleSessionRepository: this.bubbleSessionRepository,
+        rewardEventRepository: this.rewardEventRepository,
+      };
+    }
+
+    return {
+      partnerTokenRepository: entityManager.getRepository(PartnerToken),
+      claimableBalanceRepository: entityManager.getRepository(
+        ClaimableTokenBalance,
+      ),
+      weeklyTokenTicketRepository:
+        entityManager.getRepository(WeeklyTokenTicket),
+      nftDefinitionRepository: entityManager.getRepository(NftDefinition),
+      profileNftOwnershipRepository:
+        entityManager.getRepository(ProfileNftOwnership),
+      cosmeticDefinitionRepository:
+        entityManager.getRepository(CosmeticDefinition),
+      profileCosmeticUnlockRepository: entityManager.getRepository(
+        ProfileCosmeticUnlock,
+      ),
+      userWalletRepository: entityManager.getRepository(UserWallet),
+      bubbleSessionRepository: entityManager.getRepository(BubbleSession),
+      rewardEventRepository: entityManager.getRepository(RewardEvent),
+    };
   }
 }

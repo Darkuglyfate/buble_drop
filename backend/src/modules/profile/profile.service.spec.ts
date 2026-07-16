@@ -6,8 +6,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
+import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
+import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
+import { SeasonService } from '../partner-token/season.service';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import { QualificationService } from '../qualification/qualification.service';
 import { XpService } from '../rewards/xp.service';
@@ -44,6 +47,9 @@ describe('ProfileService', () => {
   };
   let xpService: { grantXp: jest.Mock };
   let configService: { get: jest.Mock };
+  let dataSource: { transaction: jest.Mock };
+  let transactionManager: EntityManager;
+  let seasonService: { getActiveSeason: jest.Mock };
 
   beforeEach(async () => {
     walletRepository = {
@@ -54,6 +60,7 @@ describe('ProfileService', () => {
 
     profileRepository = {
       findOne: jest.fn(),
+      find: jest.fn(),
       query: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
@@ -93,8 +100,28 @@ describe('ProfileService', () => {
     xpService = {
       grantXp: jest.fn(),
     };
+    seasonService = {
+      getActiveSeason: jest.fn().mockResolvedValue(null),
+    };
     configService = {
       get: jest.fn(),
+    };
+    transactionManager = {
+      getRepository: jest.fn((entity: unknown) => {
+        if (entity === Profile) {
+          return profileRepository;
+        }
+        if (entity === ProfileAvatarUnlock) {
+          return profileAvatarUnlockRepository;
+        }
+        throw new Error('Unexpected repository');
+      }),
+    } as unknown as EntityManager;
+    dataSource = {
+      transaction: jest.fn(
+        (work: (manager: EntityManager) => Promise<unknown>) =>
+          work(transactionManager),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -125,6 +152,14 @@ describe('ProfileService', () => {
           useValue: claimableTokenBalanceRepository,
         },
         {
+          provide: RewardLedgerOnchainService,
+          useValue: {},
+        },
+        {
+          provide: SessionOutcomeOnchainService,
+          useValue: { getLatestOutcome: jest.fn() },
+        },
+        {
           provide: getRepositoryToken(ProfileNftOwnership),
           useValue: profileNftOwnershipRepository,
         },
@@ -148,10 +183,12 @@ describe('ProfileService', () => {
           provide: XpService,
           useValue: xpService,
         },
+        { provide: SeasonService, useValue: seasonService },
         {
           provide: ConfigService,
           useValue: configService,
         },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -241,6 +278,7 @@ describe('ProfileService', () => {
   });
 
   it('returns mvp profile summary', async () => {
+    seasonService.getActiveSeason.mockResolvedValue({ id: 'season-current' });
     profileRepository.findOne!.mockResolvedValue({
       id: 'profile-1',
       walletId: 'wallet-1',
@@ -307,16 +345,27 @@ describe('ProfileService', () => {
     );
     expect(result.claimableTokenBalanceSummary.tokenCount).toBe(2);
     expect(result.avatarState.currentAvatar?.paletteKey).toBe('blue');
+    expect(qualificationService.evaluateProgress).toHaveBeenCalledWith(
+      'profile-1',
+      'season-current',
+    );
+    expect(qualificationService.getSeasonProgress).toHaveBeenCalledWith(
+      'profile-1',
+      'season-current',
+    );
   });
 
   it('completes onboarding with starter avatar and grants onboarding xp', async () => {
-    profileRepository.findOne!.mockResolvedValue({
-      id: 'profile-3',
-      nickname: null,
-      currentAvatarId: null,
-      totalXp: 0,
-      onboardingCompletedAt: null,
-    });
+    seasonService.getActiveSeason.mockResolvedValue({ id: 'season-1' });
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: 'profile-3',
+        nickname: null,
+        currentAvatarId: null,
+        totalXp: 0,
+        onboardingCompletedAt: null,
+      })
+      .mockResolvedValueOnce({ id: 'profile-3', totalXp: 20 });
     avatarRepository.find!.mockResolvedValue([
       {
         id: '22222222-2222-4222-8222-222222222222',
@@ -357,17 +406,33 @@ describe('ProfileService', () => {
     expect(result.onboardingXpGranted).toBe(20);
     expect(result.totalXp).toBe(20);
     expect(result.needsOnboarding).toBe(false);
-    expect(xpService.grantXp).toHaveBeenCalled();
+    expect(xpService.grantXp).toHaveBeenCalledWith(
+      'profile-3',
+      [
+        expect.objectContaining({
+          idempotencyKey: 'onboarding:profile-3',
+          seasonId: 'season-1',
+        }),
+      ],
+      undefined,
+      transactionManager,
+    );
+    expect(seasonService.getActiveSeason).toHaveBeenCalledWith(
+      expect.any(Date),
+      transactionManager,
+    );
   });
 
   it('uses production-safe default onboarding xp when config is missing', async () => {
-    profileRepository.findOne!.mockResolvedValue({
-      id: 'profile-4',
-      nickname: null,
-      currentAvatarId: null,
-      totalXp: 0,
-      onboardingCompletedAt: null,
-    });
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: 'profile-4',
+        nickname: null,
+        currentAvatarId: null,
+        totalXp: 0,
+        onboardingCompletedAt: null,
+      })
+      .mockResolvedValueOnce({ id: 'profile-4', totalXp: 20 });
     avatarRepository.find!.mockResolvedValue([
       {
         id: '22222222-2222-4222-8222-222222222222',
@@ -410,8 +475,79 @@ describe('ProfileService', () => {
       [
         expect.objectContaining({
           amount: 20,
+          idempotencyKey: 'onboarding:profile-4',
+          seasonId: null,
         }),
       ],
+      undefined,
+      transactionManager,
+    );
+  });
+
+  it('keeps onboarding retryable when XP fails inside its transaction', async () => {
+    profileRepository
+      .findOne!.mockResolvedValueOnce({
+        id: 'profile-5',
+        nickname: null,
+        currentAvatarId: null,
+        totalXp: 0,
+        onboardingCompletedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'profile-5',
+        nickname: null,
+        currentAvatarId: null,
+        totalXp: 0,
+        onboardingCompletedAt: null,
+      })
+      .mockResolvedValueOnce({ id: 'profile-5', totalXp: 20 });
+    avatarRepository.find!.mockResolvedValue([
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        key: 'starter-bubble-blue',
+        isStarter: true,
+      },
+    ]);
+    profileAvatarUnlockRepository.findOne!.mockResolvedValue(null);
+    profileAvatarUnlockRepository.create!.mockImplementation(
+      (value: { profileId: string; avatarId: string }) => value,
+    );
+    profileAvatarUnlockRepository.save!.mockImplementation(
+      (value: { profileId: string; avatarId: string }) =>
+        Promise.resolve(value),
+    );
+    profileRepository.save!.mockImplementation((profile: Profile) =>
+      Promise.resolve(profile),
+    );
+    configService.get.mockReturnValue(20);
+    xpService.grantXp
+      .mockRejectedValueOnce(new Error('xp persistence failed'))
+      .mockResolvedValueOnce({
+        grantedTotal: 20,
+        remainingDailyCap: 80,
+        grantedAllocations: [],
+      });
+
+    await expect(
+      service.completeOnboarding(
+        '11111111-1111-4111-8111-111111111111',
+        'retryable',
+      ),
+    ).rejects.toThrow('xp persistence failed');
+
+    const retried = await service.completeOnboarding(
+      '11111111-1111-4111-8111-111111111111',
+      'retryable',
+    );
+
+    expect(retried.onboardingXpGranted).toBe(20);
+    expect(dataSource.transaction).toHaveBeenCalledTimes(2);
+    expect(xpService.grantXp).toHaveBeenNthCalledWith(
+      1,
+      'profile-5',
+      expect.any(Array),
+      undefined,
+      transactionManager,
     );
   });
 
@@ -467,6 +603,44 @@ describe('ProfileService', () => {
         key: 'starter-bubble-lilac',
         label: 'Starter Bubble Lilac',
         paletteKey: 'lilac',
+      },
+    ]);
+  });
+
+  it('returns only public leaderboard fields', async () => {
+    profileRepository.find!.mockResolvedValue([
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: 'Bubble One',
+        totalXp: 1200,
+        currentStreak: 8,
+      } as Profile,
+    ]);
+
+    await expect(service.getLeaderboard(20)).resolves.toEqual([
+      {
+        rank: 1,
+        nickname: 'Bubble One',
+        totalXp: 1200,
+      },
+    ]);
+  });
+
+  it('does not derive a public nickname from the profile id', async () => {
+    profileRepository.find!.mockResolvedValue([
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        nickname: null,
+        totalXp: 1200,
+        currentStreak: 8,
+      } as Profile,
+    ]);
+
+    await expect(service.getLeaderboard(20)).resolves.toEqual([
+      {
+        rank: 1,
+        nickname: 'Player 1',
+        totalXp: 1200,
       },
     ]);
   });

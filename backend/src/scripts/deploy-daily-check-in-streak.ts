@@ -1,6 +1,12 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { Hex, createPublicClient, createWalletClient, http, isAddress } from 'viem';
+import {
+  Hex,
+  createPublicClient,
+  createWalletClient,
+  http,
+  isAddress,
+} from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import solc from 'solc';
@@ -26,13 +32,11 @@ type SolcOutput = {
   }>;
 };
 
-function requiredEnv(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
+type SolcCompiler = {
+  compile(input: string): string;
+};
+
+const solcCompiler = solc as unknown as SolcCompiler;
 
 function getRpcUrl(): string {
   return process.env.BASE_RPC_URL?.trim() || 'https://mainnet.base.org';
@@ -97,13 +101,17 @@ async function main() {
     },
   };
 
-  const compiled = JSON.parse(solc.compile(JSON.stringify(input))) as SolcOutput;
+  const compiled = JSON.parse(
+    solcCompiler.compile(JSON.stringify(input)),
+  ) as SolcOutput;
   if (compiled.errors?.length) {
     const fatalErrors = compiled.errors.filter(
       (entry) => entry.severity === 'error',
     );
     if (fatalErrors.length > 0) {
-      throw new Error(fatalErrors.map((entry) => entry.formattedMessage).join('\n'));
+      throw new Error(
+        fatalErrors.map((entry) => entry.formattedMessage).join('\n'),
+      );
     }
   }
 
@@ -113,9 +121,9 @@ async function main() {
     throw new Error('Failed to compile DailyCheckInStreak contract');
   }
 
-  const bytecode = contractArtifact.evm.bytecode.object.startsWith('0x')
+  const bytecode: Hex = contractArtifact.evm.bytecode.object.startsWith('0x')
     ? (contractArtifact.evm.bytecode.object as Hex)
-    : (`0x${contractArtifact.evm.bytecode.object}` as Hex);
+    : `0x${contractArtifact.evm.bytecode.object}`;
 
   const publicClient = createPublicClient({
     chain: base,
@@ -151,7 +159,9 @@ async function main() {
   console.log('ONCHAIN_STREAK_ENABLED=1');
   console.log(`ONCHAIN_STREAK_CONTRACT_ADDRESS=${receipt.contractAddress}`);
   console.log('ONCHAIN_STREAK_PRIVATE_KEY=<single-private-key>');
-  console.log('ONCHAIN_STREAK_SIGNER_PRIVATE_KEY=<writer-private-key-optional>');
+  console.log(
+    'ONCHAIN_STREAK_SIGNER_PRIVATE_KEY=<writer-private-key-optional>',
+  );
   console.log(`ONCHAIN_STREAK_SIGNER_ADDRESS=${writerAddress}`);
 }
 

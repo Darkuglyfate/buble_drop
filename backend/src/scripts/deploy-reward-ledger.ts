@@ -1,6 +1,12 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { Hex, createPublicClient, createWalletClient, http, isAddress } from 'viem';
+import {
+  Hex,
+  createPublicClient,
+  createWalletClient,
+  http,
+  isAddress,
+} from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
 import solc from 'solc';
@@ -25,6 +31,12 @@ type SolcOutput = {
     formattedMessage: string;
   }>;
 };
+
+type SolcCompiler = {
+  compile(input: string): string;
+};
+
+const solcCompiler = solc as unknown as SolcCompiler;
 
 function getRpcUrl(): string {
   return process.env.BASE_RPC_URL?.trim() || 'https://mainnet.base.org';
@@ -51,8 +63,10 @@ function getAccountFromAny(privateKeyEnvNames: string[]) {
 async function main() {
   const rpcUrl = getRpcUrl();
   const deployer = getAccountFromAny(['REWARD_LEDGER_DEPLOYER_PRIVATE_KEY']);
-  const ownerAddress = process.env.REWARD_LEDGER_OWNER_ADDRESS?.trim() || deployer.address;
-  const writerAddress = process.env.REWARD_LEDGER_WRITER_ADDRESS?.trim() || deployer.address;
+  const ownerAddress =
+    process.env.REWARD_LEDGER_OWNER_ADDRESS?.trim() || deployer.address;
+  const writerAddress =
+    process.env.REWARD_LEDGER_WRITER_ADDRESS?.trim() || deployer.address;
 
   if (!isAddress(ownerAddress)) {
     throw new Error('REWARD_LEDGER_OWNER_ADDRESS must be a valid address');
@@ -82,11 +96,15 @@ async function main() {
       },
     },
   };
-  const compiled = JSON.parse(solc.compile(JSON.stringify(input))) as SolcOutput;
+  const compiled = JSON.parse(
+    solcCompiler.compile(JSON.stringify(input)),
+  ) as SolcOutput;
   const fatalErrors =
     compiled.errors?.filter((entry) => entry.severity === 'error') ?? [];
   if (fatalErrors.length > 0) {
-    throw new Error(fatalErrors.map((entry) => entry.formattedMessage).join('\n'));
+    throw new Error(
+      fatalErrors.map((entry) => entry.formattedMessage).join('\n'),
+    );
   }
 
   const contractArtifact =
@@ -95,9 +113,9 @@ async function main() {
     throw new Error('Failed to compile BubbleDropRewardLedger contract');
   }
 
-  const bytecode = contractArtifact.evm.bytecode.object.startsWith('0x')
+  const bytecode: Hex = contractArtifact.evm.bytecode.object.startsWith('0x')
     ? (contractArtifact.evm.bytecode.object as Hex)
-    : (`0x${contractArtifact.evm.bytecode.object}` as Hex);
+    : `0x${contractArtifact.evm.bytecode.object}`;
 
   const publicClient = createPublicClient({
     chain: base,

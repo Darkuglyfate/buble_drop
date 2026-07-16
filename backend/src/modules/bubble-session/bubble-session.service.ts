@@ -8,9 +8,10 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { GaslessRelayStatus } from '../onchain-relay/gasless-relay.service';
 import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
+import { SeasonService } from '../partner-token/season.service';
 import { Profile } from '../profile/entities/profile.entity';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import {
@@ -18,6 +19,8 @@ import {
   type SeasonProgressSnapshot,
 } from '../qualification/qualification.service';
 import { RedisService } from '../../redis/redis.service';
+import { RareRewardEntitlementStatus } from '../rewards/entities/rare-reward-entitlement.entity';
+import { RareRewardEntitlementService } from '../rewards/rare-reward-entitlement.service';
 import { type RareRewardIssueResult } from '../rewards/rare-reward.service';
 import { XpService, XpSource } from '../rewards/xp.service';
 import { BubbleSession } from './entities/bubble-session.entity';
@@ -30,6 +33,7 @@ const ACTIVE_SECONDS_FOR_COMPLETION_BONUS = 180;
 const SESSION_ACTIVE_SECONDS_XP_CAP = 600; // 10 minutes
 const ACTIVE_SECONDS_PER_SIGNAL = 12;
 const SESSION_ACTIVITY_TTL_SECONDS = 24 * 60 * 60;
+const POSTGRES_INT_MAX = 2_147_483_647;
 const EMPTY_RARE_REWARD_OUTCOME: RareRewardIssueResult = {
   tokenSymbolAwarded: null,
   tokenAmountAwarded: '0',
@@ -93,14 +97,17 @@ export class BubbleSessionService {
   private readonly logger = new Logger(BubbleSessionService.name);
 
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(BubbleSession)
     private readonly bubbleSessionRepository: Repository<BubbleSession>,
     @InjectRepository(Profile)
     private readonly profileRepository: Repository<Profile>,
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
+    private readonly rareRewardEntitlementService: RareRewardEntitlementService,
     private readonly redisService: RedisService,
     private readonly sessionOutcomeOnchainService: SessionOutcomeOnchainService,
+    private readonly seasonService: SeasonService,
   ) {}
 
   async startSession(profileId: string): Promise<BubbleSessionStartResult> {
@@ -126,8 +133,10 @@ export class BubbleSessionService {
       };
     }
 
+    const activeSeason = await this.seasonService.getActiveSeason();
     let session = this.bubbleSessionRepository.create({
       profileId,
+      seasonId: activeSeason?.id ?? null,
       endedAt: null,
       activeSeconds: 0,
       isCompleted: false,
@@ -145,8 +154,8 @@ export class BubbleSessionService {
     profileId: string,
     sessionId: string,
     activeSecondsInput: number,
-    finalScoreInput: number,
-    bestComboInput: number,
+    finalScoreInput = 0,
+    bestComboInput = 0,
   ): Promise<BubbleSessionCompleteResult> {
     this.assertUuid(profileId, 'Invalid profileId format');
     this.assertUuid(sessionId, 'Invalid sessionId format');
@@ -156,11 +165,23 @@ export class BubbleSessionService {
         'activeSeconds must be a non-negative number',
       );
     }
-    if (!Number.isFinite(finalScoreInput) || finalScoreInput < 0) {
-      throw new BadRequestException('finalScore must be a non-negative number');
+    if (
+      !Number.isInteger(finalScoreInput) ||
+      finalScoreInput < 0 ||
+      finalScoreInput > POSTGRES_INT_MAX
+    ) {
+      throw new BadRequestException(
+        `finalScore must be an integer between 0 and ${POSTGRES_INT_MAX}`,
+      );
     }
-    if (!Number.isFinite(bestComboInput) || bestComboInput < 0) {
-      throw new BadRequestException('bestCombo must be a non-negative number');
+    if (
+      !Number.isInteger(bestComboInput) ||
+      bestComboInput < 0 ||
+      bestComboInput > POSTGRES_INT_MAX
+    ) {
+      throw new BadRequestException(
+        `bestCombo must be an integer between 0 and ${POSTGRES_INT_MAX}`,
+      );
     }
 
     const profile = await this.profileRepository.findOne({
@@ -200,7 +221,6 @@ export class BubbleSessionService {
     const recordedActiveSeconds = await this.getRecordedActiveSeconds(
       session,
       endedAt,
-      reportedActiveSeconds,
     );
     const activeSeconds = Math.min(
       reportedActiveSeconds,
@@ -225,68 +245,148 @@ export class BubbleSessionService {
       ? SESSION_COMPLETION_BONUS_XP
       : 0;
 
-    session.endedAt = endedAt;
-    session.activeSeconds = activeSeconds;
-    session.isCompleted = true;
-    await this.bubbleSessionRepository.save(session);
+    const completionTransaction = await this.dataSource.transaction(
+      async (entityManager) => {
+        const transactionSessionRepository =
+          entityManager.getRepository(BubbleSession);
+        const completionClaim = await transactionSessionRepository
+          .createQueryBuilder()
+          .update(BubbleSession)
+          .set({
+            endedAt,
+            activeSeconds,
+            isCompleted: true,
+          })
+          .where(
+            '"id" = :sessionId AND "profileId" = :profileId AND "isCompleted" = false',
+            { sessionId, profileId },
+          )
+          .execute();
+        if (completionClaim.affected !== 1) {
+          throw new ConflictException('Bubble session already completed');
+        }
 
-    const xpGrant = await this.xpService.grantXp(profileId, [
-      {
-        source: XpSource.SESSION_REWARD_BUBBLES,
-        amount: rewardBubblesXp,
-        metadata: {
-          sessionId: session.id,
-          sessionDurationSeconds,
-        },
-      },
-      {
-        source: XpSource.SESSION_ACTIVE_PLAY,
-        amount: activePlayXp,
-        metadata: {
-          sessionId: session.id,
-          activeSeconds,
-          sessionDurationSeconds,
-        },
-      },
-      {
-        source: XpSource.SESSION_COMPLETION_BONUS,
-        amount: completionBonusXp,
-        metadata: {
-          sessionId: session.id,
-          sessionDurationSeconds,
-        },
-      },
-      {
-        source: XpSource.SESSION_RESERVE_BONUS,
-        amount: 0,
-        metadata: {
-          sessionId: session.id,
-        },
-      },
-    ]);
+        session.endedAt = endedAt;
+        session.activeSeconds = activeSeconds;
+        session.isCompleted = true;
 
-    const grantedXp = xpGrant.grantedTotal;
-    if (grantedXp > 0) {
-      profile.totalXp += grantedXp;
-      await this.profileRepository.save(profile);
+        const xpGrant = await this.xpService.grantXp(
+          profileId,
+          [
+            {
+              source: XpSource.SESSION_REWARD_BUBBLES,
+              amount: rewardBubblesXp,
+              seasonId: session.seasonId ?? null,
+              idempotencyKey: `session:${session.id}:${XpSource.SESSION_REWARD_BUBBLES}`,
+              metadata: {
+                sessionId: session.id,
+                sessionDurationSeconds,
+              },
+            },
+            {
+              source: XpSource.SESSION_ACTIVE_PLAY,
+              amount: activePlayXp,
+              seasonId: session.seasonId ?? null,
+              idempotencyKey: `session:${session.id}:${XpSource.SESSION_ACTIVE_PLAY}`,
+              metadata: {
+                sessionId: session.id,
+                activeSeconds,
+                sessionDurationSeconds,
+              },
+            },
+            {
+              source: XpSource.SESSION_COMPLETION_BONUS,
+              amount: completionBonusXp,
+              seasonId: session.seasonId ?? null,
+              idempotencyKey: `session:${session.id}:${XpSource.SESSION_COMPLETION_BONUS}`,
+              metadata: {
+                sessionId: session.id,
+                sessionDurationSeconds,
+              },
+            },
+            {
+              source: XpSource.SESSION_RESERVE_BONUS,
+              amount: 0,
+              seasonId: session.seasonId ?? null,
+              idempotencyKey: `session:${session.id}:${XpSource.SESSION_RESERVE_BONUS}`,
+              metadata: {
+                sessionId: session.id,
+              },
+            },
+          ],
+          undefined,
+          entityManager,
+        );
+        const completionEligibility =
+          await this.qualificationService.evaluateProgress(
+            profileId,
+            session.seasonId ?? null,
+            undefined,
+            entityManager,
+          );
+        const entitlement =
+          await this.rareRewardEntitlementService.createForEligibleCompletedSession(
+            {
+              entityManager,
+              profileId,
+              sessionId: session.id,
+              rareRewardAccessActive:
+                completionEligibility.rareRewardAccessActive,
+              isCompletionEligible,
+            },
+          );
+
+        return { xpGrant, entitlement };
+      },
+    );
+    await this.cleanupActivityEvidence(session.id);
+
+    let rareRewardOutcome = EMPTY_RARE_REWARD_OUTCOME;
+    if (completionTransaction.entitlement) {
+      try {
+        const issuedEntitlement =
+          await this.rareRewardEntitlementService.issueEntitlement(
+            completionTransaction.entitlement.id,
+          );
+        if (
+          issuedEntitlement?.status === RareRewardEntitlementStatus.ISSUED &&
+          issuedEntitlement.outcome
+        ) {
+          rareRewardOutcome =
+            issuedEntitlement.outcome as unknown as RareRewardIssueResult;
+        }
+      } catch (error) {
+        const detail =
+          error instanceof Error ? error.message : 'unknown issuance failure';
+        this.logger.error(
+          `Rare reward issuance trigger failed for bubble session ${session.id}. ${detail}`,
+        );
+      }
     }
 
-    const qualification =
-      await this.qualificationService.evaluateProgress(profileId);
-    const seasonProgress =
-      await this.qualificationService.getSeasonProgress(profileId);
+    const grantedXp = completionTransaction.xpGrant.grantedTotal;
+    const profileWithUpdatedXp = await this.profileRepository.findOne({
+      where: { id: profile.id },
+    });
+
+    const qualification = await this.qualificationService.evaluateProgress(
+      profileId,
+      session.seasonId ?? null,
+    );
+    const seasonProgress = await this.qualificationService.getSeasonProgress(
+      profileId,
+      session.seasonId ?? null,
+    );
     const rewardFlags = this.buildRewardFlags({
       isCompletionEligible,
       rareAccessActive: qualification.rareRewardAccessActive,
       seasonEligible: seasonProgress.eligibleAtSeasonEnd,
-      rareRewardIssued: this.hasRareRewardIssue(EMPTY_RARE_REWARD_OUTCOME),
+      rareRewardIssued: this.hasRareRewardIssue(rareRewardOutcome),
     });
     const integrityHash = this.buildIntegrityHash({
       sessionId: session.id,
       walletAddress: profile.wallet?.address ?? '',
       xpGained: grantedXp,
-      finalScore,
-      bestCombo,
       activeSeconds,
       sessionDurationSeconds,
       rewardFlags,
@@ -297,8 +397,8 @@ export class BubbleSessionService {
             sessionId: session.id,
             walletAddress: profile.wallet.address,
             xpGained: grantedXp,
-            finalScore,
-            bestCombo,
+            finalScore: 0,
+            bestCombo: 0,
             activeSeconds,
             sessionDurationSeconds,
             rewardFlags,
@@ -337,11 +437,11 @@ export class BubbleSessionService {
       newStreak: profile.currentStreak,
       rareAccessActive: qualification.rareRewardAccessActive,
       grantedXp,
-      totalXp: profile.totalXp,
+      totalXp: profileWithUpdatedXp?.totalXp ?? profile.totalXp,
       qualificationStatus: qualification.qualificationStatus,
       rareRewardAccessActive: qualification.rareRewardAccessActive,
       seasonProgress,
-      rareRewardOutcome: EMPTY_RARE_REWARD_OUTCOME,
+      rareRewardOutcome,
       finalScore,
       bestCombo,
       rewardFlags,
@@ -407,7 +507,6 @@ export class BubbleSessionService {
   private async getRecordedActiveSeconds(
     session: BubbleSession,
     endedAt: Date,
-    fallbackActiveSeconds: number,
   ): Promise<number> {
     const sessionStartedAtMs = session.startedAt.getTime();
     const sessionEndedAtMs = endedAt.getTime();
@@ -415,16 +514,10 @@ export class BubbleSessionService {
       0,
       Math.floor((sessionEndedAtMs - sessionStartedAtMs) / 1000),
     );
-    const boundedFallbackActiveSeconds = Math.min(
-      Math.max(0, Math.floor(fallbackActiveSeconds)),
-      sessionDurationSeconds,
-    );
-
     try {
       const client = this.redisService.getClient();
       const activityKey = this.getActivityKey(session.id);
       const rawTimestamps = await client.zrange(activityKey, 0, -1);
-      await client.del(activityKey);
 
       if (rawTimestamps.length === 0) {
         return 0;
@@ -459,9 +552,22 @@ export class BubbleSessionService {
       const detail =
         error instanceof Error ? error.message : 'unknown redis failure';
       this.logger.warn(
-        `Redis activity replay failed for bubble session ${session.id}; falling back to reported activeSeconds. ${detail}`,
+        `Redis activity replay failed for bubble session ${session.id}; withholding activity rewards. ${detail}`,
       );
-      return boundedFallbackActiveSeconds;
+      return 0;
+    }
+  }
+
+  private async cleanupActivityEvidence(sessionId: string): Promise<void> {
+    try {
+      const client = this.redisService.getClient();
+      await client.del(this.getActivityKey(sessionId));
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : 'unknown redis failure';
+      this.logger.warn(
+        `Redis activity cleanup failed for bubble session ${sessionId}; completion rewards remain unchanged. ${detail}`,
+      );
     }
   }
 
@@ -503,8 +609,6 @@ export class BubbleSessionService {
     sessionId: string;
     walletAddress: string;
     xpGained: number;
-    finalScore: number;
-    bestCombo: number;
     activeSeconds: number;
     sessionDurationSeconds: number;
     rewardFlags: number;
@@ -515,8 +619,6 @@ export class BubbleSessionService {
           input.sessionId,
           input.walletAddress.toLowerCase(),
           input.xpGained,
-          input.finalScore,
-          input.bestCombo,
           input.activeSeconds,
           input.sessionDurationSeconds,
           input.rewardFlags,

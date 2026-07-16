@@ -20,6 +20,29 @@ export class WalletBindingService {
     private readonly referralRepository: Repository<Referral>,
   ) {}
 
+  async resolveAuthenticatedProfileId(
+    authSessionHeader: string | undefined,
+  ): Promise<string> {
+    const normalizedWalletAddress =
+      this.authSessionService.getAuthenticatedWalletAddress(authSessionHeader);
+    const profile = await this.profileRepository.findOne({
+      where: {
+        wallet: {
+          address: normalizedWalletAddress,
+        },
+      },
+      relations: {
+        wallet: true,
+      },
+    });
+
+    if (!profile?.wallet) {
+      throw new NotFoundException('Authenticated profile not found');
+    }
+
+    return profile.id;
+  }
+
   async assertProfileAccess(
     profileId: string,
     authSessionHeader: string | undefined,

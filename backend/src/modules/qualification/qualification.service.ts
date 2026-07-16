@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, Repository } from 'typeorm';
+import { EntityManager, MoreThanOrEqual, Repository } from 'typeorm';
 import { BubbleSession } from '../bubble-session/entities/bubble-session.entity';
 import { CheckInRecord } from '../check-in/entities/check-in-record.entity';
+import { SeasonService } from '../partner-token/season.service';
 import { Profile } from '../profile/entities/profile.entity';
 import {
   RewardEvent,
@@ -47,28 +48,66 @@ export class QualificationService {
     private readonly rewardEventRepository: Repository<RewardEvent>,
     @InjectRepository(CheckInRecord)
     private readonly checkInRecordRepository: Repository<CheckInRecord>,
+    private readonly seasonService: SeasonService,
   ) {}
 
   async processAfterDailyCheckIn(
     profileId: string,
     missedDay: boolean,
+    seasonId?: string | null,
+    entityManager?: EntityManager,
   ): Promise<QualificationSnapshot> {
-    let state = await this.getOrCreateState(profileId);
+    const resolvedSeasonId = await this.resolveSeasonId(
+      seasonId,
+      entityManager,
+    );
+    if (!resolvedSeasonId) {
+      return this.toSnapshot(QualificationStatus.LOCKED);
+    }
+
+    const qualificationStateRepository =
+      entityManager?.getRepository(QualificationState) ??
+      this.qualificationStateRepository;
+    let state = await this.getOrCreateState(
+      profileId,
+      resolvedSeasonId,
+      entityManager,
+    );
 
     if (missedDay && this.hasRareRewardAccess(state.status)) {
       state.status = QualificationStatus.PAUSED;
       state.pausedAt = new Date();
-      state = await this.qualificationStateRepository.save(state);
+      state = await qualificationStateRepository.save(state);
     }
 
-    return this.evaluateProgress(profileId, state);
+    return this.evaluateProgress(
+      profileId,
+      resolvedSeasonId,
+      state,
+      entityManager,
+    );
   }
 
   async evaluateProgress(
     profileId: string,
+    seasonId?: string | null,
     existingState?: QualificationState,
+    entityManager?: EntityManager,
   ): Promise<QualificationSnapshot> {
-    const profile = await this.profileRepository.findOne({
+    const resolvedSeasonId = await this.resolveSeasonId(
+      seasonId,
+      entityManager,
+    );
+    if (!resolvedSeasonId) {
+      return this.toSnapshot(QualificationStatus.LOCKED);
+    }
+
+    const profileRepository =
+      entityManager?.getRepository(Profile) ?? this.profileRepository;
+    const qualificationStateRepository =
+      entityManager?.getRepository(QualificationState) ??
+      this.qualificationStateRepository;
+    const profile = await profileRepository.findOne({
       where: { id: profileId },
     });
     if (!profile) {
@@ -78,26 +117,38 @@ export class QualificationService {
       };
     }
 
-    let state = existingState ?? (await this.getOrCreateState(profileId));
+    let state =
+      existingState?.seasonId === resolvedSeasonId
+        ? existingState
+        : await this.getOrCreateState(
+            profileId,
+            resolvedSeasonId,
+            entityManager,
+          );
 
     // Reflect missed daily check-ins even outside check-in mutation flow.
-    const missedDailyCheckIn = await this.hasMissedDailyCheckIn(profileId);
+    const missedDailyCheckIn = await this.hasMissedDailyCheckIn(
+      profileId,
+      entityManager,
+    );
     if (missedDailyCheckIn && this.hasRareRewardAccess(state.status)) {
       state.status = QualificationStatus.PAUSED;
       state.pausedAt = new Date();
-      state = await this.qualificationStateRepository.save(state);
+      state = await qualificationStateRepository.save(state);
     }
 
     if (state.status === QualificationStatus.PAUSED) {
       const progress = await this.getQualificationProgress(
         profileId,
+        resolvedSeasonId,
         state.pausedAt ?? undefined,
         profile.currentStreak,
+        entityManager,
       );
       if (this.meetsQualificationThreshold(progress)) {
         state.status = QualificationStatus.RESTORED;
         state.restoredAt = new Date();
-        state = await this.qualificationStateRepository.save(state);
+        state = await qualificationStateRepository.save(state);
       }
       return this.toSnapshot(state.status);
     }
@@ -108,8 +159,10 @@ export class QualificationService {
     ) {
       const progress = await this.getQualificationProgress(
         profileId,
+        resolvedSeasonId,
         undefined,
         profile.currentStreak,
+        entityManager,
       );
       if (this.meetsQualificationThreshold(progress)) {
         state.status = QualificationStatus.QUALIFIED;
@@ -117,7 +170,7 @@ export class QualificationService {
       } else if (state.status === QualificationStatus.LOCKED) {
         state.status = QualificationStatus.IN_PROGRESS;
       }
-      state = await this.qualificationStateRepository.save(state);
+      state = await qualificationStateRepository.save(state);
     }
 
     return this.toSnapshot(state.status);
@@ -125,28 +178,38 @@ export class QualificationService {
 
   async getSeasonProgress(
     profileId: string,
+    seasonId?: string | null,
+    entityManager?: EntityManager,
   ): Promise<SeasonProgressSnapshot> {
-    const profile = await this.profileRepository.findOne({
+    const resolvedSeasonId = await this.resolveSeasonId(
+      seasonId,
+      entityManager,
+    );
+    if (!resolvedSeasonId) {
+      return this.emptySeasonProgress();
+    }
+
+    const profileRepository =
+      entityManager?.getRepository(Profile) ?? this.profileRepository;
+    const profile = await profileRepository.findOne({
       where: { id: profileId },
     });
     if (!profile) {
-      return {
-        qualificationStatus: QualificationStatus.LOCKED,
-        eligibleAtSeasonEnd: false,
-        streak: 0,
-        xp: 0,
-        activeSessions: 0,
-        requiredStreak: REQUIRED_STREAK,
-        requiredXp: REQUIRED_XP,
-        requiredActiveSessions: REQUIRED_ACTIVE_SESSIONS,
-      };
+      return this.emptySeasonProgress();
     }
 
-    const snapshot = await this.evaluateProgress(profileId);
+    const snapshot = await this.evaluateProgress(
+      profileId,
+      resolvedSeasonId,
+      undefined,
+      entityManager,
+    );
     const progress = await this.getQualificationProgress(
       profileId,
+      resolvedSeasonId,
       undefined,
       profile.currentStreak,
+      entityManager,
     );
 
     return {
@@ -163,13 +226,24 @@ export class QualificationService {
 
   private async getQualificationProgress(
     profileId: string,
+    seasonId: string,
     sinceDate: Date | undefined,
     currentStreak: number,
+    entityManager?: EntityManager,
   ): Promise<{ streak: number; xp: number; activeSessions: number }> {
-    const xp = await this.getEarnedXp(profileId, sinceDate);
-    const activeSessions = await this.bubbleSessionRepository.count({
+    const xp = await this.getEarnedXp(
+      profileId,
+      seasonId,
+      sinceDate,
+      entityManager,
+    );
+    const bubbleSessionRepository =
+      entityManager?.getRepository(BubbleSession) ??
+      this.bubbleSessionRepository;
+    const activeSessions = await bubbleSessionRepository.count({
       where: {
         profileId,
+        seasonId,
         isCompleted: true,
         activeSeconds: MoreThanOrEqual(
           MIN_ACTIVE_SECONDS_FOR_QUALIFICATION_SESSION,
@@ -187,11 +261,16 @@ export class QualificationService {
 
   private async getEarnedXp(
     profileId: string,
+    seasonId: string,
     sinceDate?: Date,
+    entityManager?: EntityManager,
   ): Promise<number> {
-    const events = await this.rewardEventRepository.find({
+    const rewardEventRepository =
+      entityManager?.getRepository(RewardEvent) ?? this.rewardEventRepository;
+    const events = await rewardEventRepository.find({
       where: {
         profileId,
+        seasonId,
         eventType: RewardEventType.XP,
         ...(sinceDate ? { createdAt: MoreThanOrEqual(sinceDate) } : {}),
       },
@@ -215,25 +294,58 @@ export class QualificationService {
 
   private async getOrCreateState(
     profileId: string,
+    seasonId: string,
+    entityManager?: EntityManager,
   ): Promise<QualificationState> {
-    let state = await this.qualificationStateRepository.findOne({
-      where: { profileId },
-    });
-    if (!state) {
-      state = this.qualificationStateRepository.create({
+    const qualificationStateRepository =
+      entityManager?.getRepository(QualificationState) ??
+      this.qualificationStateRepository;
+    await qualificationStateRepository
+      .createQueryBuilder()
+      .insert()
+      .into(QualificationState)
+      .values({
         profileId,
+        seasonId,
         status: QualificationStatus.LOCKED,
         qualifiedAt: null,
         pausedAt: null,
         restoredAt: null,
-      });
-      state = await this.qualificationStateRepository.save(state);
+      })
+      .orIgnore()
+      .execute();
+
+    const state = await qualificationStateRepository.findOne({
+      where: { profileId, seasonId },
+    });
+    if (!state) {
+      throw new Error('Qualification state could not be read after insert');
     }
     return state;
   }
 
-  private async hasMissedDailyCheckIn(profileId: string): Promise<boolean> {
-    const lastCheckIn = await this.checkInRecordRepository.findOne({
+  private async resolveSeasonId(
+    seasonId: string | null | undefined,
+    entityManager?: EntityManager,
+  ): Promise<string | null> {
+    if (seasonId !== undefined) {
+      return seasonId;
+    }
+    const activeSeason = await this.seasonService.getActiveSeason(
+      new Date(),
+      entityManager,
+    );
+    return activeSeason?.id ?? null;
+  }
+
+  private async hasMissedDailyCheckIn(
+    profileId: string,
+    entityManager?: EntityManager,
+  ): Promise<boolean> {
+    const checkInRecordRepository =
+      entityManager?.getRepository(CheckInRecord) ??
+      this.checkInRecordRepository;
+    const lastCheckIn = await checkInRecordRepository.findOne({
       where: { profileId },
       order: { checkInDate: 'DESC' },
     });
@@ -260,6 +372,19 @@ export class QualificationService {
     return {
       qualificationStatus: status,
       rareRewardAccessActive: this.hasRareRewardAccess(status),
+    };
+  }
+
+  private emptySeasonProgress(): SeasonProgressSnapshot {
+    return {
+      qualificationStatus: QualificationStatus.LOCKED,
+      eligibleAtSeasonEnd: false,
+      streak: 0,
+      xp: 0,
+      activeSessions: 0,
+      requiredStreak: REQUIRED_STREAK,
+      requiredXp: REQUIRED_XP,
+      requiredActiveSessions: REQUIRED_ACTIVE_SESSIONS,
     };
   }
 

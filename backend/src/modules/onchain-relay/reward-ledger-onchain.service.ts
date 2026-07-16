@@ -238,8 +238,15 @@ export class RewardLedgerOnchainService {
     const normalizedWallet = this.normalizeOptionalAddress(walletAddress);
     const contractAddress = this.getReadableContractAddress();
     const rpcUrl = this.configService.get<string>('BASE_RPC_URL')?.trim();
-    if (!normalizedWallet || !contractAddress || !rpcUrl || rewardKeys.length === 0) {
-      return Object.fromEntries(rewardKeys.map((rewardKey) => [rewardKey, false]));
+    if (
+      !normalizedWallet ||
+      !contractAddress ||
+      !rpcUrl ||
+      rewardKeys.length === 0
+    ) {
+      return Object.fromEntries(
+        rewardKeys.map((rewardKey) => [rewardKey, false]),
+      );
     }
 
     try {
@@ -258,17 +265,24 @@ export class RewardLedgerOnchainService {
       })) as boolean[];
 
       return Object.fromEntries(
-        rewardKeys.map((rewardKey, index) => [rewardKey, Boolean(ownedStates[index])]),
+        rewardKeys.map((rewardKey, index) => [
+          rewardKey,
+          Boolean(ownedStates[index]),
+        ]),
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'unknown error';
       this.logger.warn(`Reward ownership read failed. ${detail}`);
-      return Object.fromEntries(rewardKeys.map((rewardKey) => [rewardKey, false]));
+      return Object.fromEntries(
+        rewardKeys.map((rewardKey) => [rewardKey, false]),
+      );
     }
   }
 
   private getReadableContractAddress(): Address | null {
-    const raw = this.configService.get<string>('REWARD_LEDGER_CONTRACT_ADDRESS')?.trim();
+    const raw = this.configService
+      .get<string>('REWARD_LEDGER_CONTRACT_ADDRESS')
+      ?.trim();
     return raw && isAddress(raw) ? raw : null;
   }
 
@@ -278,12 +292,16 @@ export class RewardLedgerOnchainService {
   }
 
   private getWriterAccount() {
-    const rawPrivateKey = this.getRequiredEnv('REWARD_LEDGER_WRITER_PRIVATE_KEY');
+    const rawPrivateKey = this.getRequiredEnv(
+      'REWARD_LEDGER_WRITER_PRIVATE_KEY',
+    );
     const privateKey = rawPrivateKey.startsWith('0x')
       ? rawPrivateKey
       : `0x${rawPrivateKey}`;
     if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
-      throw new Error('REWARD_LEDGER_WRITER_PRIVATE_KEY must be a 32-byte hex value');
+      throw new Error(
+        'REWARD_LEDGER_WRITER_PRIVATE_KEY must be a 32-byte hex value',
+      );
     }
     const account = privateKeyToAccount(privateKey as Hex);
     const configuredWriterAddress = this.configService

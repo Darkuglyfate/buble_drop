@@ -36,3 +36,4 @@ frontend/next-env.d.ts
 
 # Legacy unrelated demo folder
 bubble/
+.vercel

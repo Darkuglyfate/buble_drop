@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddEquippedStyleSnapshotToProfiles1742100000000
-  implements MigrationInterface
-{
+export class AddEquippedStyleSnapshotToProfiles1742100000000 implements MigrationInterface {
   name = 'AddEquippedStyleSnapshotToProfiles1742100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

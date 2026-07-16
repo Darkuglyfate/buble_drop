@@ -2,7 +2,7 @@
 
 This document is the strict operational checklist for BubbleDrop production rollouts on Render and Vercel.
 
-Its purpose is to prevent partial deployments where the backend process is healthy but the live app is still broken because database migrations or reference seed data were not applied.
+Its purpose is to prevent partial deployments where the backend process is healthy but the live app is still broken because automatic migrations, reference seed data, or frontend security env values were not verified.
 
 ## Scope
 
@@ -18,7 +18,6 @@ This is an operational runbook only. It does not change product behavior or infr
 
 Use **`npm run start:prod`** in the backend service (not `node dist/main` alone).  
 That script runs **TypeORM migrations** from compiled `dist/` before Nest listens, so new deploys apply schema without a separate migration step.  
-Opt-out only if needed: `RUN_MIGRATIONS_ON_START=0` or `npm run start:prod:skip-migrate`.
 
 ## Hard Rules
 
@@ -27,7 +26,8 @@ Opt-out only if needed: `RUN_MIGRATIONS_ON_START=0` or `npm run start:prod:skip-
 - Always use `DB_USER` as the canonical database username variable.
 - Do not use `DB_USERNAME` in Render env configuration for this repo.
 - Do not skip the reference seed step for a fresh or reset production database.
-- If running migrations or seed from outside Render against external Render Postgres, use an SSL-aware path.
+- Production migrations are owned by `npm run start:prod`; do not invoke the TypeORM migration CLI as a second owner.
+- If running the reference seed from outside Render against external Render Postgres, use an SSL-aware path.
 
 ## Required Backend Env Variables
 
@@ -57,7 +57,22 @@ Only if live reward-wallet payout is intended for launch:
 ```bash
 REWARD_WALLET_ADDRESS=0x...
 REWARD_WALLET_PRIVATE_KEY=0x...
+REWARD_PAYOUT_MIN_CONFIRMATIONS=2
+PAYOUT_RECONCILIATION_INTERVAL_MS=15000
 ```
+
+Keep `REWARD_PAYOUT_MIN_CONFIRMATIONS` aligned with the Base finality policy; payouts remain unresolved until this depth is reached.
+Keep the backend payout reconciliation processor running; it automatically rebroadcasts durable prepared transactions after crashes or ambiguous RPC responses.
+
+Before enabling live payouts after the season-scoping migration, audit legacy rows:
+
+```sql
+SELECT "profileId", "tokenSymbol", "claimableAmount"
+FROM "claimable_token_balances"
+WHERE "seasonId" IS NULL;
+```
+
+The migration backfills only symbols that map to exactly one season. Ambiguous legacy rows stay hidden from the active-season claim API and require an operator-approved season assignment before payout.
 
 ## Required Frontend Env Variables
 
@@ -65,7 +80,7 @@ Set these on the Vercel frontend project:
 
 ```bash
 BACKEND_URL=https://buble-drop.onrender.com
-NEXT_PUBLIC_BACKEND_URL=https://buble-drop.onrender.com
+FRONTEND_ORIGIN=https://bubledrop.vercel.app
 NEXT_PUBLIC_APP_URL=https://bubledrop.vercel.app
 NEXT_PUBLIC_POSTHOG_KEY=
 NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
@@ -73,9 +88,9 @@ NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
 
 Notes:
 
-- `BACKEND_URL` is the preferred production source for the server-side proxy route.
-- `NEXT_PUBLIC_BACKEND_URL` must stay aligned with `BACKEND_URL`.
-- If these frontend backend-origin env values are wrong or missing, proxy routes can fail even if backend is healthy.
+- `BACKEND_URL` is the required server-only production source for the proxy route.
+- `FRONTEND_ORIGIN` must exactly match the deployed frontend origin used for same-origin and CSRF validation.
+- If either value is wrong or missing, proxy routes fail closed even if the backend is healthy.
 
 ## Canonical DB Env Naming
 
@@ -103,25 +118,34 @@ Follow this order exactly.
 
 ### 1. Local Preflight
 
-From `backend/`:
+Install both workspace dependency sets, then run the aggregate gate from the repository root:
 
 ```bash
-npm install
-npm run lint
-npm run test
-npm run build
-npx tsc --noEmit
+npm --prefix backend ci
+npm --prefix frontend ci
+node scripts/release-check.cjs
 ```
 
-From `frontend/`:
+The component gates can also be run independently when isolating a failure:
 
 ```bash
-npm install
-npm run lint
-npm run build
+cd backend
+npm run lint:check
+npm run contracts:compile
+npm run contracts:check
+npm run release:check
+
+cd ../frontend
+npm run smoke:production
+npm run release:check
 ```
 
-Do not start a production rollout if these checks are failing.
+- `lint:check` reports ESLint failures without applying fixes.
+- `contracts:compile` uses the checked-in `solc` dependency without Base RPC access.
+- `contracts:check` deploys all three contracts to a deterministic in-memory EthereumJS VM and exercises their core behavior without deployment keys.
+- `smoke:production` builds and starts Next in production mode while keeping the real local mock backend for BFF/security coverage.
+
+Do not start a production rollout if the aggregate gate or any required component gate is failing.
 
 ### 2. Confirm Backend Production Settings
 
@@ -136,10 +160,10 @@ Safe expected commands:
 
 ```bash
 # build
-npm install --include=dev && npm run build
+npm ci --include=dev && npm run build
 
 # start
-npm run start
+npm run start:prod
 ```
 
 ### 3. Deploy Backend
@@ -150,22 +174,16 @@ Do not stop here.
 
 At this point the service may be alive while the app is still unusable.
 
-### 4. Run Database Migrations
+### 4. Verify Automatic Database Migrations
 
-Preferred production-safe path: run migrations from the Render backend shell, where runtime env and internal connectivity already match production.
-
-From the backend shell:
-
-```bash
-npm install --include=dev
-npm run db:migration:show
-npm run db:migration:run
-```
+Inspect the Render startup logs from `npm run start:prod` before running any seed or frontend verification.
 
 Expected outcome:
 
-- pending migrations are shown before apply
-- migrations finish without SQL or connectivity errors
+- the production wrapper acquires its PostgreSQL advisory lock
+- compiled migrations finish without SQL or connectivity errors
+- the advisory lock is released and Nest starts only after migration success
+- no separate TypeORM migration command is started by an operator or a second instance
 
 ### 5. Run Reference Seed
 
@@ -230,21 +248,20 @@ Rollout is not complete until both direct backend and frontend proxy checks pass
 
 ## SSL-Aware Note For External Render Postgres
 
-If you must run migrations or seed from a machine outside Render against external Render Postgres, the connection path must be SSL-aware.
+If you must run the reference seed from a machine outside Render against external Render Postgres, the connection path must be SSL-aware.
 
 Important:
 
-- the repo's normal local TypeORM CLI flow does not by itself guarantee an SSL-ready external Render Postgres path
 - external Render Postgres can reject non-SSL connections with `SSL/TLS required`
 
 Preferred rule:
 
-- use the Render backend shell for production DB rollout whenever possible
+- use the Render backend shell for production seed operations whenever possible
 
 If an external path is unavoidable:
 
-- ensure the migration and seed execution path explicitly enables SSL for the Postgres client
-- do not assume local `npm run db:migration:run` is production-safe against the external Render database unless SSL has been handled
+- ensure the seed execution path explicitly enables SSL for the Postgres client
+- do not introduce a second migration owner outside `npm run start:prod`
 
 ## Post-Deploy Verification Checklist
 
@@ -262,21 +279,21 @@ All of the following must be true before marking rollout successful:
 
 ## Highest-Risk Failure Points
 
-- Backend process starts successfully but migrations were never applied.
+- Backend startup wrapper cannot acquire the migration lock or apply migrations.
 - Migrations were applied but reference seed data was not loaded.
 - Operator uses `DB_USERNAME` instead of `DB_USER`.
 - Frontend `BACKEND_URL` is set, so proxying starts, but backend DB rollout is incomplete.
-- External Render Postgres is targeted from a local machine without SSL-aware migration or seed execution.
+- External Render Postgres is targeted from a local machine without SSL-aware seed execution.
 - Rollout is judged only by Render health or root URL response instead of BubbleDrop endpoints.
 - Frontend is redeployed before direct backend endpoint verification is complete.
 
 ## What Should Be Automated Next
 
-- Automate backend migrations as a required production post-deploy step.
+- Monitor automatic migration-lock acquisition, completion, and release in startup logs.
 - Automate reference seed for fresh production databases or first-run environments.
 - Add a production readiness check that verifies BubbleDrop endpoints, not just process health.
 - Version the provider-side deploy configuration so build, start, and env contracts do not drift in UI-only configuration.
-- Add a documented SSL-aware operational script for external Render Postgres migration and seed flows.
+- Add a documented SSL-aware operational script for external Render Postgres seed flows.
 - Make frontend rollout completion dependent on successful backend verification.
 
 ## Rollout Completion Gate

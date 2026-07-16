@@ -10,7 +10,8 @@ import {
   withBubbleDropContext,
 } from "../bubbledrop-runtime";
 import {
-  createAuthenticatedJsonHeaders,
+  fetchBubbleDropMutation,
+  getAuthenticatedSessionMarker,
   getSmokeSignInSessionFromCurrentUrl,
   loadBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
@@ -78,9 +79,13 @@ function addIntegerStrings(a: string, b: string): string {
 async function fetchOnboardingStateForProfile(
   backendUrl: string,
   profileId: string,
-  authSessionToken?: string | null,
+  authenticatedSessionMarker?: string | null,
 ): Promise<BackendProfileSummary | null> {
-  return fetchBackendProfileSummary(backendUrl, profileId, authSessionToken);
+  return fetchBackendProfileSummary(
+    backendUrl,
+    profileId,
+    authenticatedSessionMarker,
+  );
 }
 
 const QUALIFICATION_BADGE_COPY: Record<
@@ -135,11 +140,11 @@ export function ClaimScreen() {
   const connectedWalletAddress = address?.trim().toLowerCase() ?? null;
   const profileId = runtimeContext.profileId;
   const walletAddress = connectedWalletAddress ?? runtimeContext.walletAddress;
-  const authSessionToken =
+  const authenticatedSessionMarker =
     authSession &&
     (!walletAddress || authSession.address === walletAddress) &&
     (!connectedWalletAddress || authSession.address === connectedWalletAddress)
-      ? authSession.authSessionToken
+      ? getAuthenticatedSessionMarker(authSession)
       : null;
 
   const totalClaimable = useMemo(() => {
@@ -152,7 +157,7 @@ export function ClaimScreen() {
     canUseBackend &&
     !needsOnboarding &&
     !isResolvingOnboardingState &&
-    !!authSessionToken;
+    !!authenticatedSessionMarker;
   const qualificationBadge = qualificationStatus
     ? QUALIFICATION_BADGE_COPY[qualificationStatus]
     : {
@@ -161,17 +166,15 @@ export function ClaimScreen() {
       };
 
   const loadBalances = async (resolvedProfileId: string) => {
+    void resolvedProfileId;
     setIsLoadingBalances(true);
     setErrorMessage(null);
     try {
-      const response = await fetch(
-        `${backendUrl}/claim/balances?profileId=${encodeURIComponent(resolvedProfileId)}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          cache: "no-store",
-        },
-      );
+      const response = await fetch(`${backendUrl}/claim/balances`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
 
       if (!response.ok) {
         setBalances([]);
@@ -204,7 +207,7 @@ export function ClaimScreen() {
         const summary = await fetchOnboardingStateForProfile(
           backendUrl,
           resolvedProfileId,
-          authSessionToken,
+          authenticatedSessionMarker,
         );
         if (!summary) {
           setProfileSummary(null);
@@ -244,7 +247,7 @@ export function ClaimScreen() {
     if (!backendUrl || !profileId || needsOnboarding) {
       return;
     }
-    if (!authSessionToken) {
+    if (!authenticatedSessionMarker) {
       setErrorMessage("Sign in with Base on the home screen before requesting a claim.");
       return;
     }
@@ -254,9 +257,8 @@ export function ClaimScreen() {
     setClaimResult(null);
 
     try {
-      const response = await fetch(`${backendUrl}/claim/request`, {
+      const response = await fetchBubbleDropMutation(`${backendUrl}/claim/request`, {
         method: "POST",
-        headers: createAuthenticatedJsonHeaders(authSessionToken),
         body: JSON.stringify({
           profileId,
           tokenSymbol,

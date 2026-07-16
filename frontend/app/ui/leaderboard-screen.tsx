@@ -7,10 +7,8 @@ import { BackButton, ErrorMessage, LoadingState, ScreenLayout } from "./shared";
 
 type LeaderboardEntry = {
   rank: number;
-  profileId: string;
   nickname: string;
   totalXp: number;
-  currentStreak: number;
 };
 
 export function LeaderboardScreen() {
@@ -61,12 +59,11 @@ export function LeaderboardScreen() {
 
         {!isLoading
           ? entries?.map((entry) => (
-              <article key={entry.profileId} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
+              <article key={`${entry.rank}-${entry.nickname}`} className="mt-3 rounded-xl border border-[#dce6ff] bg-white/80 p-3">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-[#2f4a7f]">
                     #{entry.rank} {entry.nickname}
                   </p>
-                  <p className="text-xs text-[#6074a0]">Streak: {entry.currentStreak}</p>
                 </div>
                 <p className="mt-1 text-sm font-bold text-[#3a5a94]">{entry.totalXp} XP</p>
               </article>

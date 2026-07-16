@@ -9,12 +9,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Profile } from '../../profile/entities/profile.entity';
+import { Season } from '../../partner-token/entities/season.entity';
 
 @Entity({ name: 'bubble_sessions' })
 @Index('IDX_bubble_sessions_one_active_per_profile', ['profileId'], {
   unique: true,
   where: '"isCompleted" = false',
 })
+@Index('IDX_bubble_sessions_profile_season', ['profileId', 'seasonId'])
 export class BubbleSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -26,6 +28,13 @@ export class BubbleSession {
   @ManyToOne(() => Profile, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'profileId' })
   profile: Profile;
+
+  @Column({ type: 'uuid', nullable: true })
+  seasonId: string | null;
+
+  @ManyToOne(() => Season, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'seasonId' })
+  season: Season | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   startedAt: Date;

@@ -9,10 +9,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { ClaimableTokenBalance } from '../claim/entities/claimable-token-balance.entity';
 import { RewardLedgerOnchainService } from '../onchain-relay/reward-ledger-onchain.service';
 import { SessionOutcomeOnchainService } from '../onchain-relay/session-outcome-onchain.service';
+import { SeasonService } from '../partner-token/season.service';
 import { QualificationStatus } from '../qualification/entities/qualification-state.entity';
 import {
   QualificationService,
@@ -113,16 +119,14 @@ export interface ProfileSummary {
     }>;
   };
   styleState: {
-    equippedStyle:
-      | {
-          rewardId: string;
-          rewardKey: string;
-          rarity: 'common' | 'rare' | 'epic' | 'legendary';
-          source: 'nft' | 'cosmetic';
-          variant: string;
-          appliedAt: string;
-        }
-      | null;
+    equippedStyle: {
+      rewardId: string;
+      rewardKey: string;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      source: 'nft' | 'cosmetic';
+      variant: string;
+      appliedAt: string;
+    } | null;
     testingOverrideActive: boolean;
     previewOnly: boolean;
   };
@@ -163,10 +167,8 @@ export interface StarterAvatarView {
 
 export interface LeaderboardEntry {
   rank: number;
-  profileId: string;
   nickname: string;
   totalXp: number;
-  currentStreak: number;
 }
 
 export interface RewardsInventoryView {
@@ -200,6 +202,7 @@ export class ProfileService {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly dataSource: DataSource,
     @InjectRepository(UserWallet)
     private readonly walletRepository: Repository<UserWallet>,
     @InjectRepository(Profile)
@@ -224,6 +227,7 @@ export class ProfileService {
     private readonly sessionOutcomeOnchainService: SessionOutcomeOnchainService,
     private readonly qualificationService: QualificationService,
     private readonly xpService: XpService,
+    private readonly seasonService: SeasonService,
   ) {}
 
   async connectWallet(walletAddress: string): Promise<ProfileStartupState> {
@@ -345,12 +349,13 @@ export class ProfileService {
       where: { isStarter: true },
       order: { createdAt: 'ASC' },
     });
-    const starterAvatar =
-      (avatarId
-        ? starterAvatars.find((avatar) => avatar.id === avatarId) ?? null
-        : starterAvatars.find((avatar) => avatar.key === DEFAULT_STARTER_AVATAR_KEY) ??
-          starterAvatars[0] ??
-          null);
+    const starterAvatar = avatarId
+      ? (starterAvatars.find((avatar) => avatar.id === avatarId) ?? null)
+      : (starterAvatars.find(
+          (avatar) => avatar.key === DEFAULT_STARTER_AVATAR_KEY,
+        ) ??
+        starterAvatars[0] ??
+        null);
     if (!starterAvatar) {
       throw new BadRequestException(
         avatarId
@@ -359,35 +364,62 @@ export class ProfileService {
       );
     }
 
-    profile.nickname = normalizedNickname;
-    profile.currentAvatarId = starterAvatar.id;
-    profile.onboardingCompletedAt = new Date();
-
-    await this.ensureStarterAvatarsUnlocked(
-      profile.id,
-      starterAvatars.map((avatar) => avatar.id),
-    );
-
-    let onboardingXpGranted = 0;
     const onboardingXpAmount = this.getConfiguredNonNegativeInteger(
       'ONBOARDING_XP_AMOUNT',
       DEFAULT_ONBOARDING_XP_AMOUNT,
     );
-    if (onboardingXpAmount > 0) {
-      const xpGrant = await this.xpService.grantXp(profile.id, [
-        {
-          source: XpSource.ONBOARDING_COMPLETION,
-          amount: onboardingXpAmount,
-          metadata: {
-            avatarId: starterAvatar.id,
-          },
-        },
-      ]);
-      onboardingXpGranted = xpGrant.grantedTotal;
-      profile.totalXp += onboardingXpGranted;
-    }
+    const { savedProfile, onboardingXpGranted, profileWithUpdatedXp } =
+      await this.dataSource.transaction(async (entityManager) => {
+        const transactionProfileRepository =
+          entityManager.getRepository(Profile);
+        profile.nickname = normalizedNickname;
+        profile.currentAvatarId = starterAvatar.id;
+        profile.onboardingCompletedAt = new Date();
 
-    const savedProfile = await this.profileRepository.save(profile);
+        await this.ensureStarterAvatarsUnlocked(
+          profile.id,
+          starterAvatars.map((avatar) => avatar.id),
+          entityManager,
+        );
+
+        const savedProfile = await transactionProfileRepository.save(profile);
+        let onboardingXpGranted = 0;
+        if (onboardingXpAmount > 0) {
+          const activeSeason = await this.seasonService.getActiveSeason(
+            profile.onboardingCompletedAt,
+            entityManager,
+          );
+          const xpGrant = await this.xpService.grantXp(
+            profile.id,
+            [
+              {
+                source: XpSource.ONBOARDING_COMPLETION,
+                amount: onboardingXpAmount,
+                seasonId: activeSeason?.id ?? null,
+                idempotencyKey: `onboarding:${profile.id}`,
+                metadata: {
+                  avatarId: starterAvatar.id,
+                },
+              },
+            ],
+            undefined,
+            entityManager,
+          );
+          onboardingXpGranted = xpGrant.grantedTotal;
+        }
+
+        const profileWithUpdatedXp = onboardingXpAmount
+          ? await transactionProfileRepository.findOne({
+              where: { id: profile.id },
+            })
+          : savedProfile;
+
+        return {
+          savedProfile,
+          onboardingXpGranted,
+          profileWithUpdatedXp,
+        };
+      });
 
     return {
       profileId: savedProfile.id,
@@ -395,7 +427,7 @@ export class ProfileService {
       avatarId: savedProfile.currentAvatarId ?? starterAvatar.id,
       onboardingCompletedAt: savedProfile.onboardingCompletedAt ?? new Date(),
       onboardingXpGranted,
-      totalXp: savedProfile.totalXp,
+      totalXp: profileWithUpdatedXp?.totalXp ?? savedProfile.totalXp,
       needsOnboarding: false,
     };
   }
@@ -505,11 +537,16 @@ export class ProfileService {
     const nextFrame =
       rankFrames.find((frame) => frame.minLifetimeXp > profile.totalXp) ?? null;
 
+    const activeSeason = await this.seasonService.getActiveSeason();
+    const seasonId = activeSeason?.id ?? null;
     const qualification = await this.qualificationService.evaluateProgress(
       profile.id,
+      seasonId,
     );
-    const seasonProgress =
-      await this.qualificationService.getSeasonProgress(profile.id);
+    const seasonProgress = await this.qualificationService.getSeasonProgress(
+      profile.id,
+      seasonId,
+    );
     const qualificationStatus = qualification.qualificationStatus;
     const rareRewardAccessActive = qualification.rareRewardAccessActive;
 
@@ -530,10 +567,11 @@ export class ProfileService {
     const testingOverrideActive = false;
     const latestSessionOutcome =
       await this.sessionOutcomeOnchainService.getLatestOutcome(wallet.address);
-    const ownershipMirrorActive =
-      this.configService.get<string>('REWARD_LEDGER_CONTRACT_ADDRESS')?.trim()
-        ? true
-        : false;
+    const ownershipMirrorActive = this.configService
+      .get<string>('REWARD_LEDGER_CONTRACT_ADDRESS')
+      ?.trim()
+      ? true
+      : false;
 
     return {
       onboardingState: {
@@ -655,10 +693,8 @@ export class ProfileService {
 
     return profiles.map((profile, index) => ({
       rank: index + 1,
-      profileId: profile.id,
-      nickname: profile.nickname ?? `Player-${profile.id.slice(0, 8)}`,
+      nickname: profile.nickname ?? `Player ${index + 1}`,
       totalXp: profile.totalXp,
-      currentStreak: profile.currentStreak,
     }));
   }
 
@@ -683,9 +719,6 @@ export class ProfileService {
       order: { acquiredAt: 'DESC' },
     });
     const nftDefinitions = await this.nftDefinitionRepository.find();
-    const nftDefinitionMap = new Map(
-      nftDefinitions.map((item) => [item.id, item]),
-    );
     const nftOwnershipMap = new Map(
       nftOwnerships.map((item) => [item.nftDefinitionId, item]),
     );
@@ -695,9 +728,6 @@ export class ProfileService {
       order: { unlockedAt: 'DESC' },
     });
     const cosmeticDefinitions = await this.cosmeticDefinitionRepository.find();
-    const cosmeticDefinitionMap = new Map(
-      cosmeticDefinitions.map((item) => [item.id, item]),
-    );
     const cosmeticUnlockMap = new Map(
       cosmeticUnlocks.map((item) => [item.cosmeticDefinitionId, item]),
     );
@@ -813,17 +843,63 @@ export class ProfileService {
     profileId: string,
   ): Promise<ProfileSummary['styleState']['equippedStyle']> {
     try {
-      const rows = (await this.profileRepository.query(
+      const rawRows: unknown = await this.profileRepository.query(
         `SELECT "equippedStyleSnapshot" FROM "profiles" WHERE "id" = $1`,
         [profileId],
-      )) as Array<{ equippedStyleSnapshot: ProfileSummary['styleState']['equippedStyle'] }>;
-      return rows[0]?.equippedStyleSnapshot ?? null;
+      );
+      if (!Array.isArray(rawRows)) {
+        return null;
+      }
+
+      const firstRow: unknown = rawRows[0];
+      return this.isEquippedStyleSnapshotRow(firstRow)
+        ? firstRow.equippedStyleSnapshot
+        : null;
     } catch (error) {
       if (this.isMissingEquippedStyleSnapshotColumnError(error)) {
         return null;
       }
       throw error;
     }
+  }
+
+  private isEquippedStyleSnapshotRow(value: unknown): value is {
+    equippedStyleSnapshot: ProfileSummary['styleState']['equippedStyle'];
+  } {
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('equippedStyleSnapshot' in value)
+    ) {
+      return false;
+    }
+
+    const snapshot = value.equippedStyleSnapshot;
+    return snapshot === null || this.isEquippedStyleSnapshot(snapshot);
+  }
+
+  private isEquippedStyleSnapshot(
+    value: unknown,
+  ): value is NonNullable<ProfileSummary['styleState']['equippedStyle']> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'rewardId' in value &&
+      typeof value.rewardId === 'string' &&
+      'rewardKey' in value &&
+      typeof value.rewardKey === 'string' &&
+      'rarity' in value &&
+      (value.rarity === 'common' ||
+        value.rarity === 'rare' ||
+        value.rarity === 'epic' ||
+        value.rarity === 'legendary') &&
+      'source' in value &&
+      (value.source === 'nft' || value.source === 'cosmetic') &&
+      'variant' in value &&
+      typeof value.variant === 'string' &&
+      'appliedAt' in value &&
+      typeof value.appliedAt === 'string'
+    );
   }
 
   private isMissingEquippedStyleSnapshotColumnError(error: unknown): boolean {
@@ -842,9 +918,13 @@ export class ProfileService {
   private async ensureStarterAvatarsUnlocked(
     profileId: string,
     starterAvatarIds: string[],
+    entityManager?: EntityManager,
   ): Promise<void> {
+    const profileAvatarUnlockRepository = entityManager
+      ? entityManager.getRepository(ProfileAvatarUnlock)
+      : this.profileAvatarUnlockRepository;
     for (const starterAvatarId of starterAvatarIds) {
-      const existingUnlock = await this.profileAvatarUnlockRepository.findOne({
+      const existingUnlock = await profileAvatarUnlockRepository.findOne({
         where: {
           profileId,
           avatarId: starterAvatarId,
@@ -855,11 +935,11 @@ export class ProfileService {
         continue;
       }
 
-      const starterUnlock = this.profileAvatarUnlockRepository.create({
+      const starterUnlock = profileAvatarUnlockRepository.create({
         profileId,
         avatarId: starterAvatarId,
       });
-      await this.profileAvatarUnlockRepository.save(starterUnlock);
+      await profileAvatarUnlockRepository.save(starterUnlock);
     }
   }
 }

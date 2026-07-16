@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 /**
  * Manages Web Audio API for bubble pop sounds.
@@ -10,7 +10,7 @@ export function useSessionAudio() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnavailableRef = useRef(false);
 
-  const playPopSound = (isBonus: boolean) => {
+  const playPopSound = useCallback((isBonus: boolean) => {
     if (typeof window === "undefined" || audioUnavailableRef.current) {
       return;
     }
@@ -54,7 +54,7 @@ export function useSessionAudio() {
     } catch {
       audioUnavailableRef.current = true;
     }
-  };
+  }, []);
 
   useEffect(() => {
     return () => {

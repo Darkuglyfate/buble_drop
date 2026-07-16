@@ -4,17 +4,20 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
+    "prebuild": "node scripts/prepare-production-build.mjs",
     "build": "next build",
     "start": "next start --port 3001",
     "lint": "eslint",
     "smoke": "playwright test",
+    "smoke:production": "playwright test --config playwright.production.config.ts",
+    "release:check": "npm run lint && npm run smoke:production",
     "smoke:headed": "playwright test --headed"
   },
   "dependencies": {
     "@base-org/account": "^2.5.2",
     "@tanstack/react-query": "^5.90.21",
     "framer-motion": "^12.38.0",
-    "next": "16.1.6",
+    "next": "16.2.10",
     "posthog-js": "^1.360.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -28,8 +31,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "postcss": "8.5.19"
   }
 }

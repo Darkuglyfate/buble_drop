@@ -10,7 +10,6 @@ import {
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { ConnectWalletDto } from './dto/connect-wallet.dto';
 import { EquipStyleDto } from './dto/equip-style.dto';
-import { GetProfileSummaryDto } from './dto/get-profile-summary.dto';
 import { SelectAvatarDto } from './dto/select-avatar.dto';
 import {
   AUTH_SESSION_HEADER,
@@ -58,19 +57,13 @@ export class ProfileController {
 
   @Get('summary')
   async getProfileSummary(
-    @Query() dto: GetProfileSummaryDto,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<ProfileSummary> {
-    // Auth is optional on summary: profileId is a non-guessable UUID,
-    // and the frontend needs to load profile state before sign-in completes.
-    // When auth header is present, verify it matches the profile owner.
-    if (authSessionHeader) {
-      await this.walletBindingService.assertProfileAccess(
-        dto.profileId,
+    const profileId =
+      await this.walletBindingService.resolveAuthenticatedProfileId(
         authSessionHeader,
       );
-    }
-    return this.profileService.getProfileSummary(dto.profileId);
+    return this.profileService.getProfileSummary(profileId);
   }
 
   @Post('onboarding/complete')
@@ -136,15 +129,12 @@ export class ProfileController {
 
   @Get('rewards-inventory')
   async getRewardsInventory(
-    @Query() dto: GetProfileSummaryDto,
     @Headers(AUTH_SESSION_HEADER) authSessionHeader?: string,
   ): Promise<RewardsInventoryView> {
-    if (authSessionHeader) {
-      await this.walletBindingService.assertProfileAccess(
-        dto.profileId,
+    const profileId =
+      await this.walletBindingService.resolveAuthenticatedProfileId(
         authSessionHeader,
       );
-    }
-    return this.profileService.getRewardsInventory(dto.profileId);
+    return this.profileService.getRewardsInventory(profileId);
   }
 }

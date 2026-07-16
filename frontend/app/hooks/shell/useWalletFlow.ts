@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createSiweMessage } from "viem/siwe";
 import {
   useAccount,
@@ -10,7 +10,7 @@ import {
   useSwitchChain,
 } from "wagmi";
 import { base } from "wagmi/chains";
-import { getAddress, type Address } from "viem";
+import { getAddress } from "viem";
 import {
   captureAnalyticsEvent,
 } from "../../analytics";
@@ -21,9 +21,11 @@ import {
 } from "../../base-wallet-runtime";
 import {
   clearBubbleDropFrontendSignInSession,
-  createSmokeSignInSession,
+  fetchBubbleDropMutation,
+  getAuthenticatedSessionMarker,
   hasVerifiedAuthSession,
-  loadBubbleDropFrontendSignInSession,
+  logoutBubbleDropSession,
+  refreshBubbleDropSessionStatus,
   signInSessionMatchesWallet,
   storeBubbleDropFrontendSignInSession,
   type BubbleDropFrontendSignInSession,
@@ -61,11 +63,11 @@ type AuthSessionNonceResponse = {
 };
 
 type VerifiedAuthSessionResponse = {
+  authenticated: true;
   walletAddress: string;
   chainId: number;
   issuedAt: string;
   expiresAt: string;
-  authSessionToken: string;
 };
 
 type BackendFailureDetails = {
@@ -177,12 +179,9 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     address: string;
     chainId: number;
   } | null>(null);
-  // Initialize synchronously from sessionStorage so the very first render
-  // already knows the user is signed in. Otherwise the shell briefly shows
-  // the "Sign in with Base" button while wagmi is still rehydrating.
   const [signInSession, setSignInSession] = useState<
     BubbleDropFrontendSignInSession | null
-  >(() => loadBubbleDropFrontendSignInSession());
+  >(null);
   const [walletFlowState, setWalletFlowState] =
     useState<WalletFlowState>(IDLE_WALLET_FLOW_STATE);
   const [isSigningInWithBase, setIsSigningInWithBase] = useState(false);
@@ -215,10 +214,9 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
         connectedWalletAddress,
         effectiveChainId,
       ));
-  const authenticatedSessionToken =
-    isSignedInWithBase && hasVerifiedAuthSession(signInSession)
-      ? signInSession?.authSessionToken ?? null
-      : null;
+  const authenticatedSessionMarker = isSignedInWithBase
+    ? getAuthenticatedSessionMarker(signInSession)
+    : null;
 
   const {
     preferredConnector,
@@ -264,18 +262,51 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     setSmokeWalletOverride(getSmokeWalletOverride());
   }, []);
 
+  const refreshSessionStatus = useCallback(async () => {
+    try {
+      const session = await refreshBubbleDropSessionStatus();
+      setSignInSession(session);
+      return session;
+    } catch {
+      clearBubbleDropFrontendSignInSession();
+      setSignInSession(null);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
-    if (
-      smokeWalletOverride &&
-      connectedWalletAddress &&
-      effectiveChainId === base.id
-    ) {
-      setSignInSession(
-        createSmokeSignInSession(connectedWalletAddress, effectiveChainId),
-      );
+    void refreshSessionStatus();
+
+    const refreshOnFocus = () => {
+      void refreshSessionStatus();
+    };
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSessionStatus();
+      }
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [refreshSessionStatus]);
+
+  useEffect(() => {
+    if (!signInSession) {
       return;
     }
 
+    const expiresAtMs = Date.parse(signInSession.expiresAt);
+    const timeoutMs = Math.max(0, expiresAtMs - Date.now() + 25);
+    const timeoutId = window.setTimeout(() => {
+      void refreshSessionStatus();
+    }, Math.min(timeoutMs, 2_147_483_647));
+    return () => window.clearTimeout(timeoutId);
+  }, [refreshSessionStatus, signInSession]);
+
+  useEffect(() => {
     if (!connectedWalletAddress || !effectiveChainId) {
       // Wallet not currently available. This can mean any of:
       //   (a) wagmi is still rehydrating from cookieStorage
@@ -287,15 +318,17 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
       return;
     }
 
-    const storedSession = loadBubbleDropFrontendSignInSession();
+    if (!signInSession) {
+      return;
+    }
+
     if (
       signInSessionMatchesWallet(
-        storedSession,
+        signInSession,
         connectedWalletAddress,
         effectiveChainId,
       )
     ) {
-      setSignInSession(storedSession);
       return;
     }
 
@@ -304,7 +337,7 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     // It's now safe to drop it.
     clearBubbleDropFrontendSignInSession();
     setSignInSession(null);
-  }, [connectedWalletAddress, effectiveChainId, smokeWalletOverride]);
+  }, [connectedWalletAddress, effectiveChainId, signInSession]);
 
   useEffect(() => {
     if (!effectiveIsConnected) {
@@ -478,11 +511,15 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     }
   };
 
-  const onClearBaseSignIn = (setActionMessage: (msg: string | null) => void) => {
-    clearBubbleDropFrontendSignInSession();
-    setSignInSession(null);
-    setWalletFlowState(IDLE_WALLET_FLOW_STATE);
-    setActionMessage("This browser session is signed out.");
+  const onClearBaseSignIn = async (setActionMessage: (msg: string | null) => void) => {
+    try {
+      await logoutBubbleDropSession();
+      setSignInSession(null);
+      setWalletFlowState(IDLE_WALLET_FLOW_STATE);
+      setActionMessage("This browser session is signed out.");
+    } catch {
+      setActionMessage("We couldn't sign out. Please try again.");
+    }
   };
 
   const onSignInWithBase = async (setActionMessage: (msg: string | null) => void) => {
@@ -505,9 +542,8 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
 
     try {
       const nonceResponse = await withFlowTimeout(
-        fetch(`${backendUrl}/auth/session/nonce`, {
+        fetchBubbleDropMutation(`${backendUrl}/auth/session/nonce`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             walletAddress: connectedWalletAddress,
             chainId: effectiveChainId,
@@ -546,6 +582,7 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
         uri: window.location.origin,
         version: "1",
         issuedAt,
+        expirationTime: new Date(noncePayload.expiresAt),
       });
       setWalletFlowState({
         stage: "awaiting_wallet_approval",
@@ -565,9 +602,8 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
         detail: null,
       });
       const verifyResponse = await withFlowTimeout(
-        fetch(`${backendUrl}/auth/session/verify`, {
+        fetchBubbleDropMutation(`${backendUrl}/auth/session/verify`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message,
             signature,
@@ -593,14 +629,11 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
         (await verifyResponse.json()) as VerifiedAuthSessionResponse;
 
       const session: BubbleDropFrontendSignInSession = {
+        authenticated: true,
         address: verifiedSession.walletAddress,
         chainId: verifiedSession.chainId,
         issuedAt: verifiedSession.issuedAt,
         expiresAt: verifiedSession.expiresAt,
-        statement: noncePayload.statement,
-        message,
-        signature,
-        authSessionToken: verifiedSession.authSessionToken,
         mode: "siwe",
       };
       storeBubbleDropFrontendSignInSession(session);
@@ -645,11 +678,11 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     }
   };
 
-  const onDisconnectWallet = () => {
+  const onDisconnectWallet = async () => {
     // Explicit user disconnect: drop the stored sign-in session here,
     // since the auto-clear in the session-restore effect no longer
     // touches storage when the wallet is just transiently unavailable.
-    clearBubbleDropFrontendSignInSession();
+    await logoutBubbleDropSession();
     setSignInSession(null);
     setWalletFlowState(IDLE_WALLET_FLOW_STATE);
     disconnect();
@@ -661,7 +694,7 @@ export function useWalletFlow({ backendUrl }: UseWalletFlowOptions) {
     effectiveChainId,
     isConnectedToBase,
     isSignedInWithBase,
-    authenticatedSessionToken,
+    authenticatedSessionToken: authenticatedSessionMarker,
     walletFlowState,
     signInSession,
     isSigningInWithBase,

@@ -5,14 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CheckInRecord } from '../check-in/entities/check-in-record.entity';
 import { Profile } from '../profile/entities/profile.entity';
 import { XpService, XpSource } from '../rewards/xp.service';
 import { PartnerToken } from './entities/partner-token.entity';
 import { PartnerTokenPin } from './entities/partner-token-pin.entity';
 import { Referral, ReferralStatus } from './entities/referral.entity';
-import { Season } from './entities/season.entity';
+import { SeasonService } from './season.service';
 
 export interface PartnerTokenTransparencyView {
   id: string;
@@ -87,8 +87,6 @@ export interface PartnerTokenDetailView {
 @Injectable()
 export class PartnerTokenService {
   constructor(
-    @InjectRepository(Season)
-    private readonly seasonRepository: Repository<Season>,
     @InjectRepository(PartnerToken)
     private readonly partnerTokenRepository: Repository<PartnerToken>,
     @InjectRepository(PartnerTokenPin)
@@ -100,6 +98,8 @@ export class PartnerTokenService {
     @InjectRepository(CheckInRecord)
     private readonly checkInRecordRepository: Repository<CheckInRecord>,
     private readonly xpService: XpService,
+    private readonly dataSource: DataSource,
+    private readonly seasonService: SeasonService,
   ) {}
 
   async getTransparencyList(): Promise<PartnerTokenTransparencyView[]> {
@@ -128,89 +128,107 @@ export class PartnerTokenService {
   ): Promise<ReferralSuccessResult> {
     this.assertUuid(referralId, 'Invalid referralId format');
 
-    const referral = await this.referralRepository.findOne({
-      where: { id: referralId },
-    });
-    if (!referral) {
-      throw new NotFoundException('Referral not found');
-    }
+    return this.dataSource.transaction(async (entityManager) => {
+      const referralRepository = entityManager.getRepository(Referral);
+      const profileRepository = entityManager.getRepository(Profile);
+      const checkInRecordRepository =
+        entityManager.getRepository(CheckInRecord);
+      const referral = await referralRepository.findOne({
+        where: { id: referralId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!referral) {
+        throw new NotFoundException('Referral not found');
+      }
 
-    if (!referral.invitedProfileId) {
-      throw new BadRequestException(
-        'Referral does not have invited profile linked yet',
+      const inviterProfile = await profileRepository.findOne({
+        where: { id: referral.inviterProfileId },
+      });
+      if (!inviterProfile) {
+        throw new NotFoundException('Inviter profile not found');
+      }
+
+      if (referral.status === ReferralStatus.SUCCESSFUL) {
+        return {
+          referralId: referral.id,
+          inviterProfileId: referral.inviterProfileId,
+          invitedProfileId: referral.invitedProfileId ?? '',
+          status: referral.status,
+          referralXpGranted: 0,
+          inviterTotalXp: inviterProfile.totalXp,
+        };
+      }
+
+      if (!referral.invitedProfileId) {
+        throw new BadRequestException(
+          'Referral does not have invited profile linked yet',
+        );
+      }
+
+      const invitedProfile = await profileRepository.findOne({
+        where: { id: referral.invitedProfileId },
+      });
+      if (!invitedProfile) {
+        throw new NotFoundException('Invited profile not found');
+      }
+      if (
+        !invitedProfile.nickname ||
+        invitedProfile.onboardingCompletedAt === null
+      ) {
+        throw new BadRequestException(
+          'Invited profile has not completed onboarding',
+        );
+      }
+
+      const firstCheckIn = await checkInRecordRepository.findOne({
+        where: { profileId: invitedProfile.id },
+        order: { checkInDate: 'ASC' },
+      });
+      if (!firstCheckIn) {
+        throw new BadRequestException(
+          'Invited profile has not completed first daily check-in',
+        );
+      }
+
+      const activeSeason = await this.seasonService.getActiveSeason(
+        new Date(),
+        entityManager,
       );
-    }
 
-    const invitedProfile = await this.profileRepository.findOne({
-      where: { id: referral.invitedProfileId },
-    });
-    if (!invitedProfile) {
-      throw new NotFoundException('Invited profile not found');
-    }
+      referral.status = ReferralStatus.SUCCESSFUL;
+      referral.successfulAt = new Date();
+      await referralRepository.save(referral);
 
-    if (
-      !invitedProfile.nickname ||
-      invitedProfile.onboardingCompletedAt === null
-    ) {
-      throw new BadRequestException(
-        'Invited profile has not completed onboarding',
+      const xpGrant = await this.xpService.grantXp(
+        inviterProfile.id,
+        [
+          {
+            source: XpSource.REFERRAL_SUCCESS,
+            amount: 50,
+            seasonId: activeSeason?.id ?? null,
+            idempotencyKey: `referral:${referral.id}:success`,
+            metadata: {
+              referralId: referral.id,
+              invitedProfileId: invitedProfile.id,
+            },
+          },
+        ],
+        undefined,
+        entityManager,
       );
-    }
+      const profileWithUpdatedXp = await profileRepository.findOne({
+        where: { id: inviterProfile.id },
+      });
 
-    const firstCheckIn = await this.checkInRecordRepository.findOne({
-      where: { profileId: invitedProfile.id },
-      order: { checkInDate: 'ASC' },
-    });
-    if (!firstCheckIn) {
-      throw new BadRequestException(
-        'Invited profile has not completed first daily check-in',
-      );
-    }
-
-    const inviterProfile = await this.profileRepository.findOne({
-      where: { id: referral.inviterProfileId },
-    });
-    if (!inviterProfile) {
-      throw new NotFoundException('Inviter profile not found');
-    }
-
-    if (referral.status === ReferralStatus.SUCCESSFUL) {
       return {
         referralId: referral.id,
         inviterProfileId: referral.inviterProfileId,
-        invitedProfileId: referral.invitedProfileId,
+        invitedProfileId: invitedProfile.id,
         status: referral.status,
-        referralXpGranted: 0,
-        inviterTotalXp: inviterProfile.totalXp,
+        referralXpGranted: xpGrant.grantedTotal,
+        inviterTotalXp: profileWithUpdatedXp?.totalXp ?? inviterProfile.totalXp,
       };
-    }
-
-    referral.status = ReferralStatus.SUCCESSFUL;
-    referral.successfulAt = new Date();
-    await this.referralRepository.save(referral);
-
-    const xpGrant = await this.xpService.grantXp(inviterProfile.id, [
-      {
-        source: XpSource.REFERRAL_SUCCESS,
-        amount: 50,
-        metadata: {
-          referralId: referral.id,
-          invitedProfileId: invitedProfile.id,
-        },
-      },
-    ]);
-
-    inviterProfile.totalXp += xpGrant.grantedTotal;
-    await this.profileRepository.save(inviterProfile);
-
-    return {
-      referralId: referral.id,
-      inviterProfileId: referral.inviterProfileId,
-      invitedProfileId: invitedProfile.id,
-      status: referral.status,
-      referralXpGranted: xpGrant.grantedTotal,
-      inviterTotalXp: inviterProfile.totalXp,
-    };
+    });
   }
 
   async getReferralProgress(
@@ -255,10 +273,7 @@ export class PartnerTokenService {
   }
 
   async getSeasonHub(): Promise<SeasonHubView> {
-    const activeSeason = await this.seasonRepository.findOne({
-      where: { isActive: true },
-      order: { startDate: 'DESC' },
-    });
+    const activeSeason = await this.seasonService.getActiveSeason();
 
     if (!activeSeason) {
       return {
