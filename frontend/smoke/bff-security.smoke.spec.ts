@@ -117,6 +117,19 @@ test.describe("@security BubbleDrop BFF", () => {
     await resetMockBackend(request);
   });
 
+  test("keeps decorative intro layers from intercepting the Skip control", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    await expect(skipButton).toBeVisible();
+    await skipButton.click();
+
+    await expect(skipButton).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Guest bubble" })).toBeVisible();
+  });
+
   test("routes protected shell mutations through the central CSRF helper", async () => {
     const shellSource = await readWorkspaceFile("app/ui/bubbledrop-shell.tsx");
 

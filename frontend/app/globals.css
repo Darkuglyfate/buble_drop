@@ -1089,6 +1089,7 @@ button.gloss-pill:disabled {
   inset: 0;
   overflow: hidden;
   z-index: 1;
+  pointer-events: none;
   mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.18) 10%, rgba(0, 0, 0, 1) 22%);
 }
 
