@@ -1048,7 +1048,12 @@ export function BubbleDropShell() {
   }
 
   const profilePrimaryAction = !effectiveIsConnected
-    ? null
+    ? {
+        kind: "button" as const,
+        label: "Connect with Base",
+        onClick: onConnectWallet,
+        disabled: isWalletFlowBusy || isSubmittingAction,
+      }
     : !isConnectedToBase
       ? {
           kind: "button" as const,

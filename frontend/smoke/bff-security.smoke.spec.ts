@@ -130,6 +130,15 @@ test.describe("@security BubbleDrop BFF", () => {
     await expect(page.getByRole("heading", { name: "Guest bubble" })).toBeVisible();
   });
 
+  test("offers Base wallet connection from the guest home screen", async ({ page }) => {
+    await page.goto("/?skipIntro=1");
+
+    await expect(page.getByRole("heading", { name: "Guest bubble" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Connect with Base" }),
+    ).toBeVisible();
+  });
+
   test("routes protected shell mutations through the central CSRF helper", async () => {
     const shellSource = await readWorkspaceFile("app/ui/bubbledrop-shell.tsx");
 
